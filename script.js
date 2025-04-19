@@ -306,9 +306,9 @@ function populateTokenAwardUI() {
     playerTokenAwardArea.appendChild(heading);
     const tokenTypes = {
         mindReader: "Close match to Judge's thought.",
-        technicalMerit: "Exceptional artistic skill.",
-        perfectAlignment: "Brilliant alignment capture.",
-        plotTwist: "Surprising/unexpected interpretation."
+        artBro: "Exceptional artistic skill.", // Changed key from "art bro"
+        "perfectly aligned (tm)": "Brilliant alignment capture.",
+        psychopath: "Surprising/unexpected interpretation."
     };
 
     players.forEach((player, playerIndex) => {
@@ -668,7 +668,7 @@ function startGame() {
         players.push({
             name: name || `Player ${index + 1}`,
             score: 0,
-            tokens: { mindReader: 0, technicalMerit: 0, perfectAlignment: 0, plotTwist: 0 },
+            tokens: { mindReader: 0, artBro: 0, "perfectly aligned (tm)": 0, psychopath: 0 }, // Changed key from "art bro"
             avatar: `${avatarBasePath}${avatarFile}` // Store the full path
         });
     });
@@ -1054,7 +1054,7 @@ function updateScoreboard() {
         let tokenString = '';
         const tokens = player.tokens;
         const totalTokens = getPlayerTokenTotal(player);
-        const tokenOrder = ['mindReader', 'technicalMerit', 'perfectAlignment', 'plotTwist']; // Define order
+        const tokenOrder = ['mindReader', 'artBro', 'perfectly aligned (tm)', 'psychopath']; // Define order, changed "art bro"
 
         tokenOrder.forEach(tokenType => {
             if (tokens[tokenType] > 0) {

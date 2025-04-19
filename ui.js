@@ -1,13 +1,11 @@
-// filepath: c:\Users\Jacob\Desktop\perfectlyalignedhelper\ui.js
 import { gameState, getPlayerTokenTotal } from './state.js';
 import { TOKEN_TYPES, AVATAR_BASE_PATH, ALIGNMENT_EXAMPLES_MAP, ALIGNMENT_FULL_NAME_MAP } from './constants.js';
-// Moved import to the top
 import { handleTokenChoiceClick, handleStealPointClick, confirmSteal, handleWinnerButtonClick } from './game.js'; // Import necessary handlers
 import { playSound } from './audio.js';
 import { stopTimer, resetTimer, showStealModal } from './game.js'; // Import timer functions and steal modal function
 
 // --- DOM Element References ---
-export const elements = {
+const elements = {
     playerTokenAwardArea: document.getElementById('player-token-award-area'),
     roundActionsSection: document.getElementById('round-actions-section'),
     winnerButtonContainer: document.getElementById('winner-button-container'),
@@ -75,7 +73,7 @@ export const elements = {
 
 // --- UI Update Functions ---
 
-export function updateJudgeDisplay() {
+function updateJudgeDisplay() {
     const judge = gameState.players[gameState.currentPlayerIndex];
     const canStealInfo = { canSteal: false, targets: [] };
 
@@ -133,12 +131,13 @@ export function updateJudgeDisplay() {
     updateRerollButtonState(); // Keep this call
 }
 
-export function updateScoreboard() {
+function updateScoreboard() {
     if (!elements.scoreboardList) return;
     elements.scoreboardList.innerHTML = '';
     gameState.players.forEach((player, index) => {
         const listItem = document.createElement('li');
         listItem.dataset.playerIndex = index;
+        listItem.dataset.playerId = player.playerId; // Add player ID for easier reference
 
         // Avatar Display
         const avatarSpan = document.createElement('span');
@@ -148,53 +147,57 @@ export function updateScoreboard() {
         listItem.appendChild(avatarSpan);
 
         // Name and Score
-        const scoreSpan = document.createElement('span');
-        scoreSpan.textContent = ` ${player.name}: ${player.score}`;
-        listItem.appendChild(scoreSpan);
+        const nameScoreSpan = document.createElement('span'); // Changed variable name for clarity
+        nameScoreSpan.className = 'player-name-display'; // Added class for styling
+        nameScoreSpan.textContent = ` ${player.name}: ${player.score}`;
+        listItem.appendChild(nameScoreSpan);
 
-        // Token Display
+        // Token Display - Refactored to use TOKEN_TYPES
         const tokenSpan = document.createElement('span');
         tokenSpan.className = 'token-display';
-        let tokenString = '';
-        const tokens = player.tokens;
-        const totalTokens = getPlayerTokenTotal(player);
+        let hasTokens = false;
+        Object.entries(player.tokens || {}).forEach(([key, count]) => {
+            if (count > 0) {
+                hasTokens = true;
+                const tokenIconSpan = document.createElement('span');
+                tokenIconSpan.className = `token-icon token-${key}`; // Use key for class
+                tokenIconSpan.title = TOKEN_TYPES[key] || key; // Use description from constants as title
+                tokenIconSpan.textContent = count; // Display count inside
+                tokenSpan.appendChild(tokenIconSpan);
+                tokenSpan.appendChild(document.createTextNode(' ')); // Add space between icons
+            }
+        });
 
-        if (tokens.mindReader > 0) tokenString += ` <span title="Mind Reader">🧠(${tokens.mindReader})</span>`;
-        if (tokens.technicalMerit > 0) tokenString += ` <span title="Technical Merit">🎨(${tokens.technicalMerit})</span>`;
-        if (tokens.perfectAlignment > 0) tokenString += ` <span title="Perfect Alignment">🎯(${tokens.perfectAlignment})</span>`;
-        if (tokens.plotTwist > 0) tokenString += ` <span title="Plot Twist">🎭(${tokens.plotTwist})</span>`;
-
-        tokenSpan.innerHTML = tokenString === '' ? ' (No tokens)' : tokenString;
-        tokenSpan.classList.toggle('no-tokens', tokenString === '');
+        if (!hasTokens) {
+            tokenSpan.textContent = '(No tokens)';
+            tokenSpan.classList.add('no-tokens');
+        }
         listItem.appendChild(tokenSpan);
 
-        // Steal Button Logic
+
+        // Steal Button Logic (using getPlayerTokenTotal)
+        const totalTokens = getPlayerTokenTotal(player);
         let canSteal = false;
         if (totalTokens >= 3 && gameState.players.length > 1) {
-            const hasValidTarget = gameState.players.some((targetPlayer, targetIndex) => {
-                return targetIndex !== index && targetPlayer.score > 0;
+            const hasValidTarget = gameState.players.some((targetPlayer) => {
+                // Ensure targetPlayer exists and has score property before accessing it
+                return targetPlayer && targetPlayer.playerId !== player.playerId && targetPlayer.score > 0;
             });
             if (hasValidTarget) {
                 canSteal = true;
             }
         }
 
-        if (canSteal) {
-            const stealButton = document.createElement('button');
-            stealButton.textContent = 'Steal Point (3 Tokens)';
-            stealButton.className = 'steal-button';
-            // stealButton.style.marginLeft = '15px'; // Use CSS class instead
-            // stealButton.style.fontSize = '0.8em';
-            stealButton.onclick = () => handleStealPointClick(index);
-            listItem.appendChild(stealButton);
-        }
 
-        // Placeholder for Steal Target UI
+        // Steal Button Area (placeholder for button or message)
+        const stealButtonArea = document.createElement('div');
+        stealButtonArea.className = 'steal-button-area';
+        listItem.appendChild(stealButtonArea); // Add area even if button isn't shown yet
+
+        // Steal Target Area (placeholder)
         const stealTargetArea = document.createElement('div');
         stealTargetArea.className = 'steal-target-area';
         stealTargetArea.style.display = 'none'; // Initially hidden
-        // stealTargetArea.style.marginLeft = '20px'; // Use CSS class
-        // stealTargetArea.style.marginTop = '5px';
         listItem.appendChild(stealTargetArea);
 
         elements.scoreboardList.appendChild(listItem);
@@ -203,9 +206,52 @@ export function updateScoreboard() {
     if (elements.targetScoreDisplay) {
         elements.targetScoreDisplay.textContent = gameState.targetScore;
     }
+    // After updating the list, update the steal buttons within it
+    updateStealButtonsUI();
 }
 
-export function populateWinnerButtons() {
+
+// NEW Helper function to update steal buttons after scoreboard redraw
+function updateStealButtonsUI() {
+    if (!elements.scoreboardList) return;
+
+    const listItems = elements.scoreboardList.querySelectorAll('li');
+    listItems.forEach(listItem => {
+        const playerIndex = parseInt(listItem.dataset.playerIndex);
+        const player = gameState.players[playerIndex];
+        const stealButtonArea = listItem.querySelector('.steal-button-area');
+
+        if (!player || !stealButtonArea) return;
+
+        // Clear previous button/content
+        stealButtonArea.innerHTML = '';
+
+        const totalTokens = getPlayerTokenTotal(player);
+        let canSteal = false;
+        if (totalTokens >= 3 && gameState.players.length > 1) {
+            const hasValidTarget = gameState.players.some((targetPlayer) => {
+                return targetPlayer && targetPlayer.playerId !== player.playerId && targetPlayer.score > 0;
+            });
+            if (hasValidTarget) {
+                canSteal = true;
+            }
+        }
+
+        if (canSteal) {
+            const stealButton = document.createElement('button');
+            stealButton.textContent = 'Steal (3)'; // Shortened text
+            stealButton.className = 'steal-button';
+            stealButton.title = 'Steal 1 point (costs 3 tokens)';
+            stealButton.onclick = (event) => {
+                 event.stopPropagation(); // Prevent potential parent clicks
+                 handleStealPointClick(player.playerId); // Pass player ID
+            };
+            stealButtonArea.appendChild(stealButton);
+        }
+    });
+}
+
+function populateWinnerButtons() {
     if (!elements.winnerButtonContainer) return;
     elements.winnerButtonContainer.innerHTML = '';
 
@@ -232,18 +278,25 @@ export function populateWinnerButtons() {
     }
 }
 
-export function populateTokenAwardUI() {
+function populateTokenAwardUI() {
     if (!elements.playerTokenAwardArea) return;
-    elements.playerTokenAwardArea.innerHTML = '';
+    elements.playerTokenAwardArea.innerHTML = ''; // Clear previous content
     const heading = document.createElement('h5');
     heading.textContent = "Award Achievement Tokens (Optional):";
     elements.playerTokenAwardArea.appendChild(heading);
 
+    let playersEligible = false; // Flag to check if any players are shown
+
     gameState.players.forEach((player, playerIndex) => {
-        if (playerIndex === gameState.currentPlayerIndex) return; // Skip Judge
+        // Skip the current judge
+        if (player.playerId === gameState.players[gameState.currentPlayerIndex]?.playerId) return;
+
+        playersEligible = true; // At least one non-judge player exists
 
         const playerDiv = document.createElement('div');
         playerDiv.className = 'player-token-row';
+        playerDiv.dataset.playerId = player.playerId; // Store player ID
+
         const nameSpan = document.createElement('span');
         nameSpan.className = 'player-token-name';
         nameSpan.textContent = player.name;
@@ -252,27 +305,46 @@ export function populateTokenAwardUI() {
         const choicesContainer = document.createElement('div');
         choicesContainer.className = 'token-choices-container';
 
+        // Use TOKEN_TYPES from constants.js
         Object.entries(TOKEN_TYPES).forEach(([tokenKey, tokenDesc]) => {
             const choiceSpan = document.createElement('span');
-            choiceSpan.className = 'token-award-choice deselected';
-            choiceSpan.dataset.playerIndex = playerIndex;
-            choiceSpan.dataset.tokenType = tokenKey;
-            const labelText = tokenKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+            choiceSpan.className = 'token-award-choice deselected'; // Start as deselected
+            choiceSpan.dataset.playerId = player.playerId; // Store player ID on the choice itself
+            choiceSpan.dataset.tokenType = tokenKey; // Sets data-token-type="perfectlyAligned"
+            choiceSpan.tabIndex = 0; // Make focusable
+
+            // Display Text (e.g., "Art Bro")
+            const labelText = tokenDesc.split('(')[0].trim(); // Get text before parenthesis if exists
             choiceSpan.appendChild(document.createTextNode(labelText));
+
+            // Tooltip (e.g., "(Judge's favorite sketch...)")
             const tooltipSpan = document.createElement('span');
             tooltipSpan.className = 'token-tooltip';
-            tooltipSpan.textContent = ` (${tokenDesc})`;
+            // Extract description from TOKEN_TYPES if needed, or use the full string
+            tooltipSpan.textContent = ` (${tokenDesc})`; // Use full description as tooltip
             choiceSpan.appendChild(tooltipSpan);
-            choiceSpan.onclick = handleTokenChoiceClick; // Defined in game.js
+
+            choiceSpan.onclick = handleTokenChoiceClick; // Attach handler
             choicesContainer.appendChild(choiceSpan);
         });
         playerDiv.appendChild(choicesContainer);
         elements.playerTokenAwardArea.appendChild(playerDiv);
     });
+
+     // If no players were eligible (e.g., only 1 player in game), show a message
+    if (!playersEligible) {
+        const noPlayersMsg = document.createElement('p');
+        noPlayersMsg.textContent = 'No other players to award tokens to.';
+        noPlayersMsg.style.fontStyle = 'italic';
+        elements.playerTokenAwardArea.appendChild(noPlayersMsg);
+    }
+
+    // Initial update of token availability after populating
+    updateTokenAvailability();
 }
 
 // Manage the re-roll button's visibility and enabled state
-export function updateRerollButtonState() {
+function updateRerollButtonState() {
     if (!elements.rerollPromptsButton || gameState.players.length === 0) return;
     const judge = gameState.players[gameState.currentPlayerIndex];
     // Ensure judge exists before checking tokens
@@ -286,13 +358,13 @@ export function updateRerollButtonState() {
     elements.rerollPromptsButton.disabled = !(judgeHasTokens && promptsDrawn && !promptChosen);
 }
 
-export function showWinner(winnerName) {
+function showWinner(winnerName) {
     if(elements.gameArea) elements.gameArea.style.display = 'none';
     if(elements.winnerNameSpan) elements.winnerNameSpan.textContent = winnerName;
     if(elements.winnerArea) elements.winnerArea.style.display = 'block';
 }
 
-export function resetUIForNewRound() {
+function resetUIForNewRound() {
     if(elements.dieDisplay) elements.dieDisplay.textContent = '?';
     elements.alignmentCells().forEach(cell => cell.classList.remove('highlighted', 'flicker', 'flicker-blue'));
     if (elements.alignmentChartGrid) elements.alignmentChartGrid.classList.remove('judge-choice-highlight');
@@ -359,7 +431,7 @@ export function resetUIForNewRound() {
     }
 }
 
-export function resetUIForNewGame() {
+function resetUIForNewGame() {
      if(elements.setupArea) elements.setupArea.style.display = 'block';
      if(elements.gameArea) elements.gameArea.style.display = 'none';
      if(elements.winnerArea) elements.winnerArea.style.display = 'none';
@@ -390,7 +462,7 @@ export function resetUIForNewGame() {
 
 // --- Specific UI Update Helpers ---
 
-export function displayAlignmentResult(alignment, shouldZoom = true) { // Add shouldZoom parameter
+function displayAlignmentResult(alignment, shouldZoom = true) { // Add shouldZoom parameter
     if (!elements.dieDisplay || !elements.alignmentExamplesArea || !elements.alignmentChartGrid || !elements.alignmentSection) return;
 
     elements.dieDisplay.textContent = alignment;
@@ -421,7 +493,7 @@ export function displayAlignmentResult(alignment, shouldZoom = true) { // Add sh
     }
 }
 
-export function showSketchInstructions() {
+function showSketchInstructions() {
     if (elements.sketchInstructionArea && elements.sketchInstructionText && gameState.currentRolledAlignment && gameState.chosenPromptForRound) {
         const fullAlignmentName = ALIGNMENT_FULL_NAME_MAP[gameState.currentRolledAlignment] || gameState.currentRolledAlignment;
         elements.sketchInstructionText.innerHTML = `<strong style="font-size: 1.2em;">Players, sketch: ${fullAlignmentName} - \"${gameState.chosenPromptForRound}\"</strong>`;
