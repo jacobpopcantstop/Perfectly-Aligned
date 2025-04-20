@@ -1,59 +1,56 @@
-// filepath: c:\Users\Jacob\Desktop\perfectlyalignedhelper\state.js
-// Centralized game state
-export const gameState = {
-    players: [], // Array to hold player objects { name: "...", score: 0, tokens: {...}, avatar: "..." }
+// Centralized game state - This might conflict if script.js also declares gameState
+const gameState = { // Removed export
+    players: [],
     currentPlayerIndex: 0,
     targetScore: 5,
     availableCards: [],
     currentlyDisplayedPrompts: [],
-    chosenPromptForRound: null, // Stores the text of the clicked prompt
+    chosenPromptForRound: null,
     selectedWinnerIndexForRound: null,
-    recentAlignments: [], // Store the last 3 alignment results (abbreviations)
+    recentAlignments: [],
     currentRolledAlignment: null,
     timerInterval: null,
-    timerTotalSeconds: 90, // Default timer value
-    selectedAvatars: {}, // Stores { selectId: avatarFile } during setup
+    timerTotalSeconds: 90,
+    selectedAvatars: {},
     currentTutorialStep: 0,
     flickerInterval: null,
 };
 
 // --- State Utility Functions ---
+// These functions might need to be moved into script.js if they weren't originally here
 
 // Helper: Calculate total tokens for a player
-export function getPlayerTokenTotal(player) {
+function getPlayerTokenTotal(player) { // Removed export
     if (!player || !player.tokens) return 0;
+    // Reverted to simple sum, assuming script.js uses the old token keys
     return Object.values(player.tokens).reduce((sum, count) => sum + count, 0);
 }
 
 // Helper: Deduct a specific number of tokens from a player
-export function deductTokens(player, count) {
+function deductTokens(player, count) { // Removed export
     if (!player || !player.tokens) return false;
     let totalTokens = getPlayerTokenTotal(player);
     if (totalTokens < count) {
-        return false; // Not enough tokens
+        return false;
     }
     let tokensToDeduct = count;
-    const tokenTypes = Object.keys(player.tokens);
+    // Reverted to specific order based on original keys expected by script.js
+    const spendOrder = ['mindReader', 'technicalMerit', 'plotTwist', 'perfectAlignment'];
 
-    // Prioritize spending tokens if possible (optional, depends on game rules)
-    // Example: Spend plotTwist first, then others
-    // const spendOrder = ['plotTwist', 'mindReader', 'technicalMerit', 'perfectAlignment'];
-    // tokenTypes.sort((a, b) => spendOrder.indexOf(a) - spendOrder.indexOf(b));
-
-    for (const type of tokenTypes) {
+    for (const type of spendOrder) {
         if (tokensToDeduct === 0) break;
-        const available = player.tokens[type];
+        const available = player.tokens[type] || 0;
         const deductAmount = Math.min(tokensToDeduct, available);
         if (deductAmount > 0) {
             player.tokens[type] -= deductAmount;
-            tokensToDeduct -= deductAmount; // Decrement tokensToDeduct
+            tokensToDeduct -= deductAmount;
         }
     }
-    return tokensToDeduct === 0; // Return true only if the exact count was deducted
+    return tokensToDeduct === 0;
 }
 
 // Helper: Shuffle an array in place
-export function shuffleArray(array) {
+function shuffleArray(array) { // Removed export
     for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [array[i], array[j]] = [array[j], array[i]];
@@ -61,7 +58,8 @@ export function shuffleArray(array) {
 }
 
 // Reset specific parts of the state for a new game
-export function resetGameStateForNewGame() {
+function resetGameStateForNewGame() { // Removed export
+    // Assumes gameState is the global object from script.js or this file
     gameState.players = [];
     gameState.currentPlayerIndex = 0;
     gameState.targetScore = 5;
@@ -72,18 +70,16 @@ export function resetGameStateForNewGame() {
     gameState.recentAlignments = [];
     gameState.currentRolledAlignment = null;
     gameState.selectedAvatars = {};
-    // Keep timer settings, tutorial step might reset or not depending on desired behavior
 }
 
 // Reset state specific to the start of a new round
-export function resetRoundState() {
+function resetRoundState() { // Removed export
+    // Assumes gameState is the global object from script.js or this file
     gameState.chosenPromptForRound = null;
     gameState.selectedWinnerIndexForRound = null;
     gameState.currentRolledAlignment = null;
-    // Clear intervals if they exist
     if (gameState.flickerInterval) {
         clearInterval(gameState.flickerInterval);
         gameState.flickerInterval = null;
     }
-    // Timer interval is handled separately by timer functions
 }

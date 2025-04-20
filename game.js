@@ -1,11 +1,9 @@
 import { gameState, players, currentPlayerIndex, targetScore, currentlyDisplayedPrompts, chosenPromptForRound, currentRolledAlignment, addPlayer, setPlayerCount, setPlayerName, setPlayerAvatar, assignPoints, assignToken, resetGameState, nextRound, setTargetScore, setChosenPrompt, setRolledAlignment, spendTokenForReroll, spendTokensForSteal, getPlayerById, getPlayerTokenTotal, getJudgePlayer } from './state.js';
 import { elements, updateJudgeDisplay, updateScoreboard, populateWinnerButtons, populateTokenAwardUI, resetUIForNewRound, displayAlignmentResult, showSketchInstructions, updateRerollButtonState, validateAvatarUniqueness } from './ui.js';
-import { playSound } from './audio.js';
-import { startTimer, stopTimer, resetTimer } from './timer.js'; // Assuming timer functions are in timer.js
 
 // --- Event Handlers --- (Moved from script.js or integrated)
 
-export function handleTokenChoiceClick(event) {
+function handleTokenChoiceClick(event) {
     const choice = event.currentTarget;
     console.log(`[handleTokenChoiceClick] Clicked: ${choice.dataset.tokenType} for player ${choice.dataset.playerIndex}. Has disabled class? ${choice.classList.contains('disabled-by-award')}`);
 
@@ -42,7 +40,7 @@ export function handleTokenChoiceClick(event) {
     updateTokenAvailability();
 }
 
-export function updateTokenAvailability() {
+function updateTokenAvailability() {
     console.log(`[updateTokenAvailability] Running...`);
     const tokenArea = elements.playerTokenAwardArea;
     if (!tokenArea) {
@@ -133,7 +131,7 @@ function populateStealModal() {
     }
 }
 
-export function showStealModal() {
+function showStealModal() {
     const judge = getJudgePlayer();
     if (!elements.stealModalOverlay || !judge) return;
 
@@ -148,7 +146,7 @@ export function showStealModal() {
     playSound('steal'); // Use steal sound effect
 }
 
-export function hideStealModal() {
+function hideStealModal() {
     if (!elements.stealModalOverlay) return;
     elements.stealModalOverlay.classList.remove('visible');
     // Remove dynamically added listeners to prevent memory leaks
@@ -194,7 +192,7 @@ function handleStealPlayerClick(event) {
 
 // ... rest of game.js ...
 
-export function handleWinnerButtonClick(event) {
+function handleWinnerButtonClick(event) {
     const target = event.target.closest('button.winner-button');
     if (!target) return; // Ignore clicks not on a winner button
 
@@ -212,7 +210,7 @@ export function handleWinnerButtonClick(event) {
     console.log(`Winner button selected: ${target.textContent}`);
 }
 
-export function handleAwardButtonClick() {
+function handleAwardButtonClick() {
     console.log("Award Point & Advance button clicked");
     if (!elements.awardButton || elements.awardButton.disabled) return;
 
@@ -268,7 +266,7 @@ export function handleAwardButtonClick() {
     }
 }
 
-export function advanceToNextRound() {
+function advanceToNextRound() {
     nextRound(); // Update state (judge index, clear round state)
     resetUIForNewRound(); // Resets button states among other things
     updateJudgeDisplay(); // Update judge info (including steal button state)
@@ -278,20 +276,23 @@ export function advanceToNextRound() {
 
 // --- Timer Functions ---
 
-export function updateTimerDisplayFromSlider() {
+// Need to declare remainingSeconds if it's not declared globally elsewhere
+let remainingSeconds = 90; // Or get initial value from slider/state
+
+function updateTimerDisplayFromSlider() {
     if (!elements.timerSlider) return;
     const totalSeconds = parseInt(elements.timerSlider.value);
     updateTimerDisplay(totalSeconds);
 }
 
-export function updateTimerDisplay(seconds) {
+function updateTimerDisplay(seconds) {
     if (!elements.timerDisplay) return;
     const minutes = Math.floor(seconds / 60);
     const displaySeconds = seconds % 60;
     elements.timerDisplay.textContent = `${minutes}:${displaySeconds < 10 ? '0' : ''}${displaySeconds}`;
 }
 
-export function startTimer() {
+function startTimer() {
     if (timerInterval) return; // Already running
 
     remainingSeconds = parseInt(elements.timerSlider.value);
@@ -327,7 +328,7 @@ export function startTimer() {
     }, 1000);
 }
 
-export function stopTimer(finishedNaturally = false) {
+function stopTimer(finishedNaturally = false) {
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
@@ -351,7 +352,7 @@ export function stopTimer(finishedNaturally = false) {
     }
 }
 
-export function resetTimer() {
+function resetTimer() {
     stopTimer(); // Stops timer and resets button states
     remainingSeconds = parseInt(elements.timerSlider.value); // Reset remaining seconds from slider
     updateTimerDisplay(remainingSeconds); // Update display based on slider
@@ -365,18 +366,18 @@ export function resetTimer() {
 
 // --- Setup Phase Functions ---
 
-export function handlePlayerCountChange(change) {
+function handlePlayerCountChange(change) {
     // ... existing code ...
     validateAvatarUniqueness(); // Validate start button state after count change
 }
 
-export function handleSetPlayers() {
+function handleSetPlayers() {
     // ... existing code ...
     validateAvatarUniqueness(); // Validate start button state after creating inputs
 }
 
 // Added handler for avatar cycle clicks (delegated from script.js)
-export function handleAvatarCycleClick(event) {
+function handleAvatarCycleClick(event) {
     const button = event.target;
     const playerEntryDiv = button.closest('.player-name-entry');
     if (!playerEntryDiv) return;
@@ -393,14 +394,14 @@ function cycleAvatar(playerIndex, direction) {
 }
 
 // Added handler for player name input (delegated from script.js)
-export function handlePlayerNameInput(event) {
+function handlePlayerNameInput(event) {
     const input = event.target;
     const playerIndex = parseInt(input.dataset.playerIndex);
     setPlayerName(playerIndex, input.value.trim()); // Update state, trim whitespace
     validateAvatarUniqueness(); // Re-validate on every input
 }
 
-export function handleDeckSelection(event) {
+function handleDeckSelection(event) {
     const targetLabel = event.target.closest('.deck-label');
     if (!targetLabel) return;
 
@@ -418,7 +419,7 @@ export function handleDeckSelection(event) {
     validateAvatarUniqueness();
 }
 
-export function startGame() {
+function startGame() {
     // Validation is implicitly handled by the button's disabled state
     console.log("Start Game button clicked");
 
@@ -436,7 +437,7 @@ export function startGame() {
 
 // --- Game Phase Functions ---
 
-export function handleRollClick() {
+function handleRollClick() {
     console.log("Roll button clicked");
     if (!elements.rollButton || elements.rollButton.disabled) return;
 
@@ -455,7 +456,7 @@ export function handleRollClick() {
     }, 500); // Adjust delay as needed (match CSS animation if possible)
 }
 
-export function drawAndDisplayPrompts() {
+function drawAndDisplayPrompts() {
     console.log("Draw Prompts button clicked");
     if (!elements.drawPromptsButton || elements.drawPromptsButton.disabled) return;
 
@@ -495,7 +496,7 @@ export function drawAndDisplayPrompts() {
     console.log(`Prompts drawn: ${prompts.join(', ')}`);
 }
 
-export function handlePromptReRoll() {
+function handlePromptReRoll() {
     console.log("Reroll Prompts button clicked");
     const judge = getJudgePlayer();
     if (!elements.rerollPromptsButton || elements.rerollPromptsButton.disabled || !judge) return;
@@ -523,7 +524,7 @@ export function handlePromptReRoll() {
     }
 }
 
-export function handlePromptClick(event) {
+function handlePromptClick(event) {
     const target = event.target.closest('.prompt-choice'); // Find the list item
     if (!target || target.classList.contains('selected') || target.classList.contains('disabled')) return; // Ignore if not a valid target or already handled
 
@@ -559,7 +560,7 @@ export function handlePromptClick(event) {
 }
 
 // --- Reset Game ---
-export function resetGame() {
+function resetGame() {
     resetGameState(); // Reset all game state
     resetUIForNewGame(); // Reset UI to initial setup screen
     playSound("ui_confirm"); // Or a specific reset sound

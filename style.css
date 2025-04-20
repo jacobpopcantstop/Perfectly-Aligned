@@ -479,6 +479,41 @@ input[type="number"] {
     font-size: 0.9em;
 }
 
+/* Scoreboard Tokens */
+.token-display {
+    font-size: 0.8em;
+    color: var(--light-grey);
+    margin-left: auto; /* Push tokens to the right */
+    margin-right: 8px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px; /* Space between token icons */
+}
+
+.token-display.no-tokens {
+    font-style: italic;
+    color: var(--medium-grey); /* Make "No tokens" less prominent */
+}
+
+.token-display .token-icon {
+    display: inline-block;
+    padding: 2px 5px; /* Adjusted padding */
+    border-radius: 3px;
+    font-weight: bold;
+    color: white;
+    min-width: 20px; /* Ensure single-digit tokens look okay */
+    text-align: center;
+    font-family: var(--readable-font); /* Use readable font for count */
+    font-size: 0.9em;
+    line-height: 1.2;
+}
+/* Token background colors - Use the keys from TOKEN_TYPES */
+.token-mindReader { background-color: var(--neon-blue); } /* Mind Reader */
+.token-artBro { background-color: var(--neon-yellow); color: var(--panel-bg); } /* Art Bro - Ensure contrast */
+.token-perfectlyAligned { background-color: var(--neon-green); } /* Perfectly Aligned (TM) */
+.token-psychopath { background-color: var(--neon-pink); } /* Psychopath */
+
 /* --- Buttons --- */
 button {
     font-family: var(--pixel-font);
@@ -801,30 +836,25 @@ input[type="number"] {
     font-size: 1.3em;
     font-weight: bold;
     line-height: 1.4;
-    color: var(--neon-yellow); /* Changed text color */
-    /* background: linear-gradient(145deg, var(--dark-grey), #4a4a4a); */ /* Removed old gradient */
-    background: url('assets/images/ui/card_bg.png') center center / cover; /* Added background image */
-    border: 3px solid var(--neon-pink); /* Changed border */
-    border-radius: 10px; /* Slightly more rounded */
-    padding: 18px 15px; /* Adjusted padding */
+    color: var(--neon-yellow);
+    background-color: var(--panel-bg); /* Added fallback background color */
+    border: 3px solid var(--medium-grey);
+    border-radius: 10px;
+    padding: 18px 15px;
     cursor: pointer;
     transition: background-color 0.2s, border-color 0.2s, transform 0.2s ease-out, box-shadow 0.2s, opacity 0.5s ease-out;
-    min-width: 200px; /* Adjusted min-width */
-    max-width: 240px; /* Adjusted max-width */
-    min-height: 120px; /* Adjusted min-height */
-    box-shadow: 4px 4px 8px rgba(0,0,0,0.5), inset 0 0 5px rgba(255, 0, 255, 0.3); /* Enhanced shadow */
+    min-width: 200px;
+    max-width: 240px;
+    min-height: 120px;
+    box-shadow: 4px 4px 8px rgba(0,0,0,0.5);
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
     opacity: 1;
     transform: translateY(0);
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.7); /* Added text shadow for readability */
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
 }
-/* Default card */
-.card {
-    background: url("assets/images/ui/card_bg.png") center / cover no-repeat;
-  }
 
 @keyframes dealPromptCard {
     0% {
@@ -847,40 +877,32 @@ input[type="number"] {
 .prompt-choice.deal-animation:nth-child(3) { animation-delay: 0.3s; }
 
 .prompt-choice:hover {
-    /* background-color: var(--medium-grey); */ /* Removed background color change */
     border-color: var(--neon-yellow); /* Change border color on hover */
     transform: translateY(-6px) scale(1.05); /* Enhanced hover effect */
-    box-shadow: 6px 10px 12px rgba(0,0,0,0.4), inset 0 0 8px rgba(255, 255, 0, 0.4); /* Enhanced hover shadow */
+    box-shadow: 6px 10px 12px rgba(0,0,0,0.4), inset 0 0 8px rgba(255, 255, 0, 0.4); /* Re-add inset shadow for hover */
 }
 
 .prompt-choice.selected,
 .prompt-choice[aria-selected="true"] { /* Style for selected prompt */
-    /* background: linear-gradient(145deg, var(--neon-blue), #00bfff); */ /* Removed old gradient */
-    background: url('assets/images/card_bg_selected.png') center center / cover; /* Added selected background image */
-    color: var(--neon-green); /* Changed selected text color */
-    border-color: var(--neon-green); /* Changed selected border color */
+    background-color: #1a2a3a; /* Added distinct selected background color */
+    color: var(--neon-green);
+    border-color: var(--neon-green);
     cursor: default;
-    transform: scale(1.08); /* Slightly larger selected scale */
-    box-shadow: 0 0 20px var(--neon-green), inset 0 0 10px rgba(57, 255, 20, 0.5); /* Enhanced selected glow */
+    transform: scale(1.08);
+    box-shadow: 0 0 20px var(--neon-green), inset 0 0 10px rgba(57, 255, 20, 0.5);
     text-shadow: 1px 1px 2px rgba(0,0,0,0.9);
-    padding-bottom: 30px; /* Increased bottom padding further */
+    padding-bottom: 30px;
 }
 
 .prompt-choice.disabled { /* Style for non-selected prompts after selection */
-     opacity: 0.5; /* Made more faded */
+     opacity: 0.5;
      cursor: default;
-     /* background: linear-gradient(145deg, var(--dark-grey), #4a4a4a); */ /* Removed old gradient */
-     background: url('assets/images/card_bg_disabled.png') center center / cover; /* Added disabled background image */
+     background-color: var(--dark-grey); /* Added disabled background color */
      border-color: var(--medium-grey);
      box-shadow: 3px 3px 5px rgba(0,0,0,0.4);
-     transform: none; /* Reset transform */
-     color: var(--light-grey); /* Faded text color */
+     transform: none;
+     color: var(--light-grey);
      text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
-}
-.prompt-choice.disabled:hover { /* Prevent hover effects on disabled */
-    transform: none;
-    box-shadow: 3px 3px 5px rgba(0,0,0,0.4);
-    border-color: var(--medium-grey); /* Ensure border doesn't change */
 }
 
 /* --- Winner Selection Area --- */
@@ -1017,14 +1039,37 @@ button.winner-button.selected:hover {
 .token-award-choice.selected {
     color: var(--panel-bg);
     opacity: 1;
+    /* Add glow effect - outer and inner */
+    box-shadow: 0 0 8px 2px var(--glow-color, var(--neon-yellow)), /* Outer glow */
+                inset 0 0 5px 1px var(--glow-color, var(--neon-yellow)); /* Inner glow */
 }
-.token-award-choice.selected[data-token-type="mindReader"] { background-color: var(--neon-blue); border-color: var(--neon-blue); }
-.token-award-choice.selected[data-token-type="technicalMerit"] { background-color: var(--neon-yellow); border-color: var(--neon-yellow); }
-.token-award-choice.selected[data-token-type="perfectAlignment"] { background-color: var(--neon-green); border-color: var(--neon-green); }
-.token-award-choice.selected[data-token-type="plotTwist"] { background-color: var(--neon-pink); border-color: var(--neon-pink); }
+.token-award-choice.selected[data-token-type="mindReader"] {
+    background-color: var(--neon-blue);
+    border-color: var(--neon-blue);
+    --glow-color: var(--neon-blue); /* Set glow color */
+}
+.token-award-choice.selected[data-token-type="artBro"] {
+    background-color: var(--neon-yellow);
+    border-color: var(--neon-yellow);
+    color: var(--panel-bg); /* Ensure contrast */
+    --glow-color: var(--neon-yellow); /* Set glow color */
+}
+.token-award-choice.selected[data-token-type="perfectlyAligned"] {
+    background-color: var(--neon-green);
+    border-color: var(--neon-green);
+    --glow-color: var(--neon-green); /* Set glow color */
+}
+.token-award-choice.selected[data-token-type="psychopath"] {
+    background-color: var(--neon-pink);
+    border-color: var(--neon-pink);
+    --glow-color: var(--neon-pink); /* Set glow color */
+}
 
 .token-award-choice.selected:hover {
     filter: brightness(1.2);
+    /* Enhance glow on hover */
+    box-shadow: 0 0 12px 3px var(--glow-color, var(--neon-yellow)), /* Outer glow */
+                inset 0 0 8px 2px var(--glow-color, var(--neon-yellow)); /* Inner glow */
 }
 
 /* --- Sketch Instruction & Timer Styles --- */
@@ -1952,7 +1997,7 @@ button.winner-button.selected:hover {
 }
 
 #steal-modal-instruction {
-    font-family: var(--readable-font);
+    font-family: var (--readable-font);
     color: var(--neon-green);
     font-size: 1.1em;
     margin-bottom: 25px;

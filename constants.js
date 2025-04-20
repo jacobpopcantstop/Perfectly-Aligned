@@ -1,22 +1,34 @@
 // filepath: c:\Users\Jacob\Desktop\perfectlyalignedhelper\constants.js
 
-export const AVAILABLE_AVATARS = [
+const AVAILABLE_AVATARS = [
     'alienlady_avatar.png',
-    'dadskeletonts_avatar.png', // Corrected filename
+    'buddy_avatar.png', // Added
+    'chessqueen_avatar.png', // Added
+    'dadskeletonts_avatar.png',
+    'glitchkitty_avatar.png',
     'horse_avatar.png',
     'lizard_avatar.png',
-    // 'ninja_avatar.png', // Removed, file not found
-    // 'robot_avatar.png', // Removed, file not found
-    // Add any other avatars found in assets/images/avatars/
-    'glitchkitty_avatar.png',
-    'mushgun.png', // Corrected filename
+    'mantis_avatar.png', // Added
+    'mushgun.png',
     'ninjatp_avatar.png',
-    'pirateghost2_avatar.png', // Corrected filename
+    'pirateghost2_avatar.png',
+    'plaguedoc_avatar.png', // Added
     'robotp_avatar.png',
     'vampiregirl_avatar.png'
 ];
-export const DEFAULT_AVATAR = AVAILABLE_AVATARS[0];
-export const AVATAR_BASE_PATH = 'assets/images/avatars/';
+const DEFAULT_AVATAR = AVAILABLE_AVATARS[0];
+const AVATAR_BASE_PATH = 'assets/images/avatars/';
+
+// --- NEW: Token Types ---
+const TOKEN_TYPES = {
+    mindReader: "Mind Reader", // Guessed the Judge's alignment
+    technicalMerit: "Technical Merit", // Reverted name
+    perfectAlignment: "Perfect Alignment", // Reverted name
+    plotTwist: "Plot Twist" // Reverted name
+};
+
+// --- Alignment Data ---
+export const ALIGNMENTS = ["LG", "NG", "CG", "LN", "TN", "CN", "LE", "NE", "CE"];
 
 export const THEMED_DECKS = {
     core_white: [ // General Scenarios, Concepts, Dilemmas, Historical, Local
@@ -143,13 +155,6 @@ export const ALIGNMENT_EXAMPLES_MAP = {
     NE: "<strong>Neutral Evil:</strong> Lord Voldemort, Sauron, A purely self-serving mercenary",
     CE: "<strong>Chaotic Evil:</strong> The Joker, Cthulhu, Carnage (Marvel)",
     U:  "<strong>Judge's Choice:</strong> The Judge picks the alignment!"
-};
-
-export const TOKEN_TYPES = {
-    mindReader: "Close match to Judge's thought.",
-    technicalMerit: "Exceptional artistic skill.",
-    perfectAlignment: "Brilliant alignment capture.",
-    plotTwist: "Surprising/unexpected interpretation."
 };
 
 export const ALIGNMENT_FULL_NAME_MAP = {
