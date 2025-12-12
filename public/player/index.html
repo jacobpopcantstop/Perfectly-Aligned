@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Perfectly Aligned - Player</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/shared/style.css">
+    <link rel="stylesheet" href="player.css">
+</head>
+<body>
+    <!-- ==================== JOIN SCREEN ==================== -->
+    <div id="join-screen" class="screen active">
+        <h1>Perfectly Aligned</h1>
+        <p class="subtitle">Join the game!</p>
+
+        <form id="join-form">
+            <div class="form-group">
+                <label for="room-code-input">Room Code</label>
+                <input type="text" id="room-code-input" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" required>
+            </div>
+
+            <div class="form-group">
+                <label for="player-name-input">Your Name</label>
+                <input type="text" id="player-name-input" maxlength="10" placeholder="Enter name" autocomplete="off" required>
+            </div>
+
+            <div class="form-group">
+                <label>Choose Avatar</label>
+                <div class="avatar-selector">
+                    <button type="button" class="avatar-nav prev" id="avatar-prev">&lt;</button>
+                    <div class="avatar-preview" id="avatar-preview"></div>
+                    <button type="button" class="avatar-nav next" id="avatar-next">&gt;</button>
+                </div>
+            </div>
+
+            <button type="submit" class="join-button">Join Game</button>
+            <p id="join-error" class="error-message"></p>
+        </form>
+    </div>
+
+    <!-- ==================== LOBBY SCREEN ==================== -->
+    <div id="lobby-screen" class="screen">
+        <h2>You're In!</h2>
+        <div id="player-info">
+            <div id="my-avatar" class="avatar-large"></div>
+            <span id="my-name">---</span>
+        </div>
+        <p class="waiting-message">Waiting for host to start the game...</p>
+        <div id="lobby-player-list">
+            <!-- Other players will be shown here -->
+        </div>
+    </div>
+
+    <!-- ==================== WAITING SCREEN (Judge turn) ==================== -->
+    <div id="waiting-screen" class="screen">
+        <div class="waiting-content">
+            <h2>The Judge is Deciding...</h2>
+            <div id="current-judge-display">
+                <div id="judge-avatar-waiting" class="avatar-medium"></div>
+                <span id="judge-name-waiting">---</span>
+                <span class="judge-label">is the Judge</span>
+            </div>
+            <div class="waiting-animation">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== DRAWING SCREEN ==================== -->
+    <div id="drawing-screen" class="screen">
+        <div class="challenge-header">
+            <div class="alignment-badge" id="draw-alignment">?</div>
+            <div class="prompt-text" id="draw-prompt">---</div>
+        </div>
+
+        <div class="timer-bar">
+            <div id="timer-progress" class="timer-progress"></div>
+            <span id="timer-text">--:--</span>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="drawing-canvas"></canvas>
+        </div>
+
+        <div class="drawing-tools">
+            <div class="tool-group colors">
+                <button class="color-btn active" data-color="#000000" style="background: #000000;"></button>
+                <button class="color-btn" data-color="#ff0000" style="background: #ff0000;"></button>
+                <button class="color-btn" data-color="#00ff00" style="background: #00ff00;"></button>
+                <button class="color-btn" data-color="#0000ff" style="background: #0000ff;"></button>
+                <button class="color-btn" data-color="#ffff00" style="background: #ffff00;"></button>
+                <button class="color-btn" data-color="#ff00ff" style="background: #ff00ff;"></button>
+                <button class="color-btn" data-color="#ffffff" style="background: #ffffff;"></button>
+            </div>
+            <div class="tool-group sizes">
+                <button class="size-btn" data-size="3">S</button>
+                <button class="size-btn active" data-size="8">M</button>
+                <button class="size-btn" data-size="15">L</button>
+            </div>
+            <div class="tool-group actions">
+                <button class="action-btn" id="clear-canvas">Clear</button>
+                <button class="action-btn" id="undo-btn">Undo</button>
+            </div>
+        </div>
+
+        <button id="submit-drawing-btn" class="submit-button">Submit Drawing!</button>
+        <p id="submission-status" class="status-message"></p>
+    </div>
+
+    <!-- ==================== SUBMITTED SCREEN ==================== -->
+    <div id="submitted-screen" class="screen">
+        <h2>Drawing Submitted!</h2>
+        <div class="submitted-preview">
+            <img id="submitted-preview-img" src="" alt="Your submission">
+        </div>
+        <p class="waiting-message">Waiting for other players...</p>
+    </div>
+
+    <!-- ==================== JUDGING SCREEN ==================== -->
+    <div id="judging-screen" class="screen">
+        <h2>Time to Judge!</h2>
+        <p class="judging-instructions">Watch the main screen as the judge reviews submissions.</p>
+        <div id="judging-info">
+            <div class="alignment-badge" id="judge-phase-alignment">?</div>
+            <div class="prompt-text" id="judge-phase-prompt">---</div>
+        </div>
+    </div>
+
+    <!-- ==================== RESULTS SCREEN ==================== -->
+    <div id="results-screen" class="screen">
+        <div id="round-result">
+            <h2 id="result-title">Round Complete!</h2>
+            <div id="winner-display">
+                <div id="result-winner-avatar" class="avatar-large"></div>
+                <span id="result-winner-name">---</span>
+                <span class="winner-text">won this round!</span>
+            </div>
+        </div>
+
+        <div id="my-score-display">
+            <span class="score-label">Your Score:</span>
+            <span id="my-score" class="score-value">0</span>
+            <span class="score-target">/ <span id="target-score">5</span></span>
+        </div>
+
+        <div id="token-display">
+            <span class="tokens-label">Your Tokens:</span>
+            <span id="my-tokens" class="tokens-value">0</span>
+        </div>
+
+        <button id="steal-btn" class="steal-button" style="display: none;">
+            Steal a Point (3 Tokens)
+        </button>
+    </div>
+
+    <!-- ==================== GAME OVER SCREEN ==================== -->
+    <div id="gameover-screen" class="screen">
+        <h1>Game Over!</h1>
+        <div id="final-result">
+            <div id="final-winner-avatar" class="avatar-huge"></div>
+            <span id="final-winner-name">---</span>
+            <span class="winner-text">is Perfectly Aligned!</span>
+        </div>
+        <div id="my-final-rank">
+            <span>You finished</span>
+            <span id="my-rank" class="rank-value">#?</span>
+        </div>
+    </div>
+
+    <!-- ==================== STEAL MODAL ==================== -->
+    <div id="steal-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Steal a Point</h3>
+            <p>Choose a player to steal from:</p>
+            <div id="steal-targets">
+                <!-- Target buttons will be added here -->
+            </div>
+            <button class="cancel-btn" id="cancel-steal">Cancel</button>
+        </div>
+    </div>
+
+    <!-- ==================== KICKED/DISCONNECTED SCREEN ==================== -->
+    <div id="disconnected-screen" class="screen">
+        <h2>Disconnected</h2>
+        <p id="disconnect-reason">You've been disconnected from the game.</p>
+        <button id="rejoin-btn" class="action-button">Try to Rejoin</button>
+        <button id="new-game-btn" class="action-button secondary">Join New Game</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/constants.js"></script>
+    <script src="player.js"></script>
+</body>
+</html>
