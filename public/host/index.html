@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfectly Aligned - Host</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/shared/style.css">
+    <link rel="stylesheet" href="host.css">
+</head>
+<body>
+    <!-- ==================== LOBBY SCREEN ==================== -->
+    <div id="lobby-screen" class="screen active">
+        <h1>Perfectly Aligned</h1>
+        <p class="subtitle">The creative drawing game for ethically dubious people!</p>
+
+        <div id="room-code-display" class="room-code-box" style="display: none;">
+            <span class="label">JOIN AT</span>
+            <span class="url" id="join-url">loading...</span>
+            <span class="label">ROOM CODE</span>
+            <span class="code" id="room-code">----</span>
+        </div>
+
+        <button id="create-room-btn" class="big-button">Create Game</button>
+
+        <div id="lobby-players" class="players-grid">
+            <!-- Players will be added here -->
+        </div>
+
+        <div id="deck-selection" style="display: none;">
+            <h3>Select Card Decks</h3>
+            <div class="deck-options">
+                <label class="deck-option selected" data-deck="core_white">
+                    <span class="deck-name">Core Mix</span>
+                    <span class="deck-desc">General scenarios & concepts</span>
+                </label>
+                <label class="deck-option selected" data-deck="creative_cyan">
+                    <span class="deck-name">Creative & Pop</span>
+                    <span class="deck-desc">Creative lists & pop culture</span>
+                </label>
+                <label class="deck-option" data-deck="hypothetical_magenta">
+                    <span class="deck-name">Hypothetical & Taboo (17+)</span>
+                    <span class="deck-desc">"What if" scenarios & adult content</span>
+                </label>
+            </div>
+        </div>
+
+        <div id="start-game-area" style="display: none;">
+            <p id="player-count-msg">Waiting for players... (3-8 needed)</p>
+            <button id="start-game-btn" class="big-button green" disabled>Start Game</button>
+        </div>
+    </div>
+
+    <!-- ==================== GAME SCREEN ==================== -->
+    <div id="game-screen" class="screen">
+        <header class="game-header">
+            <div class="round-info">
+                <span>Round <span id="round-number">1</span></span>
+                <span class="separator">|</span>
+                <span>Target: <span id="target-score">5</span> pts</span>
+            </div>
+            <div class="judge-info">
+                <span>Judge:</span>
+                <div id="judge-avatar" class="avatar-small"></div>
+                <span id="judge-name">---</span>
+            </div>
+        </header>
+
+        <!-- Alignment Phase -->
+        <section id="alignment-phase" class="game-phase">
+            <h2>Roll the Alignment!</h2>
+            <div id="alignment-grid" class="alignment-grid">
+                <div class="alignment-cell" data-alignment="LG">LG</div>
+                <div class="alignment-cell" data-alignment="NG">NG</div>
+                <div class="alignment-cell" data-alignment="CG">CG</div>
+                <div class="alignment-cell" data-alignment="LN">LN</div>
+                <div class="alignment-cell" data-alignment="TN">TN</div>
+                <div class="alignment-cell" data-alignment="CN">CN</div>
+                <div class="alignment-cell" data-alignment="LE">LE</div>
+                <div class="alignment-cell" data-alignment="NE">NE</div>
+                <div class="alignment-cell" data-alignment="CE">CE</div>
+            </div>
+            <div id="alignment-result" style="display: none;">
+                <span class="alignment-abbrev" id="rolled-alignment">?</span>
+                <span class="alignment-name" id="rolled-alignment-name">---</span>
+            </div>
+            <button id="roll-btn" class="action-button">Roll Alignment!</button>
+        </section>
+
+        <!-- Prompts Phase -->
+        <section id="prompts-phase" class="game-phase" style="display: none;">
+            <h2>Choose a Prompt</h2>
+            <div id="current-alignment-display">
+                <span id="phase-alignment">?</span>
+                <span id="phase-alignment-name">---</span>
+            </div>
+            <div id="prompts-container">
+                <!-- Prompt cards will be added here -->
+            </div>
+            <button id="draw-prompts-btn" class="action-button">Draw Prompts</button>
+        </section>
+
+        <!-- Drawing Phase -->
+        <section id="drawing-phase" class="game-phase" style="display: none;">
+            <h2>Sketch Time!</h2>
+            <div class="challenge-display">
+                <div class="alignment-badge" id="drawing-alignment">?</div>
+                <div class="prompt-text" id="drawing-prompt">---</div>
+            </div>
+            <div class="timer-display">
+                <span id="timer">--:--</span>
+            </div>
+            <div class="timer-controls">
+                <button id="start-timer-btn" class="action-button">Start Timer</button>
+                <button id="stop-timer-btn" class="action-button secondary" disabled>Stop</button>
+            </div>
+            <div class="submissions-status">
+                <span id="submission-count">0</span> / <span id="total-artists">0</span> submitted
+            </div>
+        </section>
+
+        <!-- Judging Phase -->
+        <section id="judging-phase" class="game-phase" style="display: none;">
+            <h2>Time to Judge!</h2>
+            <div class="challenge-display small">
+                <span id="judging-alignment">?</span>
+                <span id="judging-prompt">---</span>
+            </div>
+            <div id="submissions-gallery">
+                <!-- Submissions will be displayed here -->
+            </div>
+        </section>
+
+        <!-- Scoring Phase -->
+        <section id="scoring-phase" class="game-phase" style="display: none;">
+            <h2>Award Tokens</h2>
+            <div id="winner-announcement">
+                <span class="winner-label">Winner:</span>
+                <div id="winner-avatar" class="avatar-large"></div>
+                <span id="winner-name">---</span>
+            </div>
+            <div id="token-awards">
+                <!-- Token award UI will be generated here -->
+            </div>
+            <button id="next-round-btn" class="action-button green">Next Round</button>
+        </section>
+
+        <!-- Scoreboard (always visible during game) -->
+        <aside id="scoreboard">
+            <h3>Scoreboard</h3>
+            <ul id="scoreboard-list">
+                <!-- Players and scores -->
+            </ul>
+        </aside>
+    </div>
+
+    <!-- ==================== GAME OVER SCREEN ==================== -->
+    <div id="gameover-screen" class="screen">
+        <h1>Game Over!</h1>
+        <div id="final-winner">
+            <div id="final-winner-avatar" class="avatar-huge"></div>
+            <span id="final-winner-name">---</span>
+            <span class="winner-subtitle">is Perfectly Aligned!</span>
+        </div>
+        <div id="final-scores">
+            <!-- Final standings -->
+        </div>
+        <button id="play-again-btn" class="big-button">Play Again</button>
+    </div>
+
+    <!-- Audio Elements -->
+    <audio id="sfx-roll" src="/assets/audio/roll.wav" preload="auto"></audio>
+    <audio id="sfx-timer-end" src="/assets/audio/timer_end.wav" preload="auto"></audio>
+    <audio id="sfx-token-gain" src="/assets/audio/token_gain.wav" preload="auto"></audio>
+    <audio id="sfx-point-gain" src="/assets/audio/point_gain.wav" preload="auto"></audio>
+    <audio id="sfx-steal" src="/assets/audio/steal.wav" preload="auto"></audio>
+    <audio id="sfx-win" src="/assets/audio/win.wav" preload="auto"></audio>
+    <audio id="sfx-draw" src="/assets/audio/draw_prompts.wav" preload="auto"></audio>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/constants.js"></script>
+    <script src="host.js"></script>
+</body>
+</html>
