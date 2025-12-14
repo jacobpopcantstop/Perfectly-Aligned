@@ -9,16 +9,21 @@ const { Server } = require('socket.io');
 const path = require('path');
 const GameManager = require('./game/GameManager');
 
+// Environment configuration
+const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const CORS_ORIGINS = process.env.CORS_ORIGINS || '*';
+const ROOM_CLEANUP_INTERVAL = parseInt(process.env.ROOM_CLEANUP_INTERVAL) || 60000;
+const ROOM_TIMEOUT = parseInt(process.env.ROOM_TIMEOUT) || 1800000; // 30 minutes
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
-        origin: "*",
+        origin: CORS_ORIGINS === '*' ? '*' : CORS_ORIGINS.split(','),
         methods: ["GET", "POST"]
     }
 });
-
-const PORT = process.env.PORT || 3000;
 
 // Initialize game manager
 const gameManager = new GameManager();
@@ -107,6 +112,24 @@ io.on('connection', (socket) => {
         if (result.success) {
             io.to(room.code).emit('game:alignmentRolled', {
                 alignment: result.alignment,
+                fullName: result.fullName,
+                isJudgesChoice: result.isJudgesChoice
+            });
+        }
+        callback(result);
+    });
+
+    // Host sets alignment (for Judge's Choice)
+    socket.on('host:setAlignment', (alignment, callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const result = room.setAlignment(alignment);
+        if (result.success) {
+            io.to(room.code).emit('game:alignmentSet', {
+                alignment: result.alignment,
                 fullName: result.fullName
             });
         }
@@ -173,6 +196,22 @@ io.on('connection', (socket) => {
         });
 
         io.to(room.code).emit('game:timerStarted', { duration });
+        callback({ success: true });
+    });
+
+    // Host manually collects submissions (ends drawing phase early)
+    socket.on('host:collectSubmissions', (callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        room.clearTimer();
+        io.to(room.code).emit('game:timerEnd');
+        room.collectSubmissions();
+        io.to(room.code).emit('game:submissionsCollected', {
+            submissions: room.getSubmissionsForJudging()
+        });
         callback({ success: true });
     });
 
@@ -426,6 +465,22 @@ io.on('connection', (socket) => {
     });
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+    const stats = gameManager.getStats();
+    res.json({
+        status: 'ok',
+        environment: NODE_ENV,
+        uptime: process.uptime(),
+        ...stats
+    });
+});
+
+// Start room cleanup interval
+setInterval(() => {
+    gameManager.cleanupInactiveRooms(ROOM_TIMEOUT / 60000);
+}, ROOM_CLEANUP_INTERVAL);
+
 // Start server
 httpServer.listen(PORT, () => {
     console.log(`
@@ -433,8 +488,9 @@ httpServer.listen(PORT, () => {
     ║                                                           ║
     ║   Perfectly Aligned - Multiplayer Server                  ║
     ║                                                           ║
-    ║   Host a game:   http://localhost:${PORT}/host              ║
-    ║   Join a game:   http://localhost:${PORT}/play              ║
+    ║   Environment: ${NODE_ENV.padEnd(40)}║
+    ║   Host a game: http://localhost:${String(PORT).padEnd(23)}║
+    ║   Join a game: http://localhost:${PORT}/play${' '.repeat(15)}║
     ║                                                           ║
     ╚═══════════════════════════════════════════════════════════╝
     `);

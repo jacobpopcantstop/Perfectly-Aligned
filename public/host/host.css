@@ -113,6 +113,64 @@
     color: var(--neon-pink);
 }
 
+/* Game Settings */
+#game-settings {
+    max-width: 500px;
+    margin: 20px auto;
+}
+
+#game-settings h3 {
+    margin-bottom: 15px;
+}
+
+.settings-options {
+    background: var(--panel-bg);
+    border: 2px solid var(--medium-grey);
+    padding: 20px;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--medium-grey);
+}
+
+.setting-row:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.setting-row label {
+    color: var(--neon-green);
+    font-size: 0.8em;
+}
+
+.setting-row select {
+    background: var(--dark-bg);
+    color: var(--neon-yellow);
+    border: 2px solid var(--neon-blue);
+    padding: 8px 15px;
+    font-family: inherit;
+    font-size: 0.8em;
+    cursor: pointer;
+}
+
+.setting-row select:focus {
+    outline: none;
+    border-color: var(--neon-yellow);
+}
+
+.setting-row input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    cursor: pointer;
+}
+
 /* Game Header */
 .game-header {
     display: flex;
@@ -212,6 +270,41 @@
     background: var(--neon-pink);
     color: var(--panel-bg);
     border-color: var(--text-color);
+}
+
+.alignment-cell.selectable {
+    cursor: pointer;
+    animation: pulse 1s infinite;
+}
+
+.alignment-cell.selectable:hover {
+    transform: scale(1.1);
+    border-color: var(--neon-yellow);
+    box-shadow: 0 0 15px var(--neon-yellow);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.judges-choice-prompt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.judges-choice-prompt .rolled-alignment {
+    font-size: 3em;
+    color: var(--neon-pink);
+    text-shadow: 3px 3px 0 var(--neon-yellow);
+}
+
+.judges-choice-prompt .rolled-alignment-name {
+    font-size: 1.2em;
+    color: var(--neon-green);
+    font-family: var(--readable-font);
 }
 
 #alignment-result {
@@ -396,6 +489,25 @@
 .submission-drawing img {
     max-width: 100%;
     max-height: 250px;
+}
+
+.submission-text {
+    background: #fff;
+    margin-bottom: 10px;
+    min-height: 200px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.submission-text p {
+    color: #000;
+    font-family: var(--readable-font);
+    font-size: 1.1em;
+    line-height: 1.5;
+    text-align: center;
+    margin: 0;
 }
 
 .submission-info {

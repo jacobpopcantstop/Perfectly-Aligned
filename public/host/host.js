@@ -41,6 +41,10 @@ const elements = {
     joinUrl: document.getElementById('join-url'),
     lobbyPlayers: document.getElementById('lobby-players'),
     deckSelection: document.getElementById('deck-selection'),
+    gameSettings: document.getElementById('game-settings'),
+    timerSetting: document.getElementById('timer-setting'),
+    scoreSetting: document.getElementById('score-setting'),
+    stealingSetting: document.getElementById('stealing-setting'),
     startGameArea: document.getElementById('start-game-area'),
     playerCountMsg: document.getElementById('player-count-msg'),
     startGameBtn: document.getElementById('start-game-btn'),
@@ -156,6 +160,7 @@ function setupSocketListeners() {
     // Game events
     socket.on('game:started', handleGameStarted);
     socket.on('game:alignmentRolled', handleAlignmentRolled);
+    socket.on('game:alignmentSet', handleAlignmentSet);
     socket.on('game:promptsDrawn', handlePromptsDrawn);
     socket.on('game:promptSelected', handlePromptSelected);
     socket.on('game:timerStarted', handleTimerStarted);
@@ -184,6 +189,7 @@ function createRoom() {
             elements.createRoomBtn.style.display = 'none';
             elements.roomCodeDisplay.style.display = 'flex';
             elements.deckSelection.style.display = 'block';
+            elements.gameSettings.style.display = 'block';
             elements.startGameArea.style.display = 'block';
         } else {
             alert('Failed to create room: ' + response.error);
@@ -272,6 +278,11 @@ function startGame() {
         return;
     }
 
+    // Read settings from UI
+    gameState.settings.timerDuration = parseInt(elements.timerSetting.value);
+    gameState.settings.targetScore = parseInt(elements.scoreSetting.value);
+    gameState.settings.allowStealing = elements.stealingSetting.checked;
+
     socket.emit('host:startGame', gameState.settings, (response) => {
         if (!response.success) {
             alert('Failed to start game: ' + response.error);
@@ -356,12 +367,83 @@ function handleAlignmentRolled(data) {
     elements.rolledAlignmentName.textContent = data.fullName;
     elements.alignmentResult.style.display = 'block';
 
-    // Transition to prompts phase after delay
+    // If Judge's Choice, show alignment picker
+    if (data.isJudgesChoice) {
+        setTimeout(() => {
+            showJudgesChoicePicker();
+        }, 2000);
+    } else {
+        // Transition to prompts phase after delay
+        setTimeout(() => {
+            showPhase('prompts');
+            elements.phaseAlignment.textContent = data.alignment;
+            elements.phaseAlignmentName.textContent = data.fullName;
+        }, 2000);
+    }
+}
+
+function showJudgesChoicePicker() {
+    // Make alignment cells clickable for judge selection
+    const cells = document.querySelectorAll('.alignment-cell');
+    cells.forEach(c => {
+        c.classList.remove('highlighted');
+        // Skip the 'U' cell
+        if (c.dataset.alignment !== 'U') {
+            c.classList.add('selectable');
+            c.addEventListener('click', handleJudgeAlignmentSelect);
+        }
+    });
+
+    elements.rolledAlignmentName.textContent = "Judge, pick an alignment!";
+    elements.alignmentResult.innerHTML = `
+        <div class="judges-choice-prompt">
+            <span class="rolled-alignment">U</span>
+            <span class="rolled-alignment-name">Click any alignment to choose!</span>
+        </div>
+    `;
+}
+
+function handleJudgeAlignmentSelect(e) {
+    const alignment = e.target.closest('.alignment-cell').dataset.alignment;
+    if (!alignment || alignment === 'U') return;
+
+    socket.emit('host:setAlignment', alignment, (response) => {
+        if (!response.success) {
+            alert('Failed to set alignment: ' + response.error);
+        }
+    });
+
+    // Remove click handlers
+    const cells = document.querySelectorAll('.alignment-cell');
+    cells.forEach(c => {
+        c.classList.remove('selectable');
+        c.removeEventListener('click', handleJudgeAlignmentSelect);
+    });
+}
+
+function handleAlignmentSet(data) {
+    const cells = document.querySelectorAll('.alignment-cell');
+    cells.forEach(c => {
+        c.classList.remove('flicker', 'highlighted', 'selectable');
+        if (c.dataset.alignment === data.alignment) {
+            c.classList.add('highlighted');
+        }
+    });
+
+    gameState.alignment = data.alignment;
+    gameState.alignmentName = data.fullName;
+
+    elements.alignmentResult.innerHTML = `
+        <span id="rolled-alignment" class="rolled-alignment">${data.alignment}</span>
+        <span id="rolled-alignment-name" class="rolled-alignment-name">${data.fullName}</span>
+    `;
+
+    // Transition to prompts phase
     setTimeout(() => {
         showPhase('prompts');
         elements.phaseAlignment.textContent = data.alignment;
         elements.phaseAlignmentName.textContent = data.fullName;
-    }, 2000);
+    }, 1500);
 }
 
 // ==================== PROMPTS PHASE ====================
@@ -440,8 +522,15 @@ function startTimer(duration) {
 
 function stopTimer() {
     elements.stopTimerBtn.disabled = true;
-    elements.startTimerBtn.disabled = false;
-    // Timer will be stopped server-side when submissions are collected
+    elements.startTimerBtn.disabled = true;
+
+    // Collect submissions early (stops timer server-side)
+    socket.emit('host:collectSubmissions', (response) => {
+        if (!response.success) {
+            alert('Failed to collect submissions: ' + response.error);
+            elements.stopTimerBtn.disabled = false;
+        }
+    });
 }
 
 function handleTimerStarted(data) {
@@ -481,10 +570,25 @@ function handleSubmissionsCollected(data) {
     data.submissions.forEach(submission => {
         const card = document.createElement('div');
         card.className = 'submission-card';
+
+        // Handle both drawing and text submissions
+        let contentHtml;
+        if (submission.type === 'text') {
+            contentHtml = `
+                <div class="submission-text">
+                    <p>${escapeHtml(submission.text || submission.content)}</p>
+                </div>
+            `;
+        } else {
+            contentHtml = `
+                <div class="submission-drawing">
+                    <img src="${submission.drawing || submission.content}" alt="Drawing by ${submission.playerName}">
+                </div>
+            `;
+        }
+
         card.innerHTML = `
-            <div class="submission-drawing">
-                <img src="${submission.drawing}" alt="Drawing by ${submission.playerName}">
-            </div>
+            ${contentHtml}
             <div class="submission-info">
                 <div class="submission-avatar" style="background-image: url('/assets/images/avatars/${submission.playerAvatar}')"></div>
                 <span class="submission-name">${submission.playerName}</span>
@@ -493,6 +597,12 @@ function handleSubmissionsCollected(data) {
         card.addEventListener('click', () => selectWinner(submission.playerId));
         elements.submissionsGallery.appendChild(card);
     });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ==================== JUDGING & SCORING ====================

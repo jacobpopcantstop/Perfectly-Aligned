@@ -46,6 +46,7 @@ let currentColor = '#000000';
 let currentSize = 8;
 let drawingHistory = [];
 let currentPath = [];
+let activeTab = 'draw'; // 'draw' or 'text'
 
 // DOM Elements
 const elements = {
@@ -88,6 +89,10 @@ const elements = {
     undoBtn: document.getElementById('undo-btn'),
     submitDrawingBtn: document.getElementById('submit-drawing-btn'),
     submissionStatus: document.getElementById('submission-status'),
+    textSubmission: document.getElementById('text-submission'),
+    charCount: document.getElementById('char-count'),
+    drawTab: document.getElementById('draw-tab'),
+    textTab: document.getElementById('text-tab'),
 
     // Submitted
     submittedPreviewImg: document.getElementById('submitted-preview-img'),
@@ -145,6 +150,14 @@ function setupEventListeners() {
         e.target.value = e.target.value.toUpperCase();
     });
 
+    // Submission tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // Text submission
+    elements.textSubmission.addEventListener('input', updateCharCount);
+
     // Drawing tools
     document.querySelectorAll('.color-btn').forEach(btn => {
         btn.addEventListener('click', () => selectColor(btn));
@@ -154,7 +167,7 @@ function setupEventListeners() {
     });
     elements.clearCanvasBtn.addEventListener('click', clearCanvas);
     elements.undoBtn.addEventListener('click', undoStroke);
-    elements.submitDrawingBtn.addEventListener('click', submitDrawing);
+    elements.submitDrawingBtn.addEventListener('click', submitSubmission);
 
     // Steal
     elements.stealBtn.addEventListener('click', showStealModal);
@@ -384,7 +397,34 @@ function handleStartDrawing(data) {
     clearCanvas();
     resizeCanvas();
 
+    // Reset text submission
+    elements.textSubmission.value = '';
+    updateCharCount();
+
+    // Reset to draw tab
+    switchTab('draw');
+
     showScreen('drawing');
+}
+
+// ==================== TABS ====================
+
+function switchTab(tabName) {
+    activeTab = tabName;
+
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    // Update tab content
+    elements.drawTab.classList.toggle('active', tabName === 'draw');
+    elements.textTab.classList.toggle('active', tabName === 'text');
+}
+
+function updateCharCount() {
+    const count = elements.textSubmission.value.length;
+    elements.charCount.textContent = count;
 }
 
 // ==================== DRAWING ====================
@@ -549,24 +589,92 @@ function undoStroke() {
     });
 }
 
-function submitDrawing() {
+function submitSubmission() {
     if (playerState.hasSubmitted) return;
 
-    const dataUrl = canvas.toDataURL('image/png');
+    let submissionData;
+    let previewContent;
+
+    if (activeTab === 'draw') {
+        // Drawing submission
+        submissionData = {
+            type: 'drawing',
+            content: canvas.toDataURL('image/png')
+        };
+        previewContent = submissionData.content;
+    } else {
+        // Text submission
+        const text = elements.textSubmission.value.trim();
+        if (!text) {
+            elements.submissionStatus.textContent = 'Please enter some text';
+            return;
+        }
+        submissionData = {
+            type: 'text',
+            content: text
+        };
+        // Create a preview image for text
+        previewContent = createTextPreview(text);
+    }
 
     elements.submitDrawingBtn.disabled = true;
     elements.submissionStatus.textContent = 'Submitting...';
 
-    socket.emit('player:submitDrawing', dataUrl, (response) => {
+    socket.emit('player:submitDrawing', submissionData, (response) => {
         if (response.success) {
             playerState.hasSubmitted = true;
-            elements.submittedPreviewImg.src = dataUrl;
+            elements.submittedPreviewImg.src = previewContent;
             showScreen('submitted');
         } else {
             elements.submissionStatus.textContent = 'Failed: ' + response.error;
             elements.submitDrawingBtn.disabled = false;
         }
     });
+}
+
+function createTextPreview(text) {
+    // Create a canvas with the text for preview
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = 400;
+    previewCanvas.height = 300;
+    const previewCtx = previewCanvas.getContext('2d');
+
+    // White background
+    previewCtx.fillStyle = '#ffffff';
+    previewCtx.fillRect(0, 0, 400, 300);
+
+    // Draw text
+    previewCtx.fillStyle = '#000000';
+    previewCtx.font = '20px Arial';
+    previewCtx.textAlign = 'center';
+    previewCtx.textBaseline = 'middle';
+
+    // Word wrap
+    const words = text.split(' ');
+    const lines = [];
+    let currentLine = '';
+    const maxWidth = 360;
+
+    words.forEach(word => {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = previewCtx.measureText(testLine);
+        if (metrics.width > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+        } else {
+            currentLine = testLine;
+        }
+    });
+    if (currentLine) lines.push(currentLine);
+
+    // Draw lines centered
+    const lineHeight = 28;
+    const startY = 150 - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, i) => {
+        previewCtx.fillText(line, 200, startY + i * lineHeight);
+    });
+
+    return previewCanvas.toDataURL('image/png');
 }
 
 // ==================== TIMER ====================
@@ -593,7 +701,7 @@ function handleTimerEnd() {
 
     // Auto-submit if not submitted
     if (!playerState.hasSubmitted && !playerState.isJudge) {
-        submitDrawing();
+        submitSubmission();
     }
 }
 
@@ -736,7 +844,14 @@ function handleGameOver(data) {
 
 function handleConnect() {
     console.log('Connected to server');
+    const wasDisconnected = !playerState.connected && playerState.currentPhase !== 'join';
     playerState.connected = true;
+
+    // Auto-reconnect if we were in a game
+    if (wasDisconnected && playerState.roomCode && playerState.playerName) {
+        console.log('Attempting auto-reconnect...');
+        attemptRejoin();
+    }
 }
 
 function handleDisconnect() {
@@ -747,9 +862,9 @@ function handleDisconnect() {
     setTimeout(() => {
         if (!playerState.connected && playerState.currentPhase !== 'join') {
             showScreen('disconnected');
-            elements.disconnectReason.textContent = 'Lost connection to the server.';
+            elements.disconnectReason.textContent = 'Lost connection to the server. Click below to try reconnecting.';
         }
-    }, 3000);
+    }, 5000); // Give more time for auto-reconnect
 }
 
 function handleRoomClosed(data) {

@@ -5,7 +5,9 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "docker:build": "docker build -t perfectly-aligned .",
+    "docker:run": "docker run -p 3000:3000 perfectly-aligned"
   },
   "keywords": [
     "party-game",
@@ -16,6 +18,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.2",

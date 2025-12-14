@@ -83,32 +83,46 @@
             <span id="timer-text">--:--</span>
         </div>
 
-        <div class="canvas-container">
-            <canvas id="drawing-canvas"></canvas>
+        <div class="submission-tabs">
+            <button class="tab-btn active" data-tab="draw">Draw</button>
+            <button class="tab-btn" data-tab="text">Text</button>
         </div>
 
-        <div class="drawing-tools">
-            <div class="tool-group colors">
-                <button class="color-btn active" data-color="#000000" style="background: #000000;"></button>
-                <button class="color-btn" data-color="#ff0000" style="background: #ff0000;"></button>
-                <button class="color-btn" data-color="#00ff00" style="background: #00ff00;"></button>
-                <button class="color-btn" data-color="#0000ff" style="background: #0000ff;"></button>
-                <button class="color-btn" data-color="#ffff00" style="background: #ffff00;"></button>
-                <button class="color-btn" data-color="#ff00ff" style="background: #ff00ff;"></button>
-                <button class="color-btn" data-color="#ffffff" style="background: #ffffff;"></button>
+        <div id="draw-tab" class="tab-content active">
+            <div class="canvas-container">
+                <canvas id="drawing-canvas"></canvas>
             </div>
-            <div class="tool-group sizes">
-                <button class="size-btn" data-size="3">S</button>
-                <button class="size-btn active" data-size="8">M</button>
-                <button class="size-btn" data-size="15">L</button>
-            </div>
-            <div class="tool-group actions">
-                <button class="action-btn" id="clear-canvas">Clear</button>
-                <button class="action-btn" id="undo-btn">Undo</button>
+
+            <div class="drawing-tools">
+                <div class="tool-group colors">
+                    <button class="color-btn active" data-color="#000000" style="background: #000000;"></button>
+                    <button class="color-btn" data-color="#ff0000" style="background: #ff0000;"></button>
+                    <button class="color-btn" data-color="#00ff00" style="background: #00ff00;"></button>
+                    <button class="color-btn" data-color="#0000ff" style="background: #0000ff;"></button>
+                    <button class="color-btn" data-color="#ffff00" style="background: #ffff00;"></button>
+                    <button class="color-btn" data-color="#ff00ff" style="background: #ff00ff;"></button>
+                    <button class="color-btn" data-color="#ffffff" style="background: #ffffff;"></button>
+                </div>
+                <div class="tool-group sizes">
+                    <button class="size-btn" data-size="3">S</button>
+                    <button class="size-btn active" data-size="8">M</button>
+                    <button class="size-btn" data-size="15">L</button>
+                </div>
+                <div class="tool-group actions">
+                    <button class="action-btn" id="clear-canvas">Clear</button>
+                    <button class="action-btn" id="undo-btn">Undo</button>
+                </div>
             </div>
         </div>
 
-        <button id="submit-drawing-btn" class="submit-button">Submit Drawing!</button>
+        <div id="text-tab" class="tab-content">
+            <div class="text-submission-container">
+                <textarea id="text-submission" placeholder="Type your answer here..." maxlength="280"></textarea>
+                <span class="char-count"><span id="char-count">0</span>/280</span>
+            </div>
+        </div>
+
+        <button id="submit-drawing-btn" class="submit-button">Submit!</button>
         <p id="submission-status" class="status-message"></p>
     </div>
 

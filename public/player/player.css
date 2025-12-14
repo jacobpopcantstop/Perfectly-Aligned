@@ -243,6 +243,69 @@ body {
     padding: 10px;
 }
 
+/* Submission Tabs */
+.submission-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    font-size: 0.9em;
+    background: var(--panel-bg);
+    border: 2px solid var(--medium-grey);
+    color: var(--light-grey);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+    background: var(--neon-blue);
+    border-color: var(--neon-blue);
+    color: var(--panel-bg);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Text Submission */
+.text-submission-container {
+    position: relative;
+    margin-bottom: 10px;
+}
+
+#text-submission {
+    width: 100%;
+    min-height: 200px;
+    padding: 15px;
+    font-family: var(--readable-font);
+    font-size: 1.1em;
+    background: var(--panel-bg);
+    border: 3px solid var(--neon-blue);
+    color: var(--text-color);
+    resize: none;
+}
+
+#text-submission:focus {
+    outline: none;
+    border-color: var(--neon-yellow);
+}
+
+.char-count {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    font-size: 0.8em;
+    color: var(--light-grey);
+}
+
 .challenge-header {
     text-align: center;
     padding: 15px;

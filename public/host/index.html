@@ -47,6 +47,36 @@
             </div>
         </div>
 
+        <div id="game-settings" style="display: none;">
+            <h3>Game Settings</h3>
+            <div class="settings-options">
+                <div class="setting-row">
+                    <label for="timer-setting">Timer Duration:</label>
+                    <select id="timer-setting">
+                        <option value="60">60 seconds</option>
+                        <option value="90" selected>90 seconds</option>
+                        <option value="120">2 minutes</option>
+                        <option value="180">3 minutes</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="score-setting">Points to Win:</label>
+                    <select id="score-setting">
+                        <option value="3">3 points (Quick)</option>
+                        <option value="5" selected>5 points (Standard)</option>
+                        <option value="7">7 points (Long)</option>
+                        <option value="10">10 points (Marathon)</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label>
+                        <input type="checkbox" id="stealing-setting" checked>
+                        Allow point stealing (3 tokens = 1 point)
+                    </label>
+                </div>
+            </div>
+        </div>
+
         <div id="start-game-area" style="display: none;">
             <p id="player-count-msg">Waiting for players... (3-8 needed)</p>
             <button id="start-game-btn" class="big-button green" disabled>Start Game</button>

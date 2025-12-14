@@ -33,7 +33,8 @@ class Room {
         this.settings = {
             selectedDecks: ['core_white', 'creative_cyan'],
             timerDuration: 90,
-            targetScore: 5
+            targetScore: 5,
+            allowStealing: true
         };
 
         // Timer
@@ -150,6 +151,7 @@ class Room {
         if (settings.selectedDecks) this.settings.selectedDecks = settings.selectedDecks;
         if (settings.timerDuration) this.settings.timerDuration = settings.timerDuration;
         if (settings.targetScore) this.settings.targetScore = settings.targetScore;
+        if (typeof settings.allowStealing === 'boolean') this.settings.allowStealing = settings.allowStealing;
 
         // Set target score based on player count
         if (!settings.targetScore) {
@@ -204,6 +206,36 @@ class Room {
         const randomIndex = Math.floor(Math.random() * ALIGNMENTS.length);
         this.currentAlignment = ALIGNMENTS[randomIndex];
         this.currentAlignmentFullName = ALIGNMENT_FULL_NAMES[this.currentAlignment];
+
+        // If "U" (Judge's Choice), stay in alignment phase for judge to select
+        if (this.currentAlignment !== 'U') {
+            this.gamePhase = 'prompts';
+        }
+
+        this.lastActivity = Date.now();
+
+        return {
+            success: true,
+            alignment: this.currentAlignment,
+            fullName: this.currentAlignmentFullName,
+            isJudgesChoice: this.currentAlignment === 'U'
+        };
+    }
+
+    /**
+     * Set alignment (for Judge's Choice)
+     */
+    setAlignment(alignment) {
+        if (this.currentAlignment !== 'U') {
+            return { success: false, error: 'Not in Judge\'s Choice mode' };
+        }
+
+        if (!ALIGNMENTS.includes(alignment) || alignment === 'U') {
+            return { success: false, error: 'Invalid alignment' };
+        }
+
+        this.currentAlignment = alignment;
+        this.currentAlignmentFullName = ALIGNMENT_FULL_NAMES[alignment];
         this.gamePhase = 'prompts';
         this.lastActivity = Date.now();
 
@@ -300,9 +332,9 @@ class Room {
     }
 
     /**
-     * Submit drawing
+     * Submit drawing or text
      */
-    submitDrawing(playerId, drawingData) {
+    submitDrawing(playerId, submissionData) {
         const player = this.players.find(p => p.id === playerId);
         if (!player) {
             return { success: false, error: 'Player not found' };
@@ -312,11 +344,23 @@ class Room {
             return { success: false, error: 'Judge cannot submit' };
         }
 
+        // Handle both old format (string) and new format (object with type)
+        let type = 'drawing';
+        let content = submissionData;
+
+        if (typeof submissionData === 'object' && submissionData.type) {
+            type = submissionData.type;
+            content = submissionData.content;
+        }
+
         this.submissions.set(playerId, {
             playerId,
             playerName: player.name,
             playerAvatar: player.avatar,
-            drawing: drawingData,
+            type,
+            content,
+            drawing: type === 'drawing' ? content : null, // Backwards compatibility
+            text: type === 'text' ? content : null,
             timestamp: Date.now()
         });
 
@@ -426,6 +470,10 @@ class Room {
      * Execute steal
      */
     executeSteal(stealerId, targetId) {
+        if (!this.settings.allowStealing) {
+            return { success: false, error: 'Stealing is disabled in this game' };
+        }
+
         const stealer = this.players.find(p => p.id === stealerId);
         const target = this.players.find(p => p.id === targetId);
 
