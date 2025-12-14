@@ -5,7 +5,15 @@
 const AVATARS = [
     'alienlady_avatar.png',
     'dadskeletonts_avatar.png',
-    'chessqueen_avatar.png'
+    'chessqueen_avatar.png',
+    'robot_avatar.svg',
+    'cat_avatar.svg',
+    'wizard_avatar.svg',
+    'pirate_avatar.svg',
+    'ninja_avatar.svg',
+    'ghost_avatar.svg',
+    'alien_avatar.svg',
+    'devil_avatar.svg'
 ];
 
 const ALIGNMENTS = ['LG', 'NG', 'CG', 'LN', 'TN', 'CN', 'LE', 'NE', 'CE', 'U'];
