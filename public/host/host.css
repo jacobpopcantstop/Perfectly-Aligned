@@ -528,6 +528,28 @@
     color: var(--neon-green);
 }
 
+/* Voting Controls */
+.voting-controls {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: rgba(255, 0, 255, 0.1);
+    border: 2px solid var(--neon-pink);
+}
+
+.vote-status {
+    font-size: 1.3em;
+    color: var(--neon-yellow);
+    margin: 0 0 15px 0;
+}
+
+#tally-votes-btn {
+    background: var(--neon-pink);
+    font-size: 1.1em;
+    padding: 12px 30px;
+}
+
 /* Scoring Phase */
 #winner-announcement {
     margin-bottom: 40px;

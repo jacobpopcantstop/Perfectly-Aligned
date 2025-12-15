@@ -497,6 +497,63 @@ body {
     margin-top: 10px;
 }
 
+/* Voting UI */
+.voting-options {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+    padding: 20px;
+}
+
+.vote-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px 20px;
+    background: var(--panel-bg);
+    border: 3px solid var(--neon-blue);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 100px;
+}
+
+.vote-btn:hover:not(:disabled) {
+    border-color: var(--neon-pink);
+    transform: scale(1.05);
+}
+
+.vote-btn.selected {
+    border-color: var(--neon-green);
+    background: rgba(0, 255, 0, 0.1);
+    box-shadow: 0 0 15px var(--neon-green);
+}
+
+.vote-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.vote-avatar {
+    width: 60px;
+    height: 60px;
+    background-size: cover;
+    border-radius: 50%;
+    border: 2px solid var(--neon-pink);
+    margin-bottom: 10px;
+}
+
+.vote-name {
+    color: var(--neon-green);
+    font-size: 0.9em;
+}
+
+.vote-feedback {
+    color: var(--neon-yellow);
+    margin-top: 15px;
+    font-family: var(--readable-font);
+}
+
 /* ==================== RESULTS SCREEN ==================== */
 
 #results-screen {

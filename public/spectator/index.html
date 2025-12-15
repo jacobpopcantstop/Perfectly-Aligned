@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfectly Aligned - Spectator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/shared/style.css">
+    <link rel="stylesheet" href="spectator.css">
+</head>
+<body>
+    <!-- Join Screen -->
+    <div id="join-screen" class="screen active">
+        <h1>Perfectly Aligned</h1>
+        <p class="subtitle">Watch Mode</p>
+
+        <form id="join-form">
+            <div class="form-group">
+                <label for="room-code-input">Room Code</label>
+                <input type="text" id="room-code-input" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" required>
+            </div>
+            <button type="submit" class="join-button">Watch Game</button>
+            <p id="join-error" class="error-message"></p>
+        </form>
+    </div>
+
+    <!-- Spectator View -->
+    <div id="spectator-screen" class="screen">
+        <header class="spectator-header">
+            <div class="room-info">
+                <span class="room-code">Room: <span id="room-code">----</span></span>
+                <span class="spectator-badge">SPECTATING</span>
+            </div>
+            <div class="game-info">
+                <span>Round <span id="round-number">1</span></span>
+                <span class="separator">|</span>
+                <span>Target: <span id="target-score">5</span></span>
+            </div>
+        </header>
+
+        <main class="spectator-content">
+            <!-- Phase Display -->
+            <div id="phase-display" class="phase-display">
+                <div class="phase-title" id="phase-title">Waiting for game to start...</div>
+                <div class="phase-info" id="phase-info"></div>
+            </div>
+
+            <!-- Alignment Display -->
+            <div id="alignment-display" class="alignment-display" style="display: none;">
+                <span class="alignment-abbrev" id="current-alignment">?</span>
+                <span class="alignment-name" id="current-alignment-name">---</span>
+            </div>
+
+            <!-- Prompt Display -->
+            <div id="prompt-display" class="prompt-display" style="display: none;">
+                <div class="prompt-text" id="current-prompt">---</div>
+            </div>
+
+            <!-- Timer Display -->
+            <div id="timer-display" class="timer-display" style="display: none;">
+                <span id="timer">--:--</span>
+                <div class="submissions-count">
+                    <span id="submission-count">0</span> / <span id="total-artists">0</span> submitted
+                </div>
+            </div>
+
+            <!-- Submissions Display -->
+            <div id="submissions-display" class="submissions-display" style="display: none;">
+                <!-- Submissions will be shown here -->
+            </div>
+
+            <!-- Winner Display -->
+            <div id="winner-display" class="winner-display" style="display: none;">
+                <span class="winner-label">Winner!</span>
+                <div id="winner-avatar" class="winner-avatar"></div>
+                <span id="winner-name" class="winner-name">---</span>
+            </div>
+        </main>
+
+        <!-- Scoreboard -->
+        <aside id="scoreboard" class="scoreboard">
+            <h3>Scoreboard</h3>
+            <ul id="scoreboard-list">
+                <!-- Players and scores -->
+            </ul>
+        </aside>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameover-screen" class="screen">
+        <h1>Game Over!</h1>
+        <div id="final-winner">
+            <div id="final-winner-avatar" class="avatar-huge"></div>
+            <span id="final-winner-name">---</span>
+            <span class="winner-subtitle">is Perfectly Aligned!</span>
+        </div>
+        <div id="final-scores">
+            <!-- Final standings -->
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/constants.js"></script>
+    <script src="spectator.js"></script>
+</body>
+</html>

@@ -201,6 +201,7 @@ function setupSocketListeners() {
     socket.on('game:timerEnd', handleTimerEnd);
     socket.on('game:submissionsCollected', handleSubmissionsCollected);
     socket.on('game:winnerSelected', handleWinnerSelected);
+    socket.on('game:votesRevealed', handleWinnerSelected); // Same handler as winner selected
     socket.on('game:newRound', handleNewRound);
     socket.on('game:stealExecuted', handleStealExecuted);
     socket.on('game:over', handleGameOver);
@@ -707,10 +708,78 @@ function handleTimerEnd() {
 
 // ==================== JUDGING & RESULTS ====================
 
+let votingSubmissions = [];
+let hasVoted = false;
+
 function handleSubmissionsCollected(data) {
     showScreen('judging');
     elements.judgePhaseAlignment.textContent = elements.drawAlignment.textContent;
     elements.judgePhasePrompt.textContent = elements.drawPrompt.textContent;
+
+    // Store submissions for voting
+    votingSubmissions = data.submissions || [];
+    hasVoted = false;
+
+    // Check if we're in voting mode (we'll get this from the submissions event)
+    // The judging screen will be updated to show voting UI if needed
+    if (data.votingMode && !playerState.isJudge) {
+        showVotingUI(data.submissions);
+    }
+}
+
+function showVotingUI(submissions) {
+    const judgingInfo = document.getElementById('judging-info');
+    const judgingInstructions = document.querySelector('.judging-instructions');
+
+    if (judgingInstructions) {
+        judgingInstructions.textContent = 'Vote for your favorite submission!';
+    }
+
+    // Create voting buttons
+    let votingHtml = '<div class="voting-options">';
+    submissions.forEach(sub => {
+        // Don't show own submission
+        if (sub.playerId === playerState.playerId) return;
+
+        votingHtml += `
+            <button class="vote-btn" data-player-id="${sub.playerId}">
+                <div class="vote-avatar" style="background-image: url('/assets/images/avatars/${sub.playerAvatar}')"></div>
+                <span class="vote-name">${sub.playerName}</span>
+            </button>
+        `;
+    });
+    votingHtml += '</div><p id="vote-feedback" class="vote-feedback"></p>';
+
+    if (judgingInfo) {
+        judgingInfo.innerHTML = votingHtml;
+    }
+
+    // Add click handlers
+    document.querySelectorAll('.vote-btn').forEach(btn => {
+        btn.addEventListener('click', () => submitVote(btn.dataset.playerId));
+    });
+}
+
+function submitVote(playerId) {
+    if (hasVoted) return;
+
+    socket.emit('player:vote', playerId, (response) => {
+        if (response.success) {
+            hasVoted = true;
+            document.querySelectorAll('.vote-btn').forEach(btn => {
+                btn.disabled = true;
+                if (btn.dataset.playerId === playerId) {
+                    btn.classList.add('selected');
+                }
+            });
+            const feedback = document.getElementById('vote-feedback');
+            if (feedback) {
+                feedback.textContent = 'Vote submitted! Waiting for others...';
+            }
+        } else {
+            alert('Failed to vote: ' + response.error);
+        }
+    });
 }
 
 function handleWinnerSelected(data) {

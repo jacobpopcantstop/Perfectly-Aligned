@@ -9,12 +9,13 @@ class Room {
         this.code = code;
         this.hostId = hostId;
         this.players = [];
+        this.spectators = []; // Watch-only participants
         this.maxPlayers = 8;
         this.minPlayers = 3;
 
         // Game state
         this.gameStarted = false;
-        this.gamePhase = 'lobby'; // lobby, alignment, prompts, drawing, judging, scoring, gameOver
+        this.gamePhase = 'lobby'; // lobby, alignment, prompts, drawing, judging, voting, scoring, gameOver
         this.currentRound = 0;
         this.judgeIndex = 0;
 
@@ -24,6 +25,7 @@ class Room {
         this.currentPrompts = [];
         this.selectedPrompt = null;
         this.submissions = new Map();
+        this.votes = new Map(); // For voting mode
         this.selectedWinner = null;
 
         // Deck
@@ -34,7 +36,8 @@ class Room {
             selectedDecks: ['core_white', 'creative_cyan'],
             timerDuration: 90,
             targetScore: 5,
-            allowStealing: true
+            allowStealing: true,
+            votingMode: false // Everyone votes instead of judge picking
         };
 
         // Timer
@@ -115,6 +118,37 @@ class Room {
     }
 
     /**
+     * Add a spectator
+     */
+    addSpectator(socketId, name) {
+        const spectator = {
+            id: socketId,
+            name: name || `Spectator ${this.spectators.length + 1}`,
+            joinedAt: Date.now()
+        };
+        this.spectators.push(spectator);
+        this.lastActivity = Date.now();
+        return { success: true, spectator };
+    }
+
+    /**
+     * Remove a spectator
+     */
+    removeSpectator(socketId) {
+        const index = this.spectators.findIndex(s => s.id === socketId);
+        if (index > -1) {
+            this.spectators.splice(index, 1);
+        }
+    }
+
+    /**
+     * Get spectator count
+     */
+    getSpectatorCount() {
+        return this.spectators.length;
+    }
+
+    /**
      * Mark player as disconnected (but keep them in game)
      */
     setPlayerDisconnected(playerId) {
@@ -152,6 +186,7 @@ class Room {
         if (settings.timerDuration) this.settings.timerDuration = settings.timerDuration;
         if (settings.targetScore) this.settings.targetScore = settings.targetScore;
         if (typeof settings.allowStealing === 'boolean') this.settings.allowStealing = settings.allowStealing;
+        if (typeof settings.votingMode === 'boolean') this.settings.votingMode = settings.votingMode;
 
         // Set target score based on player count
         if (!settings.targetScore) {
@@ -377,11 +412,109 @@ class Room {
     }
 
     /**
-     * Collect all submissions and move to judging phase
+     * Collect all submissions and move to judging/voting phase
      */
     collectSubmissions() {
-        this.gamePhase = 'judging';
+        this.gamePhase = this.settings.votingMode ? 'voting' : 'judging';
+        this.votes.clear();
         this.lastActivity = Date.now();
+    }
+
+    /**
+     * Submit a vote (for voting mode)
+     */
+    submitVote(voterId, submissionPlayerId) {
+        if (this.gamePhase !== 'voting') {
+            return { success: false, error: 'Not in voting phase' };
+        }
+
+        const voter = this.players.find(p => p.id === voterId);
+        if (!voter) {
+            return { success: false, error: 'Voter not found' };
+        }
+
+        // Can't vote for your own submission
+        if (voterId === submissionPlayerId) {
+            return { success: false, error: 'Cannot vote for yourself' };
+        }
+
+        // Check if the submission exists
+        if (!this.submissions.has(submissionPlayerId)) {
+            return { success: false, error: 'Invalid submission' };
+        }
+
+        this.votes.set(voterId, submissionPlayerId);
+        this.lastActivity = Date.now();
+
+        return { success: true, voteCount: this.votes.size };
+    }
+
+    /**
+     * Get vote count
+     */
+    getVoteCount() {
+        return this.votes.size;
+    }
+
+    /**
+     * Get expected voter count (players who submitted)
+     */
+    getExpectedVoterCount() {
+        return this.submissions.size;
+    }
+
+    /**
+     * Tally votes and determine winner
+     */
+    tallyVotes() {
+        if (this.gamePhase !== 'voting') {
+            return { success: false, error: 'Not in voting phase' };
+        }
+
+        // Count votes for each submission
+        const voteCounts = new Map();
+        for (const submissionId of this.submissions.keys()) {
+            voteCounts.set(submissionId, 0);
+        }
+
+        for (const votedFor of this.votes.values()) {
+            voteCounts.set(votedFor, (voteCounts.get(votedFor) || 0) + 1);
+        }
+
+        // Find winner (most votes, tie goes to first alphabetically by player name)
+        let maxVotes = -1;
+        let winnerId = null;
+
+        for (const [playerId, count] of voteCounts.entries()) {
+            if (count > maxVotes) {
+                maxVotes = count;
+                winnerId = playerId;
+            } else if (count === maxVotes && winnerId) {
+                // Tie-breaker: alphabetically
+                const currentWinner = this.players.find(p => p.id === winnerId);
+                const challenger = this.players.find(p => p.id === playerId);
+                if (challenger && currentWinner && challenger.name < currentWinner.name) {
+                    winnerId = playerId;
+                }
+            }
+        }
+
+        if (!winnerId) {
+            return { success: false, error: 'No votes cast' };
+        }
+
+        const winner = this.players.find(p => p.id === winnerId);
+        winner.score += 1;
+        this.selectedWinner = winnerId;
+        this.gamePhase = 'scoring';
+        this.lastActivity = Date.now();
+
+        return {
+            success: true,
+            winnerId,
+            winnerName: winner.name,
+            voteCounts: Object.fromEntries(voteCounts)
+        };
     }
 
     /**

@@ -45,6 +45,7 @@ const elements = {
     timerSetting: document.getElementById('timer-setting'),
     scoreSetting: document.getElementById('score-setting'),
     stealingSetting: document.getElementById('stealing-setting'),
+    votingSetting: document.getElementById('voting-setting'),
     startGameArea: document.getElementById('start-game-area'),
     playerCountMsg: document.getElementById('player-count-msg'),
     startGameBtn: document.getElementById('start-game-btn'),
@@ -169,6 +170,8 @@ function setupSocketListeners() {
     socket.on('game:submissionReceived', handleSubmissionReceived);
     socket.on('game:submissionsCollected', handleSubmissionsCollected);
     socket.on('game:winnerSelected', handleWinnerSelected);
+    socket.on('game:voteReceived', handleVoteReceived);
+    socket.on('game:votesRevealed', handleVotesRevealed);
     socket.on('game:tokensAwarded', handleTokensAwarded);
     socket.on('game:newRound', handleNewRound);
     socket.on('game:stealExecuted', handleStealExecuted);
@@ -282,6 +285,7 @@ function startGame() {
     gameState.settings.timerDuration = parseInt(elements.timerSetting.value);
     gameState.settings.targetScore = parseInt(elements.scoreSetting.value);
     gameState.settings.allowStealing = elements.stealingSetting.checked;
+    gameState.settings.votingMode = elements.votingSetting.checked;
 
     socket.emit('host:startGame', gameState.settings, (response) => {
         if (!response.success) {
@@ -565,8 +569,24 @@ function handleSubmissionsCollected(data) {
     elements.judgingAlignment.textContent = gameState.alignment;
     elements.judgingPrompt.textContent = gameState.selectedPrompt;
 
+    const isVotingMode = gameState.settings.votingMode;
+
     // Display submissions
     elements.submissionsGallery.innerHTML = '';
+
+    // Add voting status and button if in voting mode
+    if (isVotingMode) {
+        const votingControls = document.createElement('div');
+        votingControls.className = 'voting-controls';
+        votingControls.innerHTML = `
+            <p id="vote-status" class="vote-status">0 / ${data.submissions.length} votes</p>
+            <button id="tally-votes-btn" class="action-button">Tally Votes</button>
+        `;
+        elements.submissionsGallery.appendChild(votingControls);
+
+        document.getElementById('tally-votes-btn').addEventListener('click', tallyVotes);
+    }
+
     data.submissions.forEach(submission => {
         const card = document.createElement('div');
         card.className = 'submission-card';
@@ -594,8 +614,21 @@ function handleSubmissionsCollected(data) {
                 <span class="submission-name">${submission.playerName}</span>
             </div>
         `;
-        card.addEventListener('click', () => selectWinner(submission.playerId));
+
+        // Only allow clicking to select winner in non-voting mode
+        if (!isVotingMode) {
+            card.addEventListener('click', () => selectWinner(submission.playerId));
+        }
+
         elements.submissionsGallery.appendChild(card);
+    });
+}
+
+function tallyVotes() {
+    socket.emit('host:tallyVotes', (response) => {
+        if (!response.success) {
+            alert('Failed to tally votes: ' + response.error);
+        }
     });
 }
 
@@ -617,7 +650,27 @@ function selectWinner(playerId) {
 
 function handleWinnerSelected(data) {
     playSound('pointGain');
+    showWinnerResult(data);
+}
 
+function handleVoteReceived(data) {
+    // Update vote count display if voting mode
+    const voteStatus = document.getElementById('vote-status');
+    if (voteStatus) {
+        voteStatus.textContent = `${data.voteCount} / ${data.expectedVotes} votes`;
+    }
+}
+
+function handleVotesRevealed(data) {
+    playSound('pointGain');
+    showWinnerResult({
+        winnerId: data.winnerId,
+        winnerName: data.winnerName,
+        scores: data.scores
+    });
+}
+
+function showWinnerResult(data) {
     // Highlight winning submission
     const submissions = elements.submissionsGallery.querySelectorAll('.submission-card');
     submissions.forEach(card => {

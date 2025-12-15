@@ -56,13 +56,20 @@ app.get('/api/room/:code', (req, res) => {
         res.json({
             exists: true,
             playerCount: room.players.length,
+            spectatorCount: room.getSpectatorCount(),
             maxPlayers: room.maxPlayers,
             gameStarted: room.gameStarted,
-            canJoin: room.canJoin()
+            canJoin: room.canJoin(),
+            canSpectate: true // Can always spectate
         });
     } else {
         res.json({ exists: false });
     }
+});
+
+// Spectator view route
+app.get('/watch/:roomCode', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/spectator/index.html'));
 });
 
 // Socket.IO connection handling
@@ -191,7 +198,8 @@ io.on('connection', (socket) => {
             io.to(room.code).emit('game:timerEnd');
             room.collectSubmissions();
             io.to(room.code).emit('game:submissionsCollected', {
-                submissions: room.getSubmissionsForJudging()
+                submissions: room.getSubmissionsForJudging(),
+                votingMode: room.settings.votingMode
             });
         });
 
@@ -210,7 +218,8 @@ io.on('connection', (socket) => {
         io.to(room.code).emit('game:timerEnd');
         room.collectSubmissions();
         io.to(room.code).emit('game:submissionsCollected', {
-            submissions: room.getSubmissionsForJudging()
+            submissions: room.getSubmissionsForJudging(),
+            votingMode: room.settings.votingMode
         });
         callback({ success: true });
     });
@@ -417,6 +426,74 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Player submits a vote (voting mode)
+    socket.on('player:vote', (submissionPlayerId, callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room) {
+            return callback({ success: false, error: 'Room not found' });
+        }
+
+        const result = room.submitVote(socket.id, submissionPlayerId);
+        if (result.success) {
+            io.to(room.code).emit('game:voteReceived', {
+                voteCount: result.voteCount,
+                expectedVotes: room.getExpectedVoterCount()
+            });
+        }
+        callback(result);
+    });
+
+    // Host tallies votes (voting mode)
+    socket.on('host:tallyVotes', (callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const result = room.tallyVotes();
+        if (result.success) {
+            io.to(room.code).emit('game:votesRevealed', {
+                winnerId: result.winnerId,
+                winnerName: result.winnerName,
+                voteCounts: result.voteCounts,
+                scores: room.getScores()
+            });
+        }
+        callback(result);
+    });
+
+    // ==================== SPECTATOR EVENTS ====================
+
+    // Spectator joins a room
+    socket.on('spectator:joinRoom', (data, callback) => {
+        const { roomCode, name } = data;
+        const room = gameManager.getRoom(roomCode.toUpperCase());
+
+        if (!room) {
+            return callback({ success: false, error: 'Room not found' });
+        }
+
+        const result = room.addSpectator(socket.id, name);
+        if (result.success) {
+            socket.join(room.code);
+            socket.roomCode = room.code;
+            socket.isSpectator = true;
+
+            console.log(`[Room ${room.code}] Spectator joined: ${result.spectator.name}`);
+
+            io.to(room.code).emit('room:spectatorJoined', {
+                spectatorCount: room.getSpectatorCount()
+            });
+
+            callback({
+                success: true,
+                gameState: room.getState()
+            });
+        } else {
+            callback(result);
+        }
+    });
+
     // ==================== COMMON EVENTS ====================
 
     // Get current game state
@@ -452,6 +529,12 @@ io.on('connection', (socket) => {
                     console.log(`[Room ${room.code}] Host disconnected, closing room`);
                     io.to(room.code).emit('room:closed', { reason: 'Host disconnected' });
                     gameManager.removeRoom(socket.roomCode);
+                } else if (socket.isSpectator) {
+                    // Spectator disconnected
+                    room.removeSpectator(socket.id);
+                    io.to(room.code).emit('room:spectatorLeft', {
+                        spectatorCount: room.getSpectatorCount()
+                    });
                 } else {
                     // Player disconnected
                     room.setPlayerDisconnected(socket.id);
