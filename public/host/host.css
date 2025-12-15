@@ -32,6 +32,29 @@
     letter-spacing: 10px;
 }
 
+.spectator-info {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--medium-grey);
+    text-align: center;
+    width: 100%;
+}
+
+.spectator-info .url {
+    font-size: 0.85em;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.spectator-count {
+    display: inline-block;
+    background: var(--neon-pink);
+    color: var(--panel-bg);
+    padding: 5px 15px;
+    font-size: 0.8em;
+    border-radius: 20px;
+}
+
 /* Lobby Players Grid */
 .players-grid {
     display: flex;

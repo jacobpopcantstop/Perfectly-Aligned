@@ -224,3 +224,62 @@ input[type="number"]:focus {
         font-size: 0.9em;
     }
 }
+
+/* Loading States */
+.loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 3px solid transparent;
+    border-top-color: var(--neon-yellow);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+button.loading {
+    color: transparent;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Connection status indicator */
+.connection-status {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    padding: 8px 15px;
+    border-radius: 20px;
+    font-size: 0.7em;
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+.connection-status.connected {
+    background: var(--neon-green);
+    color: var(--panel-bg);
+}
+
+.connection-status.disconnected {
+    background: var(--neon-pink);
+    color: var(--panel-bg);
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}

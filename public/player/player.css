@@ -855,3 +855,69 @@ body {
         height: 30px;
     }
 }
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+    /* Larger touch targets on mobile */
+    button, .action-button, .submit-button {
+        min-height: 48px;
+        padding: 14px 20px;
+    }
+
+    .color-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .size-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 0.9em;
+    }
+
+    .action-btn {
+        padding: 12px 18px;
+        font-size: 0.9em;
+    }
+
+    .avatar-option {
+        width: 70px;
+        height: 70px;
+    }
+
+    .vote-btn {
+        padding: 18px 24px;
+        min-width: 110px;
+    }
+
+    .vote-avatar {
+        width: 70px;
+        height: 70px;
+    }
+
+    .steal-target-btn {
+        padding: 18px;
+        min-height: 60px;
+    }
+
+    .tab-btn {
+        padding: 14px;
+        font-size: 1em;
+    }
+
+    /* Larger form inputs */
+    .form-group input[type="text"] {
+        padding: 18px;
+        font-size: 1.3em;
+    }
+
+    /* Better spacing for touch */
+    .drawing-tools {
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .tool-group {
+        gap: 8px;
+    }
+}

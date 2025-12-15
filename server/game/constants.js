@@ -99,7 +99,16 @@ const THEMED_DECKS = {
         "Ways to handle inventing something before its time", "Ways to react during the Y2K panic",
         "Types of prehistoric activities", "Types of ancient building techniques", "Types of world leaders", "Types of presidents",
         "Ways to deal with a local town issue", "Ways to act at a local festival",
-        "Ways to explain local slang to an outsider", "Ways to react to a landmark disappearing"
+        "Ways to explain local slang to an outsider", "Ways to react to a landmark disappearing",
+        "Ways to parallel park", "Types of birthday party themes", "Ways to ask for a raise",
+        "Ways to react to a surprise party", "Types of podcast topics", "Ways to survive a long flight",
+        "Types of gym behaviors", "Ways to handle noisy neighbors", "Types of road trip snacks",
+        "Ways to act at a job interview", "Types of home decoration styles", "Ways to apologize",
+        "Types of morning routines", "Ways to spend a snow day", "Types of conspiracy theories",
+        "Ways to explain the internet to a time traveler", "Types of elevator small talk",
+        "Ways to react to winning the lottery", "Types of bad dating profiles",
+        "Ways to pick a restaurant", "Types of things to do on a rainy day",
+        "Ways to respond to 'we need to talk'", "Types of workplace personalities"
     ],
     creative_cyan: [
         "Types of children's toys", "Types of fruit", "Types of themed weddings", "Types of hats", "Types of cars", "Types of school functions",
@@ -119,7 +128,16 @@ const THEMED_DECKS = {
         "Ways to act at the Met Gala", "Ways to write the finale of a beloved TV series", "Types of Cereal Mascots",
         "Responses to 'Name a more iconic duo'",
         "Dishes to prepare for Gordon Ramsay",
-        "Things that could be in the box (Seven)"
+        "Things that could be in the box (Seven)",
+        "Types of things you'd find in a wizard's tower", "Types of theme park rides",
+        "Types of unusual pizza toppings", "Types of rejected Disney movie ideas",
+        "Types of video game power-ups", "Types of things in Santa's workshop",
+        "Types of medieval professions", "Types of haunted house rooms",
+        "Types of things a dragon hoards", "Types of alien greetings",
+        "Types of fortune cookie messages", "Types of superhero weaknesses",
+        "Types of potions in a witch's cabinet", "Types of robot malfunctions",
+        "Types of parallel universe versions of yourself", "Types of things under the bed",
+        "Types of circus acts", "Types of sea shanty topics"
     ],
     hypothetical_magenta: [
         "Ways to bring someone back from the dead", "Ways to approach an alien race", "Ways to be a wingman",

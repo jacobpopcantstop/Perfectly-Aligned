@@ -20,6 +20,9 @@ let playerState = {
     currentPhase: 'join'
 };
 
+// Store all players data for avatar lookups
+let allPlayers = [];
+
 // Available avatars (matches server constants)
 const PLAYER_AVATARS = [
     'alienlady_avatar.png',
@@ -267,6 +270,9 @@ function handleJoinSubmit(e) {
             elements.myAvatar.style.backgroundImage = `url('/assets/images/avatars/${playerState.playerAvatar}')`;
             elements.myName.textContent = playerState.playerName;
 
+            // Store all players data for avatar lookups
+            allPlayers = response.gameState.players || [];
+
             if (response.gameState.gameStarted) {
                 // Game already started, go to appropriate screen
                 handleGameState(response.gameState);
@@ -323,10 +329,12 @@ function handleGameState(state) {
 // ==================== LOBBY ====================
 
 function handlePlayerJoined(data) {
+    allPlayers = data.players || [];
     updateLobbyPlayers(data.players);
 }
 
 function handlePlayerLeft(data) {
+    allPlayers = data.players || [];
     updateLobbyPlayers(data.players);
 }
 
@@ -348,6 +356,7 @@ function updateLobbyPlayers(players) {
 // ==================== GAME EVENTS ====================
 
 function handleGameStarted(state) {
+    allPlayers = state.players || [];
     const me = state.players.find(p => p.id === playerState.playerId);
     if (me) {
         playerState.isJudge = me.isJudge;
@@ -819,11 +828,17 @@ function handleWinnerSelected(data) {
 }
 
 function getAvatarForPlayer(playerId, scores) {
-    // We need to get avatar info - for now use a placeholder
-    return 'alienlady_avatar.png'; // This should be improved
+    // Look up avatar from stored players data
+    const player = allPlayers.find(p => p.id === playerId);
+    if (player && player.avatar) {
+        return player.avatar;
+    }
+    // Fallback to first avatar
+    return 'alienlady_avatar.png';
 }
 
 function handleNewRound(data) {
+    allPlayers = data.gameState.players || [];
     const me = data.gameState.players.find(p => p.id === playerState.playerId);
     if (me) {
         playerState.isJudge = me.isJudge;

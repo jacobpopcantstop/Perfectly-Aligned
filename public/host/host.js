@@ -49,6 +49,8 @@ const elements = {
     startGameArea: document.getElementById('start-game-area'),
     playerCountMsg: document.getElementById('player-count-msg'),
     startGameBtn: document.getElementById('start-game-btn'),
+    watchUrl: document.getElementById('watch-url'),
+    spectatorCount: document.getElementById('spectator-count'),
 
     // Game Header
     roundNumber: document.getElementById('round-number'),
@@ -157,6 +159,8 @@ function setupSocketListeners() {
     socket.on('room:playerLeft', handlePlayerLeft);
     socket.on('room:playerDisconnected', handlePlayerDisconnected);
     socket.on('room:playerReconnected', handlePlayerReconnected);
+    socket.on('room:spectatorJoined', handleSpectatorUpdate);
+    socket.on('room:spectatorLeft', handleSpectatorUpdate);
 
     // Game events
     socket.on('game:started', handleGameStarted);
@@ -204,6 +208,8 @@ function updateRoomDisplay() {
     elements.roomCode.textContent = gameState.roomCode;
     const baseUrl = window.location.origin;
     elements.joinUrl.textContent = `${baseUrl}/play`;
+    elements.watchUrl.textContent = `${baseUrl}/watch/${gameState.roomCode}`;
+    elements.spectatorCount.textContent = '0 spectators';
 }
 
 function toggleDeck(option) {
@@ -246,6 +252,11 @@ function handlePlayerReconnected(data) {
     }
     updateLobbyPlayers();
     updateScoreboard();
+}
+
+function handleSpectatorUpdate(data) {
+    const count = data.spectatorCount || 0;
+    elements.spectatorCount.textContent = `${count} spectator${count !== 1 ? 's' : ''}`;
 }
 
 function updateLobbyPlayers() {
@@ -569,7 +580,8 @@ function handleSubmissionsCollected(data) {
     elements.judgingAlignment.textContent = gameState.alignment;
     elements.judgingPrompt.textContent = gameState.selectedPrompt;
 
-    const isVotingMode = gameState.settings.votingMode;
+    // Use data.votingMode directly since it's explicitly sent by server
+    const isVotingMode = data.votingMode || false;
 
     // Display submissions
     elements.submissionsGallery.innerHTML = '';

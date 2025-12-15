@@ -682,6 +682,7 @@ class Room {
         return this.players.map(p => ({
             id: p.id,
             name: p.name,
+            avatar: p.avatar,
             score: p.score,
             tokens: { ...p.tokens }
         }));
