@@ -51,6 +51,7 @@ const elements = {
     startGameBtn: document.getElementById('start-game-btn'),
     watchUrl: document.getElementById('watch-url'),
     spectatorCount: document.getElementById('spectator-count'),
+    qrCode: document.getElementById('qr-code'),
 
     // Game Header
     roundNumber: document.getElementById('round-number'),
@@ -207,9 +208,24 @@ function createRoom() {
 function updateRoomDisplay() {
     elements.roomCode.textContent = gameState.roomCode;
     const baseUrl = window.location.origin;
+    const joinUrl = `${baseUrl}/play/${gameState.roomCode}`;
     elements.joinUrl.textContent = `${baseUrl}/play`;
     elements.watchUrl.textContent = `${baseUrl}/watch/${gameState.roomCode}`;
     elements.spectatorCount.textContent = '0 spectators';
+
+    // Generate QR code
+    if (typeof QRCode !== 'undefined' && elements.qrCode) {
+        QRCode.toCanvas(elements.qrCode, joinUrl, {
+            width: 150,
+            margin: 1,
+            color: {
+                dark: '#000000',
+                light: '#ffffff'
+            }
+        }, function(error) {
+            if (error) console.error('QR Code error:', error);
+        });
+    }
 }
 
 function toggleDeck(option) {
@@ -267,8 +283,29 @@ function updateLobbyPlayers() {
         playerEl.innerHTML = `
             <div class="player-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
             <span class="player-name">${player.name}</span>
+            <button class="kick-btn" data-player-id="${player.id}" title="Kick ${player.name}">✕</button>
         `;
         elements.lobbyPlayers.appendChild(playerEl);
+    });
+
+    // Add kick button handlers
+    elements.lobbyPlayers.querySelectorAll('.kick-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const playerId = btn.dataset.playerId;
+            const player = gameState.players.find(p => p.id === playerId);
+            if (player && confirm(`Kick ${player.name} from the game?`)) {
+                kickPlayer(playerId);
+            }
+        });
+    });
+}
+
+function kickPlayer(playerId) {
+    socket.emit('host:kickPlayer', playerId, (response) => {
+        if (!response.success) {
+            alert('Failed to kick player: ' + response.error);
+        }
     });
 }
 
@@ -662,6 +699,7 @@ function selectWinner(playerId) {
 
 function handleWinnerSelected(data) {
     playSound('pointGain');
+    launchConfetti(2000);
     showWinnerResult(data);
 }
 
@@ -675,6 +713,7 @@ function handleVoteReceived(data) {
 
 function handleVotesRevealed(data) {
     playSound('pointGain');
+    launchConfetti(2000);
     showWinnerResult({
         winnerId: data.winnerId,
         winnerName: data.winnerName,
@@ -872,6 +911,7 @@ function updateScoreboard() {
 
 function handleGameOver(data) {
     playSound('win');
+    launchConfetti(5000); // Longer confetti for game over
     showScreen('gameover');
 
     elements.finalWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${data.winner.avatar}')`;
@@ -905,6 +945,91 @@ function showNotification(message) {
         setTimeout(() => notification.remove(), 500);
     }, 3000);
 }
+
+// ==================== CONFETTI ====================
+
+const confettiCanvas = document.getElementById('confetti-canvas');
+const confettiCtx = confettiCanvas ? confettiCanvas.getContext('2d') : null;
+let confettiParticles = [];
+let confettiAnimationId = null;
+
+function initConfetti() {
+    if (!confettiCanvas) return;
+    confettiCanvas.width = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+}
+
+function createConfettiParticle() {
+    const colors = ['#ff00ff', '#00ffff', '#39ff14', '#ffff00', '#ff6b6b', '#4ecdc4'];
+    return {
+        x: Math.random() * confettiCanvas.width,
+        y: -20,
+        size: Math.random() * 10 + 5,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        speedY: Math.random() * 3 + 2,
+        speedX: Math.random() * 4 - 2,
+        rotation: Math.random() * 360,
+        rotationSpeed: Math.random() * 10 - 5,
+        opacity: 1
+    };
+}
+
+function updateConfetti() {
+    if (!confettiCtx) return;
+
+    confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+
+    confettiParticles.forEach((p, index) => {
+        p.y += p.speedY;
+        p.x += p.speedX;
+        p.rotation += p.rotationSpeed;
+        p.speedY += 0.1; // gravity
+
+        // Remove if off screen
+        if (p.y > confettiCanvas.height + 20) {
+            confettiParticles.splice(index, 1);
+            return;
+        }
+
+        confettiCtx.save();
+        confettiCtx.translate(p.x, p.y);
+        confettiCtx.rotate(p.rotation * Math.PI / 180);
+        confettiCtx.fillStyle = p.color;
+        confettiCtx.globalAlpha = p.opacity;
+        confettiCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        confettiCtx.restore();
+    });
+
+    if (confettiParticles.length > 0) {
+        confettiAnimationId = requestAnimationFrame(updateConfetti);
+    }
+}
+
+function launchConfetti(duration = 3000) {
+    if (!confettiCanvas) return;
+
+    initConfetti();
+    confettiParticles = [];
+
+    // Create particles over time
+    const particleInterval = setInterval(() => {
+        for (let i = 0; i < 5; i++) {
+            confettiParticles.push(createConfettiParticle());
+        }
+    }, 50);
+
+    // Start animation
+    if (confettiAnimationId) cancelAnimationFrame(confettiAnimationId);
+    updateConfetti();
+
+    // Stop creating particles after duration
+    setTimeout(() => {
+        clearInterval(particleInterval);
+    }, duration);
+}
+
+// Handle window resize for confetti
+window.addEventListener('resize', initConfetti);
 
 // Initialize
 document.addEventListener('DOMContentLoaded', init);

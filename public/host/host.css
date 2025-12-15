@@ -55,6 +55,41 @@
     border-radius: 20px;
 }
 
+/* QR Code */
+.room-code-box {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 30px;
+    max-width: 600px;
+}
+
+.join-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.qr-code-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    background: #fff;
+    border-radius: 10px;
+}
+
+.qr-code-container canvas {
+    display: block;
+}
+
+.qr-label {
+    margin-top: 10px;
+    font-size: 0.7em;
+    color: #333;
+    font-family: var(--readable-font);
+}
+
 /* Lobby Players Grid */
 .players-grid {
     display: flex;
@@ -94,6 +129,40 @@
 .player-card .player-name {
     font-size: 0.9em;
     color: var(--neon-green);
+}
+
+.player-card .kick-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 0.8em;
+    background: rgba(255, 0, 100, 0.8);
+    border: 1px solid var(--neon-pink);
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+}
+
+.player-card {
+    position: relative;
+}
+
+.player-card:hover .kick-btn {
+    opacity: 1;
+}
+
+.player-card .kick-btn:hover {
+    background: #ff0064;
+    transform: scale(1.1);
 }
 
 /* Deck Selection */

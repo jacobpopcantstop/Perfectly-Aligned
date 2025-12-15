@@ -9,6 +9,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/shared/style.css">
     <link rel="stylesheet" href="host.css">
+    <!-- QR Code library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
     <!-- ==================== LOBBY SCREEN ==================== -->
@@ -17,10 +19,16 @@
         <p class="subtitle">The creative drawing game for ethically dubious people!</p>
 
         <div id="room-code-display" class="room-code-box" style="display: none;">
-            <span class="label">JOIN AT</span>
-            <span class="url" id="join-url">loading...</span>
-            <span class="label">ROOM CODE</span>
-            <span class="code" id="room-code">----</span>
+            <div class="join-info">
+                <span class="label">JOIN AT</span>
+                <span class="url" id="join-url">loading...</span>
+                <span class="label">ROOM CODE</span>
+                <span class="code" id="room-code">----</span>
+            </div>
+            <div id="qr-code-container" class="qr-code-container">
+                <canvas id="qr-code"></canvas>
+                <span class="qr-label">Scan to join!</span>
+            </div>
             <div class="spectator-info">
                 <span class="label">WATCH AT</span>
                 <span class="url" id="watch-url">loading...</span>
@@ -210,6 +218,9 @@
         </div>
         <button id="play-again-btn" class="big-button">Play Again</button>
     </div>
+
+    <!-- Confetti Canvas -->
+    <canvas id="confetti-canvas"></canvas>
 
     <!-- Audio Elements -->
     <audio id="sfx-roll" src="/assets/audio/roll.wav" preload="auto"></audio>
