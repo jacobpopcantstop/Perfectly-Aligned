@@ -2,6 +2,13 @@
 
 A single-screen, local multiplayer version of Perfectly Aligned! Play the full game on one device, perfect for parties, family gatherings, or casual play sessions.
 
+## 📦 Versions Available
+
+- **V1.0** (`index.html` + `game.js`) - Original release, stable and simple
+- **V2.0** (`index-v2.html` + `game-v2.js`) - Enhanced edition with timer, token spending, eraser tool, and more!
+
+**Recommended:** Use V2.0 for the best experience! See [CHANGELOG.md](CHANGELOG.md) for full details.
+
 ## 🎮 How to Play
 
 ### Setup
@@ -65,24 +72,42 @@ Special    U (Judge's Choice) - Judge picks any alignment
 
 ## ✨ Features
 
+### Core Features (V1 & V2)
 - ✅ **No Server Required**: Runs entirely in the browser
 - ✅ **Single Screen**: Everyone plays on one device
-- ✅ **Full Drawing Tools**: Color picker, brush sizes, undo, and clear
+- ✅ **Full Drawing Tools**: Color tools, brush sizes, undo, and clear
 - ✅ **All Game Mechanics**: Complete alignment system, prompts, and scoring
 - ✅ **Token System**: Award achievement tokens for exceptional drawings
-- ✅ **Multiple Decks**: Choose from 3 themed prompt decks
-- ✅ **Customizable**: Set player count and target score
+- ✅ **Multiple Decks**: Choose from 3 themed prompt decks (200+ prompts)
+- ✅ **Customizable**: Set player count (3-8) and target score (3-7)
 - ✅ **Mobile Friendly**: Works on tablets and phones with touch support
 - ✅ **Pass-and-Play**: Simple turn-based gameplay
 
+### V2.0 Enhanced Features ⭐
+- ✅ **Token Spending**: Re-roll prompts (1 token) or steal points (3 tokens)
+- ✅ **Judge's Choice Fixed**: Select alignment when 'U' is rolled
+- ✅ **Built-in Timer**: Optional 60-second countdown per player
+- ✅ **Eraser Tool**: Non-destructive erasing with dedicated tool
+- ✅ **Color Palette**: 10 quick-access colors (faster than color picker)
+- ✅ **Line Smoothing**: Professional-quality, smooth drawing strokes
+- ✅ **Anonymous Judging**: Hide player names to reduce bias
+- ✅ **Skip Turn**: Players can pass if they don't want to draw
+- ✅ **Round Counter**: See current round at a glance
+- ✅ **Blank Canvas Warning**: Prevents accidental empty submissions
+- ✅ **Input Validation**: Sanitized names, validated settings
+
 ## 🎯 Tips for Best Experience
 
-1. **Use a Tablet or Large Screen**: Makes drawing easier for everyone
-2. **Set a Timer**: Keep drawing rounds moving (use a phone timer)
-3. **Read Prompts Aloud**: Judge should announce the prompt so everyone hears it
-4. **Be Creative**: There's no "right" answer - have fun with interpretations!
-5. **Discuss Submissions**: Talk about each drawing before the Judge picks the winner
-6. **Use Touch Screen**: For the best drawing experience, use a device with a touchscreen
+1. **Use V2.0**: Enhanced edition has all the improvements (use `index-v2.html`)
+2. **Use a Tablet or Large Screen**: Makes drawing easier for everyone
+3. **Enable Timer (V2)**: Keeps game moving, prevents slow players
+4. **Enable Anonymous Mode (V2)**: Makes judging more fair
+5. **Read Prompts Aloud**: Judge should announce the prompt so everyone hears it
+6. **Be Creative**: There's no "right" answer - have fun with interpretations!
+7. **Discuss Submissions**: Talk about each drawing before the Judge picks the winner
+8. **Use Touch Screen**: For the best drawing experience, use a device with a touchscreen
+9. **Use Eraser (V2)**: Fix mistakes without clearing entire drawing
+10. **Save Tokens**: Spend wisely - 3 tokens can steal a point!
 
 ## 🔧 Technical Requirements
 
@@ -103,12 +128,23 @@ Special    U (Judge's Choice) - Judge picks any alignment
 
 ## 🎨 Drawing Controls
 
+### V1.0 Controls
 - **Left Click + Drag** (Desktop): Draw
 - **Touch + Drag** (Mobile/Tablet): Draw
 - **Color Picker**: Click to choose any color
 - **Brush Size Slider**: Adjust from 1px to 20px
 - **Clear Button**: Erase entire canvas
 - **Undo Button**: Remove last stroke
+
+### V2.0 Controls (Enhanced) ⭐
+- **Pencil/Eraser Toggle**: Switch between drawing and erasing
+- **Color Palette**: Click color swatches (10 preset colors)
+- **Brush Size Slider**: Adjust from 1px to 30px
+- **Clear Button**: Erase entire canvas (with confirmation)
+- **Undo Button**: Remove last stroke
+- **Skip Turn**: Pass without drawing
+- **Smooth Lines**: Automatic line smoothing for professional look
+- **Timer Display**: See countdown (if enabled)
 
 ## 📱 Mobile Support
 
