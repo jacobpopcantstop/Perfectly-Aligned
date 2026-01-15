@@ -1,4 +1,6 @@
 // Game Constants
+const AVATARS = ['🎨', '🎭', '🎪', '🎯', '🎲', '🎸', '🌟', '⚡', '🔥', '💎', '🎩', '👑'];
+
 const THEMED_DECKS = {
     core_white: [
         "Ways to react to finding a wallet", "Ways to impress your partner's parents", "Ways to respond to a customer complaint",
@@ -120,10 +122,26 @@ const ALIGNMENT_EXAMPLES = {
 };
 
 const TOKEN_TYPES = {
-    mindReader: "Mind Reader",
-    technicalMerit: "Technical Merit",
-    perfectAlignment: "Perfect Alignment",
-    plotTwist: "Plot Twist"
+    mindReader: {
+        icon: "🧠",
+        name: "Mind Reader",
+        description: "This drawing perfectly captured what the Judge was thinking!"
+    },
+    technicalMerit: {
+        icon: "🎨",
+        name: "Technical Merit",
+        description: "Exceptional artistic skill and technique displayed."
+    },
+    perfectAlignment: {
+        icon: "⚖️",
+        name: "Perfect Alignment",
+        description: "Brilliantly interpreted and embodied the alignment!"
+    },
+    plotTwist: {
+        icon: "🌀",
+        name: "Plot Twist",
+        description: "Surprising, unexpected, and creative interpretation!"
+    }
 };
 
 // Game State
@@ -176,13 +194,32 @@ function updatePlayerNameInputs() {
     container.innerHTML = '<h2>Player Names:</h2>';
 
     for (let i = 0; i < count; i++) {
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.placeholder = `Player ${i + 1} Name`;
-        input.id = `playerName${i}`;
-        input.maxLength = 20;
-        container.appendChild(input);
+        const row = document.createElement('div');
+        row.className = 'player-setup-row';
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '10px';
+        row.style.marginBottom = '10px';
+
+        row.innerHTML = `
+            <div class="avatar-selector" style="display: flex; align-items: center; gap: 5px;">
+                <button class="avatar-nav" onclick="cycleAvatar(${i}, -1)" type="button">◀</button>
+                <div class="avatar-display" id="avatar${i}">${AVATARS[i % AVATARS.length]}</div>
+                <button class="avatar-nav" onclick="cycleAvatar(${i}, 1)" type="button">▶</button>
+            </div>
+            <input type="text" placeholder="Player ${i + 1} Name" id="playerName${i}" maxlength="20" style="flex: 1;">
+        `;
+
+        container.appendChild(row);
     }
+}
+
+function cycleAvatar(playerIndex, direction) {
+    const avatarDisplay = document.getElementById(`avatar${playerIndex}`);
+    const currentAvatar = avatarDisplay.textContent;
+    const currentIndex = AVATARS.indexOf(currentAvatar);
+    const newIndex = (currentIndex + direction + AVATARS.length) % AVATARS.length;
+    avatarDisplay.textContent = AVATARS[newIndex];
 }
 
 function startGame() {
@@ -193,7 +230,7 @@ function startGame() {
         return;
     }
 
-    // Collect player names
+    // Collect player names and avatars
     gameState.players = [];
     for (let i = 0; i < count; i++) {
         let name = document.getElementById(`playerName${i}`).value.trim();
@@ -201,8 +238,12 @@ function startGame() {
         if (!name) name = `Player ${i + 1}`;
         if (name.length > 20) name = name.substring(0, 20);
 
+        const avatarElement = document.getElementById(`avatar${i}`);
+        const avatar = avatarElement ? avatarElement.textContent : AVATARS[i % AVATARS.length];
+
         gameState.players.push({
             name: name,
+            avatar: avatar,
             score: 0,
             tokens: {
                 mindReader: 0,
@@ -273,6 +314,7 @@ function updateScoreboard() {
         }
 
         card.innerHTML = `
+            <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
             <h3>${player.name} ${index === gameState.currentJudgeIndex ? '👨‍⚖️' : ''}</h3>
             <div class="player-score">${player.score} pts</div>
             <div class="token-count">🎭 ${tokenCount} tokens</div>
@@ -288,8 +330,9 @@ function showJudgePhase() {
     document.getElementById('judgePhase').classList.remove('hidden');
     document.getElementById('rollAlignmentSection').classList.remove('hidden');
 
-    const judgeName = gameState.players[gameState.currentJudgeIndex].name;
-    document.getElementById('currentJudgeName').textContent = judgeName;
+    const judge = gameState.players[gameState.currentJudgeIndex];
+    const judgeNameElement = document.getElementById('currentJudgeName');
+    judgeNameElement.innerHTML = `${judge.avatar || '🎨'} ${judge.name}`;
 }
 
 function hideAllPhases() {
@@ -314,25 +357,47 @@ function rollAlignment() {
 
     const gridOrder = ['LG', 'NG', 'CG', 'LN', 'TN', 'CN', 'LE', 'NE', 'CE'];
 
+    // Create all cells first
     gridOrder.forEach(alignment => {
         const cell = document.createElement('div');
         cell.className = 'alignment-cell disabled';
-        if (alignment === randomAlignment && randomAlignment !== 'U') {
-            cell.classList.add('selected');
-        }
         cell.innerHTML = `<strong>${ALIGNMENT_NAMES[alignment]}</strong>`;
         grid.appendChild(cell);
     });
 
-    const description = document.getElementById('alignmentDescription');
-    description.innerHTML = `
-        <h3>${ALIGNMENT_NAMES[randomAlignment]}</h3>
-        <p>Examples: ${ALIGNMENT_EXAMPLES[randomAlignment]}</p>
-    `;
+    // Animate the rolling effect
+    let rollCount = 0;
+    const maxRolls = 25;
+    const rollInterval = setInterval(() => {
+        const cells = grid.querySelectorAll('.alignment-cell');
+        cells.forEach(cell => cell.classList.remove('rolling'));
 
-    if (randomAlignment === 'U') {
-        showJudgeChoiceSelection();
-    }
+        const randomCell = cells[Math.floor(Math.random() * cells.length)];
+        randomCell.classList.add('rolling');
+
+        rollCount++;
+        if (rollCount >= maxRolls) {
+            clearInterval(rollInterval);
+
+            // Show final result
+            cells.forEach(cell => cell.classList.remove('rolling'));
+
+            if (randomAlignment !== 'U') {
+                const finalCell = cells[gridOrder.indexOf(randomAlignment)];
+                finalCell.classList.add('selected');
+            }
+
+            const description = document.getElementById('alignmentDescription');
+            description.innerHTML = `
+                <h3>${ALIGNMENT_NAMES[randomAlignment]}</h3>
+                <p>Examples: ${ALIGNMENT_EXAMPLES[randomAlignment]}</p>
+            `;
+
+            if (randomAlignment === 'U') {
+                showJudgeChoiceSelection();
+            }
+        }
+    }, 100);
 
     document.getElementById('rollAlignmentSection').classList.add('hidden');
     document.getElementById('alignmentDisplay').classList.remove('hidden');
@@ -403,10 +468,16 @@ function displayPrompts() {
 
     gameState.currentPrompts.forEach((prompt, index) => {
         const card = document.createElement('div');
-        card.className = 'prompt-card';
+        card.className = 'prompt-card dealing';
+        card.style.animationDelay = `${index * 0.2}s`;
         card.innerHTML = `<h3>Option ${index + 1}</h3><p>${prompt}</p>`;
         card.onclick = () => selectPrompt(prompt, card);
         promptsList.appendChild(card);
+
+        // Remove dealing class after animation completes
+        setTimeout(() => {
+            card.classList.remove('dealing');
+        }, 800 + (index * 200));
     });
 }
 
@@ -537,11 +608,13 @@ function startJudgingPhase() {
 
         if (gameState.anonymousMode) {
             card.innerHTML = `
+                <div style="font-size: 2em; margin-bottom: 5px; filter: blur(8px);">${player.avatar || '🎨'}</div>
                 <h3 style="filter: blur(8px); user-select: none;">${player.name}</h3>
                 <p style="font-size: 1.2em; margin-top: 10px;">📝 Drawing ${index + 1}</p>
             `;
         } else {
             card.innerHTML = `
+                <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
                 <h3>${player.name}</h3>
                 <p style="font-size: 1.2em; margin-top: 10px;">📝 Click to select</p>
             `;
@@ -578,7 +651,8 @@ function showResultsPhase() {
     document.getElementById('resultsPhase').classList.remove('hidden');
 
     const winner = gameState.players[gameState.roundWinner];
-    document.getElementById('roundWinnerName').textContent = winner.name;
+    const winnerNameElement = document.getElementById('roundWinnerName');
+    winnerNameElement.innerHTML = `${winner.avatar || '🎨'} ${winner.name}`;
 
     // Token award section
     const tokenAwardList = document.getElementById('tokenAwardList');
@@ -591,18 +665,23 @@ function showResultsPhase() {
         playerCard.className = 'player-card';
         playerCard.style.marginBottom = '15px';
 
-        let tokensHtml = '<div style="margin-top: 10px;">';
+        let tokensHtml = '<div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">';
         Object.keys(TOKEN_TYPES).forEach(tokenKey => {
+            const token = TOKEN_TYPES[tokenKey];
             tokensHtml += `
-                <button class="button" style="padding: 8px 12px; font-size: 0.9em; margin: 5px;"
-                    onclick="awardToken(${index}, '${tokenKey}')">
-                    ${TOKEN_TYPES[tokenKey]}
-                </button>
+                <div class="token-button">
+                    <button class="button" style="padding: 8px 12px; font-size: 0.9em;"
+                        onclick="awardToken(${index}, '${tokenKey}')">
+                        ${token.icon} ${token.name}
+                    </button>
+                    <span class="tooltip">${token.description}</span>
+                </div>
             `;
         });
         tokensHtml += '</div>';
 
         playerCard.innerHTML = `
+            <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
             <h3>${player.name}</h3>
             ${tokensHtml}
         `;
@@ -615,7 +694,7 @@ function showResultsPhase() {
 
 function awardToken(playerIndex, tokenType) {
     gameState.players[playerIndex].tokens[tokenType]++;
-    alert(`Awarded ${TOKEN_TYPES[tokenType]} token to ${gameState.players[playerIndex].name}!`);
+    alert(`Awarded ${TOKEN_TYPES[tokenType].icon} ${TOKEN_TYPES[tokenType].name} token to ${gameState.players[playerIndex].name}!`);
     updateScoreboard();
 }
 
@@ -698,7 +777,8 @@ function showGameOver() {
     document.getElementById('gameOverPhase').classList.remove('hidden');
 
     const winner = gameState.players[gameState.roundWinner];
-    document.getElementById('winnerName').textContent = winner.name;
+    const winnerNameElement = document.getElementById('winnerName');
+    winnerNameElement.innerHTML = `${winner.avatar || '🎨'} ${winner.name}`;
 
     const finalScoreboard = document.getElementById('finalScoreboard');
     finalScoreboard.innerHTML = '<h2 style="margin-top: 30px;">Final Scores:</h2>';
@@ -714,6 +794,7 @@ function showGameOver() {
         const tokenCount = Object.values(player.tokens).reduce((a, b) => a + b, 0);
 
         card.innerHTML = `
+            <div style="font-size: 3em; margin-bottom: 10px;">${player.avatar || '🎨'}</div>
             <h2>${rank} ${player.name}</h2>
             <div class="player-score">${player.score} points</div>
             <div>🎭 ${tokenCount} tokens earned</div>
