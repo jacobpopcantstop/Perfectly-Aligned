@@ -244,10 +244,18 @@ function updateLobbyPlayers() {
     gameState.players.forEach(player => {
         const playerEl = document.createElement('div');
         playerEl.className = `player-card ${player.connected ? '' : 'disconnected'}`;
-        playerEl.innerHTML = `
-            <div class="player-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span class="player-name">${player.name}</span>
-        `;
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'player-avatar';
+        const safeAvatar = validateAvatar(player.avatar);
+        avatarDiv.style.backgroundImage = `url('/assets/images/avatars/${safeAvatar}')`;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'player-name';
+        nameSpan.textContent = player.name; // Safe: textContent escapes HTML
+
+        playerEl.appendChild(avatarDiv);
+        playerEl.appendChild(nameSpan);
         elements.lobbyPlayers.appendChild(playerEl);
     });
 }
@@ -481,15 +489,40 @@ function handleSubmissionsCollected(data) {
     data.submissions.forEach(submission => {
         const card = document.createElement('div');
         card.className = 'submission-card';
-        card.innerHTML = `
-            <div class="submission-drawing">
-                <img src="${submission.drawing}" alt="Drawing by ${submission.playerName}">
-            </div>
-            <div class="submission-info">
-                <div class="submission-avatar" style="background-image: url('/assets/images/avatars/${submission.playerAvatar}')"></div>
-                <span class="submission-name">${submission.playerName}</span>
-            </div>
-        `;
+
+        // Create drawing container safely
+        const drawingDiv = document.createElement('div');
+        drawingDiv.className = 'submission-drawing';
+
+        const img = document.createElement('img');
+        // Validate the drawing data URL before setting src
+        if (isValidPngDataUrl(submission.drawing)) {
+            img.src = submission.drawing;
+        } else {
+            img.src = ''; // Empty or placeholder
+            console.warn('Invalid drawing data received');
+        }
+        img.alt = 'Player submission';
+        drawingDiv.appendChild(img);
+
+        // Create info container safely
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'submission-info';
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'submission-avatar';
+        const safeAvatar = validateAvatar(submission.playerAvatar);
+        avatarDiv.style.backgroundImage = `url('/assets/images/avatars/${safeAvatar}')`;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'submission-name';
+        nameSpan.textContent = submission.playerName; // Safe: textContent escapes
+
+        infoDiv.appendChild(avatarDiv);
+        infoDiv.appendChild(nameSpan);
+
+        card.appendChild(drawingDiv);
+        card.appendChild(infoDiv);
         card.addEventListener('click', () => selectWinner(submission.playerId));
         elements.submissionsGallery.appendChild(card);
     });
@@ -553,29 +586,54 @@ function generateTokenAwardsUI() {
     tokenTypes.forEach(token => {
         const section = document.createElement('div');
         section.className = 'token-section';
-        section.innerHTML = `
-            <div class="token-header">
-                <span class="token-name">${token.name}</span>
-                <span class="token-desc">${token.desc}</span>
-            </div>
-            <div class="token-players" data-token="${token.key}">
-                ${gameState.players.filter(p => !p.isJudge).map(p => `
-                    <button class="token-player-btn" data-player="${p.id}" data-token="${token.key}">
-                        <div class="mini-avatar" style="background-image: url('/assets/images/avatars/${p.avatar}')"></div>
-                        <span>${p.name}</span>
-                    </button>
-                `).join('')}
-            </div>
-        `;
+
+        // Create header safely
+        const header = document.createElement('div');
+        header.className = 'token-header';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'token-name';
+        nameSpan.textContent = token.name;
+
+        const descSpan = document.createElement('span');
+        descSpan.className = 'token-desc';
+        descSpan.textContent = token.desc;
+
+        header.appendChild(nameSpan);
+        header.appendChild(descSpan);
+
+        // Create players container
+        const playersDiv = document.createElement('div');
+        playersDiv.className = 'token-players';
+        playersDiv.dataset.token = token.key;
+
+        gameState.players.filter(p => !p.isJudge).forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'token-player-btn';
+            btn.dataset.player = p.id;
+            btn.dataset.token = token.key;
+
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'mini-avatar';
+            const safeAvatar = validateAvatar(p.avatar);
+            avatarDiv.style.backgroundImage = `url('/assets/images/avatars/${safeAvatar}')`;
+
+            const pNameSpan = document.createElement('span');
+            pNameSpan.textContent = p.name;
+
+            btn.appendChild(avatarDiv);
+            btn.appendChild(pNameSpan);
+            playersDiv.appendChild(btn);
+        });
+
+        section.appendChild(header);
+        section.appendChild(playersDiv);
         elements.tokenAwards.appendChild(section);
     });
 
     // Add click handlers
     elements.tokenAwards.querySelectorAll('.token-player-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const tokenType = btn.dataset.token;
-            const playerId = btn.dataset.player;
-
             // Toggle selection within this token type
             const siblings = btn.parentElement.querySelectorAll('.token-player-btn');
             siblings.forEach(s => s.classList.remove('selected'));
@@ -682,13 +740,39 @@ function updateScoreboard() {
 
         const totalTokens = Object.values(player.tokens || {}).reduce((a, b) => a + b, 0);
 
-        li.innerHTML = `
-            <div class="score-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span class="score-name">${player.name}</span>
-            <span class="score-value">${player.score}</span>
-            ${totalTokens > 0 ? `<span class="score-tokens" title="Total tokens: ${totalTokens}">${totalTokens}T</span>` : ''}
-            ${player.isJudge ? '<span class="judge-badge">JUDGE</span>' : ''}
-        `;
+        // Create elements safely
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'score-avatar';
+        const safeAvatar = validateAvatar(player.avatar);
+        avatarDiv.style.backgroundImage = `url('/assets/images/avatars/${safeAvatar}')`;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'score-name';
+        nameSpan.textContent = player.name;
+
+        const scoreSpan = document.createElement('span');
+        scoreSpan.className = 'score-value';
+        scoreSpan.textContent = player.score;
+
+        li.appendChild(avatarDiv);
+        li.appendChild(nameSpan);
+        li.appendChild(scoreSpan);
+
+        if (totalTokens > 0) {
+            const tokenSpan = document.createElement('span');
+            tokenSpan.className = 'score-tokens';
+            tokenSpan.title = `Total tokens: ${totalTokens}`;
+            tokenSpan.textContent = `${totalTokens}T`;
+            li.appendChild(tokenSpan);
+        }
+
+        if (player.isJudge) {
+            const judgeBadge = document.createElement('span');
+            judgeBadge.className = 'judge-badge';
+            judgeBadge.textContent = 'JUDGE';
+            li.appendChild(judgeBadge);
+        }
+
         elements.scoreboardList.appendChild(li);
     });
 }
@@ -699,20 +783,32 @@ function handleGameOver(data) {
     playSound('win');
     showScreen('gameover');
 
-    elements.finalWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${data.winner.avatar}')`;
+    const safeWinnerAvatar = validateAvatar(data.winner.avatar);
+    elements.finalWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${safeWinnerAvatar}')`;
     elements.finalWinnerName.textContent = data.winner.name;
 
-    // Display final standings
+    // Display final standings safely
     elements.finalScores.innerHTML = '';
     const sorted = data.finalScores.sort((a, b) => b.score - a.score);
     sorted.forEach((player, index) => {
         const div = document.createElement('div');
         div.className = 'final-score-row';
-        div.innerHTML = `
-            <span class="rank">#${index + 1}</span>
-            <span class="name">${player.name}</span>
-            <span class="score">${player.score} pts</span>
-        `;
+
+        const rankSpan = document.createElement('span');
+        rankSpan.className = 'rank';
+        rankSpan.textContent = `#${index + 1}`;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'name';
+        nameSpan.textContent = player.name;
+
+        const scoreSpan = document.createElement('span');
+        scoreSpan.className = 'score';
+        scoreSpan.textContent = `${player.score} pts`;
+
+        div.appendChild(rankSpan);
+        div.appendChild(nameSpan);
+        div.appendChild(scoreSpan);
         elements.finalScores.appendChild(div);
     });
 }

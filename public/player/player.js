@@ -237,10 +237,10 @@ function handleJoinSubmit(e) {
             playerState.playerId = response.playerId;
             playerState.connected = true;
 
-            // Save to localStorage for reconnection
-            localStorage.setItem('pa_playerId', playerState.playerId);
-            localStorage.setItem('pa_playerName', playerState.playerName);
-            localStorage.setItem('pa_roomCode', playerState.roomCode);
+            // Save to sessionStorage for reconnection (more secure than localStorage)
+            sessionStorage.setItem('pa_playerId', playerState.playerId);
+            sessionStorage.setItem('pa_playerName', playerState.playerName);
+            sessionStorage.setItem('pa_roomCode', playerState.roomCode);
 
             elements.myAvatar.style.backgroundImage = `url('/assets/images/avatars/${playerState.playerAvatar}')`;
             elements.myName.textContent = playerState.playerName;
@@ -315,10 +315,18 @@ function updateLobbyPlayers(players) {
 
         const div = document.createElement('div');
         div.className = `lobby-player ${player.connected ? '' : 'disconnected'}`;
-        div.innerHTML = `
-            <div class="player-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span class="player-name">${player.name}</span>
-        `;
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'player-avatar';
+        const safeAvatar = validateAvatar(player.avatar);
+        avatarDiv.style.backgroundImage = `url('/assets/images/avatars/${safeAvatar}')`;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'player-name';
+        nameSpan.textContent = player.name; // Safe: textContent escapes HTML
+
+        div.appendChild(avatarDiv);
+        div.appendChild(nameSpan);
         elements.lobbyPlayerList.appendChild(div);
     });
 }
@@ -600,8 +608,18 @@ function handleSubmissionsCollected(data) {
 function handleWinnerSelected(data) {
     showScreen('results');
 
-    // Update winner display
-    elements.resultWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${getAvatarForPlayer(data.winnerId, data.scores)}')`;
+    // Store player avatars from game state for later lookup
+    if (data.players) {
+        playerState.playerAvatars = {};
+        data.players.forEach(p => {
+            playerState.playerAvatars[p.id] = p.avatar;
+        });
+    }
+
+    // Update winner display with proper avatar lookup
+    const winnerAvatar = getAvatarForPlayer(data.winnerId, data.players);
+    const safeAvatar = validateAvatar(winnerAvatar);
+    elements.resultWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${safeAvatar}')`;
     elements.resultWinnerName.textContent = data.winnerName;
 
     // Check if I won
@@ -633,9 +651,20 @@ function handleWinnerSelected(data) {
     }
 }
 
-function getAvatarForPlayer(playerId, scores) {
-    // We need to get avatar info - for now use a placeholder
-    return 'alienlady_avatar.png'; // This should be improved
+function getAvatarForPlayer(playerId, players) {
+    // First try to find in the provided players array
+    if (players && Array.isArray(players)) {
+        const player = players.find(p => p.id === playerId);
+        if (player && player.avatar) {
+            return player.avatar;
+        }
+    }
+    // Fall back to stored avatars
+    if (playerState.playerAvatars && playerState.playerAvatars[playerId]) {
+        return playerState.playerAvatars[playerId];
+    }
+    // Default fallback
+    return 'alienlady_avatar.png';
 }
 
 function handleNewRound(data) {
@@ -663,10 +692,17 @@ function showStealModal(scores) {
 
         const btn = document.createElement('button');
         btn.className = 'steal-target-btn';
-        btn.innerHTML = `
-            <span class="target-name">${player.name}</span>
-            <span class="target-score">${player.score} pts</span>
-        `;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'target-name';
+        nameSpan.textContent = player.name; // Safe: textContent escapes HTML
+
+        const scoreSpan = document.createElement('span');
+        scoreSpan.className = 'target-score';
+        scoreSpan.textContent = `${player.score} pts`;
+
+        btn.appendChild(nameSpan);
+        btn.appendChild(scoreSpan);
         btn.addEventListener('click', () => executeSteal(player.id));
         elements.stealTargets.appendChild(btn);
     });
@@ -752,14 +788,14 @@ function handleRoomClosed(data) {
 function handleKicked() {
     showScreen('disconnected');
     elements.disconnectReason.textContent = 'You have been removed from the game.';
-    localStorage.removeItem('pa_playerId');
-    localStorage.removeItem('pa_playerName');
-    localStorage.removeItem('pa_roomCode');
+    sessionStorage.removeItem('pa_playerId');
+    sessionStorage.removeItem('pa_playerName');
+    sessionStorage.removeItem('pa_roomCode');
 }
 
 function attemptRejoin() {
-    const savedName = localStorage.getItem('pa_playerName');
-    const savedRoom = localStorage.getItem('pa_roomCode');
+    const savedName = sessionStorage.getItem('pa_playerName');
+    const savedRoom = sessionStorage.getItem('pa_roomCode');
 
     if (savedName && savedRoom) {
         socket.emit('player:reconnect', {

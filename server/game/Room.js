@@ -2,15 +2,18 @@
  * Room - Manages a single game room with all players and game state
  */
 
+const crypto = require('crypto');
 const { THEMED_DECKS, ALIGNMENTS, ALIGNMENT_FULL_NAMES, TOKEN_TYPES, AVATARS } = require('./constants');
+const config = require('../config');
 
 class Room {
     constructor(code, hostId) {
         this.code = code;
         this.hostId = hostId;
         this.players = [];
-        this.maxPlayers = 8;
-        this.minPlayers = 3;
+        this.maxPlayers = config.MAX_PLAYERS;
+        this.minPlayers = config.MIN_PLAYERS;
+        this.isCleanedUp = false; // Track if room has been cleaned up
 
         // Game state
         this.gameStarted = false;
@@ -215,7 +218,7 @@ class Room {
     }
 
     /**
-     * Draw prompts
+     * Draw prompts using secure random selection
      */
     drawPrompts() {
         if (this.gamePhase !== 'prompts') {
@@ -226,16 +229,25 @@ class Room {
             return { success: false, error: 'Not enough cards left' };
         }
 
-        // Draw 3 random prompts
+        // Use Fisher-Yates partial shuffle to select 3 random cards efficiently
+        const cardsCopy = [...this.availableCards];
         this.currentPrompts = [];
-        const indices = new Set();
-        while (indices.size < 3) {
-            indices.add(Math.floor(Math.random() * this.availableCards.length));
-        }
 
-        indices.forEach(i => {
-            this.currentPrompts.push(this.availableCards[i]);
-        });
+        for (let i = 0; i < 3; i++) {
+            // Use crypto for secure random index
+            const randomBytes = crypto.randomBytes(4);
+            const randomValue = randomBytes.readUInt32BE(0);
+            const randomIndex = randomValue % (cardsCopy.length - i);
+
+            // Swap the selected card to the end
+            const selectedIndex = randomIndex;
+            const lastIndex = cardsCopy.length - 1 - i;
+
+            this.currentPrompts.push(cardsCopy[selectedIndex]);
+
+            // Swap to avoid re-selecting
+            [cardsCopy[selectedIndex], cardsCopy[lastIndex]] = [cardsCopy[lastIndex], cardsCopy[selectedIndex]];
+        }
 
         this.lastActivity = Date.now();
 
@@ -270,21 +282,35 @@ class Room {
     }
 
     /**
-     * Start timer
+     * Start timer with race condition protection
      */
     startTimer(duration, onTick, onComplete) {
+        // Guard against starting timer on cleaned up room
+        if (this.isCleanedUp) {
+            return;
+        }
+
         this.clearTimer();
         this.timerDuration = duration;
         this.timerStartTime = Date.now();
 
         let remaining = duration;
         this.timer = setInterval(() => {
+            // Guard against timer firing after cleanup
+            if (this.isCleanedUp) {
+                this.clearTimer();
+                return;
+            }
+
             remaining--;
             if (onTick) onTick(remaining);
 
             if (remaining <= 0) {
                 this.clearTimer();
-                if (onComplete) onComplete();
+                // Double-check room is still valid before calling complete
+                if (!this.isCleanedUp && onComplete) {
+                    onComplete();
+                }
             }
         }, 1000);
     }
@@ -300,7 +326,25 @@ class Room {
     }
 
     /**
-     * Submit drawing
+     * Validate drawing data URL
+     */
+    isValidDrawingData(dataUrl) {
+        if (typeof dataUrl !== 'string') return false;
+        if (!dataUrl.startsWith('data:image/png;base64,')) return false;
+
+        // Check size limit
+        if (dataUrl.length > config.MAX_DRAWING_SIZE_BYTES) return false;
+
+        // Basic base64 validation
+        const base64Part = dataUrl.substring(22);
+        if (base64Part.length === 0) return false;
+
+        const base64Regex = /^[A-Za-z0-9+/]+=*$/;
+        return base64Regex.test(base64Part);
+    }
+
+    /**
+     * Submit drawing with validation
      */
     submitDrawing(playerId, drawingData) {
         const player = this.players.find(p => p.id === playerId);
@@ -310,6 +354,11 @@ class Room {
 
         if (player.isJudge) {
             return { success: false, error: 'Judge cannot submit' };
+        }
+
+        // Validate drawing data
+        if (!this.isValidDrawingData(drawingData)) {
+            return { success: false, error: 'Invalid drawing data' };
         }
 
         this.submissions.set(playerId, {
@@ -558,6 +607,7 @@ class Room {
      * Clean up room resources
      */
     cleanup() {
+        this.isCleanedUp = true;
         this.clearTimer();
     }
 }

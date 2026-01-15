@@ -1,33 +1,99 @@
 /**
  * Perfectly Aligned - Jackbox-style Multiplayer Server
  * Main server file with Express and Socket.IO
+ * Includes security hardening and best practices
  */
 
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const helmet = require('helmet');
 const path = require('path');
+const config = require('./config');
+const logger = require('./logger');
 const GameManager = require('./game/GameManager');
 
 const app = express();
 const httpServer = createServer(app);
+
+// Configure Socket.IO with security settings
 const io = new Server(httpServer, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+        origin: config.NODE_ENV === 'production'
+            ? config.CORS_ORIGINS
+            : '*', // Allow all in development
+        methods: ['GET', 'POST']
+    },
+    maxHttpBufferSize: config.SOCKET_MAX_HTTP_BUFFER_SIZE,
+    pingTimeout: config.SOCKET_PING_TIMEOUT,
+    pingInterval: config.SOCKET_PING_INTERVAL
 });
-
-const PORT = process.env.PORT || 3000;
 
 // Initialize game manager
 const gameManager = new GameManager();
+
+// ==================== MIDDLEWARE ====================
+
+// Security headers with Helmet
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            imgSrc: ["'self'", "data:", "blob:"],
+            connectSrc: ["'self'", "ws:", "wss:"],
+            mediaSrc: ["'self'"]
+        }
+    },
+    crossOriginEmbedderPolicy: false // Allow embedding for game display
+}));
 
 // Serve static files
 app.use(express.static(path.join(__dirname, '../public')));
 app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
 
-// Routes
+// ==================== RATE LIMITING ====================
+
+// Simple in-memory rate limiter for socket events
+const rateLimiters = new Map();
+
+function checkRateLimit(socketId, eventName) {
+    const key = `${socketId}:${eventName}`;
+    const now = Date.now();
+    const windowMs = config.RATE_LIMIT_WINDOW_MS;
+    const maxEvents = config.RATE_LIMIT_MAX_EVENTS;
+
+    if (!rateLimiters.has(key)) {
+        rateLimiters.set(key, { count: 1, resetTime: now + windowMs });
+        return true;
+    }
+
+    const limiter = rateLimiters.get(key);
+
+    if (now > limiter.resetTime) {
+        limiter.count = 1;
+        limiter.resetTime = now + windowMs;
+        return true;
+    }
+
+    limiter.count++;
+    return limiter.count <= maxEvents;
+}
+
+// Cleanup old rate limit entries periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, limiter] of rateLimiters.entries()) {
+        if (now > limiter.resetTime + 60000) { // Clean up entries older than 1 minute
+            rateLimiters.delete(key);
+        }
+    }
+}, 60000);
+
+// ==================== ROUTES ====================
+
 app.get('/', (req, res) => {
     res.redirect('/host');
 });
@@ -42,6 +108,17 @@ app.get('/play', (req, res) => {
 
 app.get('/play/:roomCode', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/player/index.html'));
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    const stats = gameManager.getStats();
+    res.json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        stats
+    });
 });
 
 // API endpoint to check room status
@@ -60,48 +137,82 @@ app.get('/api/room/:code', (req, res) => {
     }
 });
 
-// Socket.IO connection handling
+// ==================== SOCKET.IO CONNECTION ====================
+
 io.on('connection', (socket) => {
-    console.log(`[Socket] New connection: ${socket.id}`);
+    logger.info('Socket', 'New connection', { socketId: socket.id });
+
+    // Rate limit wrapper
+    const rateLimitedHandler = (eventName, handler) => {
+        return (...args) => {
+            if (!checkRateLimit(socket.id, eventName)) {
+                logger.warn('Socket', 'Rate limit exceeded', { socketId: socket.id, event: eventName });
+                const callback = args[args.length - 1];
+                if (typeof callback === 'function') {
+                    callback({ success: false, error: 'Rate limit exceeded' });
+                }
+                return;
+            }
+            handler(...args);
+        };
+    };
 
     // ==================== HOST EVENTS ====================
 
     // Host creates a new room
-    socket.on('host:createRoom', (callback) => {
-        const room = gameManager.createRoom(socket.id);
+    socket.on('host:createRoom', rateLimitedHandler('host:createRoom', (callback) => {
+        const { room, hostToken } = gameManager.createRoom(socket.id);
         socket.join(room.code);
         socket.roomCode = room.code;
+        socket.hostToken = hostToken;
         socket.isHost = true;
 
-        console.log(`[Room] Created: ${room.code} by host ${socket.id}`);
+        logger.info('Room', 'Created', { roomCode: room.code, hostId: socket.id });
 
         callback({
             success: true,
             roomCode: room.code,
+            hostToken, // Send token to client for authentication
             gameState: room.getState()
         });
-    });
+    }));
+
+    // Verify host authorization
+    const verifyHost = (callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room) {
+            callback({ success: false, error: 'Room not found' });
+            return null;
+        }
+        if (!socket.isHost || !socket.hostToken) {
+            callback({ success: false, error: 'Not authorized' });
+            return null;
+        }
+        // Verify host token
+        const validRoomCode = gameManager.validateHostToken(socket.hostToken);
+        if (validRoomCode !== socket.roomCode) {
+            callback({ success: false, error: 'Invalid host token' });
+            return null;
+        }
+        return room;
+    };
 
     // Host starts the game
-    socket.on('host:startGame', (settings, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:startGame', rateLimitedHandler('host:startGame', (settings, callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.startGame(settings);
         if (result.success) {
             io.to(room.code).emit('game:started', room.getState());
         }
         callback(result);
-    });
+    }));
 
     // Host rolls alignment
-    socket.on('host:rollAlignment', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:rollAlignment', rateLimitedHandler('host:rollAlignment', (callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.rollAlignment();
         if (result.success) {
@@ -111,14 +222,12 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
-    });
+    }));
 
     // Host draws prompts
-    socket.on('host:drawPrompts', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:drawPrompts', rateLimitedHandler('host:drawPrompts', (callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.drawPrompts();
         if (result.success) {
@@ -127,14 +236,12 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
-    });
+    }));
 
     // Host selects a prompt
-    socket.on('host:selectPrompt', (promptIndex, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:selectPrompt', rateLimitedHandler('host:selectPrompt', (promptIndex, callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.selectPrompt(promptIndex);
         if (result.success) {
@@ -153,14 +260,12 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
-    });
+    }));
 
     // Host starts the timer
-    socket.on('host:startTimer', (duration, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:startTimer', rateLimitedHandler('host:startTimer', (duration, callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         room.startTimer(duration, (timeLeft) => {
             io.to(room.code).emit('game:timerTick', { timeLeft });
@@ -174,32 +279,29 @@ io.on('connection', (socket) => {
 
         io.to(room.code).emit('game:timerStarted', { duration });
         callback({ success: true });
-    });
+    }));
 
     // Host selects winner
-    socket.on('host:selectWinner', (playerId, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:selectWinner', rateLimitedHandler('host:selectWinner', (playerId, callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.selectWinner(playerId);
         if (result.success) {
             io.to(room.code).emit('game:winnerSelected', {
                 winnerId: playerId,
                 winnerName: result.winnerName,
-                scores: room.getScores()
+                scores: room.getScores(),
+                players: room.getPlayersPublicData() // Include player data for avatar lookup
             });
         }
         callback(result);
-    });
+    }));
 
     // Host awards tokens
-    socket.on('host:awardTokens', (tokenAwards, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:awardTokens', rateLimitedHandler('host:awardTokens', (tokenAwards, callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.awardTokens(tokenAwards);
         if (result.success) {
@@ -209,14 +311,12 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
-    });
+    }));
 
     // Host advances to next round
-    socket.on('host:nextRound', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:nextRound', rateLimitedHandler('host:nextRound', (callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.advanceRound();
         if (result.success) {
@@ -234,14 +334,12 @@ io.on('connection', (socket) => {
             }
         }
         callback(result);
-    });
+    }));
 
     // Host kicks player
-    socket.on('host:kickPlayer', (playerId, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    socket.on('host:kickPlayer', rateLimitedHandler('host:kickPlayer', (playerId, callback) => {
+        const room = verifyHost(callback);
+        if (!room) return;
 
         const result = room.removePlayer(playerId);
         if (result.success) {
@@ -258,14 +356,14 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
-    });
+    }));
 
     // ==================== PLAYER EVENTS ====================
 
     // Player joins a room
-    socket.on('player:joinRoom', (data, callback) => {
+    socket.on('player:joinRoom', rateLimitedHandler('player:joinRoom', (data, callback) => {
         const { roomCode, playerName, avatar } = data;
-        const room = gameManager.getRoom(roomCode.toUpperCase());
+        const room = gameManager.getRoom(roomCode?.toUpperCase());
 
         if (!room) {
             return callback({ success: false, error: 'Room not found' });
@@ -275,14 +373,23 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Room is full or game has started' });
         }
 
-        const result = room.addPlayer(socket.id, playerName, avatar);
+        // Sanitize player name (basic server-side validation)
+        const sanitizedName = String(playerName || '').trim().substring(0, config.MAX_NAME_LENGTH);
+        if (sanitizedName.length < 1) {
+            return callback({ success: false, error: 'Invalid player name' });
+        }
+
+        const result = room.addPlayer(socket.id, sanitizedName, avatar);
         if (result.success) {
             socket.join(room.code);
             socket.roomCode = room.code;
             socket.playerId = socket.id;
             socket.isHost = false;
 
-            console.log(`[Room ${room.code}] Player joined: ${playerName} (${socket.id})`);
+            // Generate reconnection token
+            const reconnectToken = gameManager.generateReconnectToken(socket.id, room.code, sanitizedName);
+
+            logger.info('Room', 'Player joined', { roomCode: room.code, playerName: sanitizedName });
 
             // Notify everyone in the room
             io.to(room.code).emit('room:playerJoined', {
@@ -293,15 +400,16 @@ io.on('connection', (socket) => {
             callback({
                 success: true,
                 playerId: socket.id,
+                reconnectToken, // Send token for secure reconnection
                 gameState: room.getState()
             });
         } else {
             callback(result);
         }
-    });
+    }));
 
     // Player submits drawing
-    socket.on('player:submitDrawing', (drawingData, callback) => {
+    socket.on('player:submitDrawing', rateLimitedHandler('player:submitDrawing', (drawingData, callback) => {
         const room = gameManager.getRoom(socket.roomCode);
         if (!room) {
             return callback({ success: false, error: 'Room not found' });
@@ -316,10 +424,10 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
-    });
+    }));
 
     // Player uses steal ability
-    socket.on('player:steal', (targetPlayerId, callback) => {
+    socket.on('player:steal', rateLimitedHandler('player:steal', (targetPlayerId, callback) => {
         const room = gameManager.getRoom(socket.roomCode);
         if (!room) {
             return callback({ success: false, error: 'Room not found' });
@@ -344,73 +452,107 @@ io.on('connection', (socket) => {
             }
         }
         callback(result);
-    });
+    }));
 
-    // Player reconnects
-    socket.on('player:reconnect', (data, callback) => {
-        const { roomCode, playerId, playerName } = data;
-        const room = gameManager.getRoom(roomCode.toUpperCase());
+    // Player reconnects using secure token
+    socket.on('player:reconnect', rateLimitedHandler('player:reconnect', (data, callback) => {
+        const { reconnectToken, roomCode, playerName } = data;
 
-        if (!room) {
-            return callback({ success: false, error: 'Room not found' });
+        // First try token-based reconnection (secure)
+        if (reconnectToken) {
+            const tokenData = gameManager.validateReconnectToken(reconnectToken);
+            if (tokenData) {
+                const room = gameManager.getRoom(tokenData.roomCode);
+                if (room) {
+                    const result = room.reconnectPlayer(tokenData.playerId, socket.id, tokenData.playerName);
+                    if (result.success) {
+                        socket.join(room.code);
+                        socket.roomCode = room.code;
+                        socket.playerId = socket.id;
+                        socket.isHost = false;
+
+                        logger.info('Room', 'Player reconnected via token', { roomCode: room.code, playerName: tokenData.playerName });
+
+                        io.to(room.code).emit('room:playerReconnected', {
+                            playerId: socket.id,
+                            playerName: tokenData.playerName
+                        });
+
+                        return callback({
+                            success: true,
+                            gameState: room.getState()
+                        });
+                    }
+                }
+            }
         }
 
-        const result = room.reconnectPlayer(playerId, socket.id, playerName);
-        if (result.success) {
-            socket.join(room.code);
-            socket.roomCode = room.code;
-            socket.playerId = socket.id;
-            socket.isHost = false;
+        // Fallback to name-based reconnection (less secure, for backwards compatibility)
+        if (roomCode && playerName) {
+            const room = gameManager.getRoom(roomCode.toUpperCase());
+            if (room) {
+                const result = room.reconnectPlayer(null, socket.id, playerName);
+                if (result.success) {
+                    socket.join(room.code);
+                    socket.roomCode = room.code;
+                    socket.playerId = socket.id;
+                    socket.isHost = false;
 
-            console.log(`[Room ${room.code}] Player reconnected: ${playerName}`);
+                    logger.info('Room', 'Player reconnected via name', { roomCode: room.code, playerName });
 
-            io.to(room.code).emit('room:playerReconnected', {
-                playerId: socket.id,
-                playerName
-            });
+                    io.to(room.code).emit('room:playerReconnected', {
+                        playerId: socket.id,
+                        playerName
+                    });
 
-            callback({
-                success: true,
-                gameState: room.getState()
-            });
-        } else {
-            callback(result);
+                    return callback({
+                        success: true,
+                        gameState: room.getState()
+                    });
+                }
+            }
         }
-    });
+
+        callback({ success: false, error: 'Reconnection failed' });
+    }));
 
     // ==================== COMMON EVENTS ====================
 
     // Get current game state
-    socket.on('game:getState', (callback) => {
+    socket.on('game:getState', rateLimitedHandler('game:getState', (callback) => {
         const room = gameManager.getRoom(socket.roomCode);
         if (!room) {
             return callback({ success: false, error: 'Room not found' });
         }
         callback({ success: true, gameState: room.getState() });
-    });
+    }));
 
     // Chat message (optional)
-    socket.on('chat:message', (message) => {
+    socket.on('chat:message', rateLimitedHandler('chat:message', (message) => {
         const room = gameManager.getRoom(socket.roomCode);
         if (room) {
-            io.to(room.code).emit('chat:message', {
-                playerId: socket.id,
-                message,
-                timestamp: Date.now()
-            });
+            // Sanitize message
+            const sanitizedMessage = String(message || '').trim().substring(0, 200);
+            if (sanitizedMessage.length > 0) {
+                io.to(room.code).emit('chat:message', {
+                    playerId: socket.id,
+                    message: sanitizedMessage,
+                    timestamp: Date.now()
+                });
+            }
         }
-    });
+    }));
 
     // Handle disconnection
     socket.on('disconnect', () => {
-        console.log(`[Socket] Disconnected: ${socket.id}`);
+        logger.info('Socket', 'Disconnected', { socketId: socket.id });
 
         if (socket.roomCode) {
             const room = gameManager.getRoom(socket.roomCode);
             if (room) {
                 if (socket.isHost) {
                     // Host disconnected - end the room
-                    console.log(`[Room ${room.code}] Host disconnected, closing room`);
+                    logger.info('Room', 'Host disconnected, closing room', { roomCode: room.code });
                     io.to(room.code).emit('room:closed', { reason: 'Host disconnected' });
                     gameManager.removeRoom(socket.roomCode);
                 } else {
@@ -426,15 +568,48 @@ io.on('connection', (socket) => {
     });
 });
 
-// Start server
-httpServer.listen(PORT, () => {
+// ==================== GRACEFUL SHUTDOWN ====================
+
+function gracefulShutdown(signal) {
+    logger.info('Server', `${signal} received, starting graceful shutdown`);
+
+    // Stop accepting new connections
+    httpServer.close(() => {
+        logger.info('Server', 'HTTP server closed');
+
+        // Clean up game manager
+        gameManager.shutdown();
+
+        // Close all socket connections
+        io.close(() => {
+            logger.info('Server', 'Socket.IO server closed');
+            process.exit(0);
+        });
+    });
+
+    // Force exit after 10 seconds if graceful shutdown fails
+    setTimeout(() => {
+        logger.error('Server', 'Forced shutdown after timeout');
+        process.exit(1);
+    }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// ==================== START SERVER ====================
+
+httpServer.listen(config.PORT, () => {
+    logger.info('Server', 'Started', { port: config.PORT, env: config.NODE_ENV });
+
     console.log(`
     ╔═══════════════════════════════════════════════════════════╗
     ║                                                           ║
     ║   Perfectly Aligned - Multiplayer Server                  ║
     ║                                                           ║
-    ║   Host a game:   http://localhost:${PORT}/host              ║
-    ║   Join a game:   http://localhost:${PORT}/play              ║
+    ║   Host a game:   http://localhost:${config.PORT}/host              ║
+    ║   Join a game:   http://localhost:${config.PORT}/play              ║
+    ║   Health check:  http://localhost:${config.PORT}/health            ║
     ║                                                           ║
     ╚═══════════════════════════════════════════════════════════╝
     `);
