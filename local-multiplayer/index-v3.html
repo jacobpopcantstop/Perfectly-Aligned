@@ -628,6 +628,133 @@
             opacity: 1;
         }
 
+        .token-button.awarded button {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            border-color: #00FF00;
+            transform: scale(0.95);
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Notification System */
+        #notificationContainer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 400px;
+        }
+
+        .notification {
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(26, 26, 26, 0.95) 100%);
+            color: #FFB6C1;
+            padding: 18px 25px;
+            margin-bottom: 12px;
+            border-radius: 12px;
+            border: 3px solid #FF69B4;
+            box-shadow: 0 6px 20px rgba(255, 105, 180, 0.6);
+            animation: slideIn 0.4s ease-out, fadeOut 0.4s ease-in 3.6s;
+            font-size: 1.1em;
+            font-weight: bold;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .notification::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, rgba(255, 105, 180, 0.3), transparent);
+            animation: progressBar 4s linear;
+        }
+
+        .notification.success {
+            border-color: #00FF00;
+            box-shadow: 0 6px 20px rgba(0, 255, 0, 0.6);
+        }
+
+        .notification.warning {
+            border-color: #FFD700;
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6);
+        }
+
+        .notification.error {
+            border-color: #FF1493;
+            box-shadow: 0 6px 20px rgba(255, 20, 147, 0.6);
+        }
+
+        .notification.confirm {
+            border-color: #FFD700;
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.6);
+            animation: slideIn 0.4s ease-out;
+            padding-bottom: 15px;
+        }
+
+        .notification-buttons {
+            margin-top: 12px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .notification-buttons button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 2px solid;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            transition: all 0.2s;
+        }
+
+        .notification-buttons .btn-yes {
+            border-color: #00FF00;
+        }
+
+        .notification-buttons .btn-yes:hover {
+            background: #00FF00;
+            color: #000;
+            transform: scale(1.05);
+        }
+
+        .notification-buttons .btn-no {
+            border-color: #FF1493;
+        }
+
+        .notification-buttons .btn-no:hover {
+            background: #FF1493;
+            color: #000;
+            transform: scale(1.05);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                transform: translateX(120%);
+            }
+        }
+
+        @keyframes progressBar {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2.2em;
@@ -860,6 +987,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
 
     <script src="game-v3.js"></script>
 </body>
