@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfectly Aligned - Physical Drawing Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: rgba(74, 222, 128, 0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+
+        .screen {
+            display: none;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        .button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 10px;
+            font-weight: bold;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .button.secondary {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            color: #333;
+        }
+
+        .button.large {
+            padding: 25px 50px;
+            font-size: 1.5em;
+        }
+
+        .input-group {
+            margin: 20px 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px;
+            font-size: 1em;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .player-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .player-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .player-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .player-card.judge {
+            border-color: #ffd700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+
+        .player-card.selected-winner {
+            border-color: #4ade80;
+            box-shadow: 0 0 30px rgba(74, 222, 128, 0.8);
+            background: rgba(74, 222, 128, 0.2);
+        }
+
+        .player-score {
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .token-count {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .steal-button {
+            width: 100%;
+            padding: 8px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .alignment-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .alignment-cell {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .alignment-cell:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .alignment-cell.selected {
+            border-color: #ffd700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.7);
+            transform: scale(1.05);
+        }
+
+        .alignment-cell.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .prompt-card {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .prompt-card:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateX(10px);
+        }
+
+        .prompt-card.selected {
+            border-color: #4ade80;
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+        }
+
+        .deck-selection {
+            margin: 20px 0;
+        }
+
+        .deck-option {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .deck-option:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .deck-option.selected {
+            border-color: #4ade80;
+            box-shadow: 0 0 15px rgba(74, 222, 128, 0.5);
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid #ffd700;
+        }
+
+        .info-box.instructions {
+            border-left: 5px solid #4ade80;
+            font-size: 1.1em;
+        }
+
+        .info-box.warning {
+            border-left: 5px solid #ff6b6b;
+            background: rgba(255, 107, 107, 0.2);
+        }
+
+        .round-counter {
+            text-align: center;
+            font-size: 1.5em;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+
+        .timer-display {
+            font-size: 5em;
+            font-weight: bold;
+            text-align: center;
+            margin: 30px 0;
+            padding: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .timer-display.warning {
+            color: #ff6b6b;
+            border-color: #ff6b6b;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
+
+        .materials-checklist {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .materials-checklist h3 {
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .materials-checklist ul {
+            list-style: none;
+            font-size: 1.2em;
+        }
+
+        .materials-checklist li {
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+
+        .materials-checklist li::before {
+            content: "✓ ";
+            color: #4ade80;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .emoji-large {
+            font-size: 4em;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .timer-display {
+                font-size: 3em;
+                padding: 20px;
+            }
+
+            .alignment-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Perfectly Aligned<span class="version-badge">V3.0 Physical</span></h1>
+        <p class="subtitle">Draw on Real Paper! - Party Edition</p>
+
+        <!-- Setup Screen -->
+        <div id="setupScreen" class="screen active">
+            <div class="info-box instructions">
+                <h2 class="center">📝 How This Works</h2>
+                <p class="center">This version uses <strong>REAL paper and pens</strong> for drawing! Everyone draws simultaneously on physical paper while the app manages timing, prompts, and scoring.</p>
+            </div>
+
+            <div class="materials-checklist">
+                <h3>🎯 What You Need:</h3>
+                <ul>
+                    <li>Paper for each player (multiple sheets)</li>
+                    <li>Pens, pencils, or markers</li>
+                    <li>A device to display this app (tablet, laptop, TV)</li>
+                    <li>3-8 players ready to draw!</li>
+                </ul>
+            </div>
+
+            <div class="input-group">
+                <label>Number of Players (3-8):</label>
+                <input type="number" id="playerCount" min="3" max="8" value="4">
+            </div>
+
+            <div id="playerNamesContainer"></div>
+
+            <div class="deck-selection">
+                <h2>Select Card Decks:</h2>
+                <div class="deck-option selected" data-deck="core_white">
+                    <h3>📋 Core Mix (Recommended)</h3>
+                    <p>General scenarios, dilemmas, historical events. Great for all ages!</p>
+                </div>
+                <div class="deck-option" data-deck="creative_cyan">
+                    <h3>🎭 Creative & Pop Culture</h3>
+                    <p>Lists, pop culture references, creative prompts.</p>
+                </div>
+                <div class="deck-option" data-deck="hypothetical_magenta">
+                    <h3>🔮 Hypothetical & Taboo (17+)</h3>
+                    <p>"What if" scenarios and adult content. Ages 17+.</p>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Target Score to Win:</label>
+                <select id="targetScore">
+                    <option value="3" selected>3 Points</option>
+                    <option value="4">4 Points</option>
+                    <option value="5">5 Points</option>
+                    <option value="7">7 Points</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Drawing Time per Round:</label>
+                <select id="drawingTime">
+                    <option value="60">1 Minute</option>
+                    <option value="90" selected>90 Seconds</option>
+                    <option value="120">2 Minutes</option>
+                    <option value="180">3 Minutes</option>
+                    <option value="0">No Timer (Manual)</option>
+                </select>
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="anonymousMode">
+                <label for="anonymousMode">Anonymous Judging (hide player names during judging)</label>
+            </div>
+
+            <div class="center">
+                <button class="button large" onclick="startGame()">Start Game! 🎮</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <div class="round-counter">
+                Round <span id="roundNumber">1</span>
+            </div>
+
+            <!-- Scoreboard -->
+            <div id="scoreboard">
+                <h2 class="center">Scoreboard</h2>
+                <div class="player-list" id="scoreboardList"></div>
+            </div>
+
+            <!-- Judge Turn Phase -->
+            <div id="judgePhase" class="hidden">
+                <div class="info-box center">
+                    <h2>🎭 Judge: <span id="currentJudgeName"></span></h2>
+                    <p>The Judge picks the alignment and prompt for this round!</p>
+                    <p><em>(The judge does NOT draw this round)</em></p>
+                </div>
+
+                <!-- Roll Alignment -->
+                <div id="rollAlignmentSection" class="hidden">
+                    <div class="center">
+                        <button class="button large" onclick="rollAlignment()">🎲 Roll Alignment</button>
+                    </div>
+                </div>
+
+                <!-- Display Alignment -->
+                <div id="alignmentDisplay" class="hidden">
+                    <h2 class="center">Rolled Alignment:</h2>
+                    <div class="alignment-grid" id="alignmentGrid"></div>
+                    <div class="info-box">
+                        <p id="alignmentDescription"></p>
+                    </div>
+                    <div id="judgeChoiceSection" class="hidden">
+                        <h3 class="center">Judge: Select an Alignment</h3>
+                        <div class="alignment-grid" id="judgeChoiceGrid"></div>
+                    </div>
+                    <div class="center">
+                        <button class="button large" id="drawPromptsButton" onclick="drawPrompts()">📝 Draw 3 Prompts</button>
+                    </div>
+                </div>
+
+                <!-- Select Prompt -->
+                <div id="promptSelection" class="hidden">
+                    <h2 class="center">Judge: Pick a Prompt</h2>
+                    <div id="rerollSection" class="center" style="margin-bottom: 20px;">
+                        <button class="button secondary" onclick="spendTokenForReroll()" id="rerollButton" disabled>
+                            🔄 Spend 1 Token to Re-roll Prompts
+                        </button>
+                    </div>
+                    <div id="promptsList"></div>
+                </div>
+            </div>
+
+            <!-- Drawing Phase -->
+            <div id="drawingPhase" class="hidden">
+                <div class="info-box instructions center">
+                    <div class="emoji-large">✏️📄</div>
+                    <h2>Everyone Draw NOW!</h2>
+                    <p style="font-size: 1.3em; margin: 15px 0;"><strong>Alignment:</strong> <span id="drawingAlignment"></span></p>
+                    <p style="font-size: 1.3em; margin: 15px 0;"><strong>Prompt:</strong> <span id="drawingPrompt"></span></p>
+                    <p style="font-size: 1.1em; margin-top: 20px;">All players (except the Judge) should draw on <strong>PHYSICAL PAPER</strong> right now!</p>
+                </div>
+
+                <div id="timerSection">
+                    <div class="timer-display" id="timerDisplay">90</div>
+                </div>
+
+                <div class="center">
+                    <button class="button large" onclick="finishDrawing()">✅ Drawing Time Over - Ready to Judge!</button>
+                </div>
+            </div>
+
+            <!-- Judging Phase -->
+            <div id="judgingPhase" class="hidden">
+                <div class="info-box center">
+                    <h2>⚖️ Judge: Pick the Best Drawing!</h2>
+                    <p style="font-size: 1.2em;"><strong>Alignment:</strong> <span id="judgingAlignment"></span></p>
+                    <p style="font-size: 1.2em;"><strong>Prompt:</strong> <span id="judgingPrompt"></span></p>
+                </div>
+
+                <div class="info-box instructions">
+                    <p class="center" style="font-size: 1.1em;">
+                        📝 Players should now hold up or pass around their physical drawings.<br>
+                        Judge, click on the player whose drawing best captures the alignment!
+                    </p>
+                </div>
+
+                <h3 class="center" style="margin: 20px 0;">Select the Winner:</h3>
+                <div class="player-list" id="judgingPlayerList"></div>
+            </div>
+
+            <!-- Results Phase -->
+            <div id="resultsPhase" class="hidden">
+                <div class="info-box center">
+                    <div class="emoji-large">🎉</div>
+                    <h2>Round Winner: <span id="roundWinnerName"></span>!</h2>
+                    <p style="font-size: 1.2em; margin-top: 15px;">+1 Point!</p>
+                </div>
+
+                <div id="tokenAwardSection">
+                    <h3 class="center">Judge: Award Bonus Tokens (Optional)</h3>
+                    <p class="center" style="margin-bottom: 20px;">Click to award achievement tokens to any players</p>
+                    <div id="tokenAwardList"></div>
+                </div>
+
+                <div class="center">
+                    <button class="button large" onclick="nextRound()">▶️ Next Round</button>
+                </div>
+            </div>
+
+            <!-- Game Over -->
+            <div id="gameOverPhase" class="hidden">
+                <div class="info-box center">
+                    <div class="emoji-large">🏆</div>
+                    <h1 style="font-size: 3em; margin: 20px 0;">🎊 <span id="winnerName"></span> Wins! 🎊</h1>
+                    <div id="finalScoreboard"></div>
+                </div>
+                <div class="center">
+                    <button class="button large" onclick="location.reload()">🔄 Play Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="stealModal" class="modal hidden">
+        <div class="modal-content">
+            <h2 class="center">💰 Steal a Point!</h2>
+            <p class="center">Spend 3 tokens to steal 1 point from another player.</p>
+            <div id="stealTargetList"></div>
+            <div class="center">
+                <button class="button secondary" onclick="closeStealModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game-v3.js"></script>
+</body>
+</html>
