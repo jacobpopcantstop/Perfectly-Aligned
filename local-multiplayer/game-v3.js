@@ -152,6 +152,7 @@ let gameState = {
     promptPool: [],
     currentAlignment: null,
     rolledAlignment: null,
+    lastAlignment: null,
     currentPrompts: [],
     selectedPrompt: null,
     targetScore: 3,
@@ -160,8 +161,58 @@ let gameState = {
     drawingTimeSeconds: 90,
     timerSeconds: 90,
     timerInterval: null,
-    anonymousMode: false
+    anonymousMode: false,
+    tokensAwardedThisRound: []
 };
+
+// Notification System
+function showNotification(message, type = 'info', duration = 4000) {
+    const container = document.getElementById('notificationContainer');
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+
+    container.appendChild(notification);
+
+    setTimeout(() => {
+        notification.remove();
+    }, duration);
+}
+
+function showConfirm(message, onYes, onNo = null) {
+    const container = document.getElementById('notificationContainer');
+    const notification = document.createElement('div');
+    notification.className = 'notification confirm';
+
+    const messageDiv = document.createElement('div');
+    messageDiv.textContent = message;
+
+    const buttonsDiv = document.createElement('div');
+    buttonsDiv.className = 'notification-buttons';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'btn-yes';
+    yesBtn.textContent = 'Yes';
+    yesBtn.onclick = () => {
+        notification.remove();
+        if (onYes) onYes();
+    };
+
+    const noBtn = document.createElement('button');
+    noBtn.className = 'btn-no';
+    noBtn.textContent = 'No';
+    noBtn.onclick = () => {
+        notification.remove();
+        if (onNo) onNo();
+    };
+
+    buttonsDiv.appendChild(yesBtn);
+    buttonsDiv.appendChild(noBtn);
+
+    notification.appendChild(messageDiv);
+    notification.appendChild(buttonsDiv);
+    container.appendChild(notification);
+}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -185,7 +236,7 @@ function updatePlayerNameInputs() {
     const count = parseInt(document.getElementById('playerCount').value);
 
     if (count < 3 || count > 8 || isNaN(count)) {
-        alert('Player count must be between 3 and 8!');
+        showNotification('Player count must be between 3 and 8!', 'warning');
         document.getElementById('playerCount').value = 4;
         return;
     }
@@ -226,7 +277,7 @@ function startGame() {
     const count = parseInt(document.getElementById('playerCount').value);
 
     if (count < 3 || count > 8 || isNaN(count)) {
-        alert('Please enter a valid player count (3-8)!');
+        showNotification('Please enter a valid player count (3-8)!', 'warning');
         return;
     }
 
@@ -261,7 +312,7 @@ function startGame() {
     });
 
     if (gameState.selectedDecks.length === 0) {
-        alert('Please select at least one deck!');
+        showNotification('Please select at least one deck!', 'warning');
         return;
     }
 
@@ -348,9 +399,19 @@ function hideAllPhases() {
 }
 
 function rollAlignment() {
-    const randomAlignment = ALIGNMENTS[Math.floor(Math.random() * ALIGNMENTS.length)];
+    let randomAlignment;
+    let attempts = 0;
+
+    // Try to avoid the same alignment as last round
+    do {
+        randomAlignment = ALIGNMENTS[Math.floor(Math.random() * ALIGNMENTS.length)];
+        attempts++;
+        // After 5 attempts, allow repeats (in case of bad luck)
+    } while (randomAlignment === gameState.lastAlignment && attempts < 5);
+
     gameState.rolledAlignment = randomAlignment;
     gameState.currentAlignment = randomAlignment;
+    gameState.lastAlignment = randomAlignment;
 
     const grid = document.getElementById('alignmentGrid');
     grid.innerHTML = '';
@@ -442,7 +503,7 @@ function selectJudgeAlignment(alignment, cellElement) {
 
 function drawPrompts() {
     if (gameState.rolledAlignment === 'U' && gameState.currentAlignment === 'U') {
-        alert('Please select an alignment first!');
+        showNotification('Please select an alignment first!', 'warning');
         return;
     }
 
@@ -495,22 +556,23 @@ function spendTokenForReroll() {
     const tokenCount = Object.values(judge.tokens).reduce((a, b) => a + b, 0);
 
     if (tokenCount < 1) {
-        alert('Not enough tokens! You need 1 token to re-roll.');
+        showNotification('Not enough tokens! You need 1 token to re-roll.', 'warning');
         return;
     }
 
-    if (!confirm('Spend 1 token to draw 3 new prompts?')) return;
-
-    const tokenTypes = ['mindReader', 'technicalMerit', 'perfectAlignment', 'plotTwist'];
-    for (let type of tokenTypes) {
-        if (judge.tokens[type] > 0) {
-            judge.tokens[type]--;
-            break;
+    showConfirm('Spend 1 token to draw 3 new prompts?', () => {
+        const tokenTypes = ['mindReader', 'technicalMerit', 'perfectAlignment', 'plotTwist'];
+        for (let type of tokenTypes) {
+            if (judge.tokens[type] > 0) {
+                judge.tokens[type]--;
+                break;
+            }
         }
-    }
 
-    drawPrompts();
-    updateScoreboard();
+        drawPrompts();
+        updateScoreboard();
+        showNotification('New prompts drawn!', 'success');
+    });
 }
 
 function selectPrompt(prompt, cardElement) {
@@ -556,7 +618,7 @@ function startTimer() {
 
         if (gameState.timerSeconds <= 0) {
             clearInterval(gameState.timerInterval);
-            alert('⏰ Time\'s up! Everyone pencils down!');
+            showNotification('⏰ Time\'s up! Everyone pencils down!', 'warning', 3000);
         }
     }, 1000);
 }
@@ -578,11 +640,11 @@ function finishDrawing() {
     }
 
     if (gameState.drawingTimeSeconds > 0 && gameState.timerSeconds > 0) {
-        if (!confirm('There\'s still time left! Are you sure everyone is done drawing?')) {
-            // Restart timer
-            startTimer();
-            return;
-        }
+        showConfirm('There\'s still time left! Are you sure everyone is done drawing?',
+            () => startJudgingPhase(),
+            () => startTimer()
+        );
+        return;
     }
 
     startJudgingPhase();
@@ -608,7 +670,7 @@ function startJudgingPhase() {
 
         if (gameState.anonymousMode) {
             card.innerHTML = `
-                <div style="font-size: 2em; margin-bottom: 5px; filter: blur(8px);">${player.avatar || '🎨'}</div>
+                <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
                 <h3 style="filter: blur(8px); user-select: none;">${player.name}</h3>
                 <p style="font-size: 1.2em; margin-top: 10px;">📝 Drawing ${index + 1}</p>
             `;
@@ -625,30 +687,35 @@ function startJudgingPhase() {
 }
 
 function selectWinner(playerIndex, cardElement) {
-    if (!confirm(`Select ${gameState.players[playerIndex].name} as the winner?`)) return;
+    showConfirm(`Select ${gameState.players[playerIndex].name} as the winner?`, () => {
+        // Highlight selected
+        document.querySelectorAll('#judgingPlayerList .player-card').forEach(card => {
+            card.classList.remove('selected-winner');
+        });
+        cardElement.classList.add('selected-winner');
 
-    // Highlight selected
-    document.querySelectorAll('#judgingPlayerList .player-card').forEach(card => {
-        card.classList.remove('selected-winner');
+        setTimeout(() => {
+            gameState.roundWinner = playerIndex;
+            gameState.players[playerIndex].score++;
+
+            showNotification(`${gameState.players[playerIndex].name} wins this round! 🎉`, 'success', 3000);
+
+            if (gameState.players[playerIndex].score >= gameState.targetScore) {
+                showGameOver();
+                return;
+            }
+
+            showResultsPhase();
+        }, 500);
     });
-    cardElement.classList.add('selected-winner');
-
-    setTimeout(() => {
-        gameState.roundWinner = playerIndex;
-        gameState.players[playerIndex].score++;
-
-        if (gameState.players[playerIndex].score >= gameState.targetScore) {
-            showGameOver();
-            return;
-        }
-
-        showResultsPhase();
-    }, 500);
 }
 
 function showResultsPhase() {
     hideAllPhases();
     document.getElementById('resultsPhase').classList.remove('hidden');
+
+    // Reset tokens awarded this round
+    gameState.tokensAwardedThisRound = [];
 
     const winner = gameState.players[gameState.roundWinner];
     const winnerNameElement = document.getElementById('roundWinnerName');
@@ -669,7 +736,7 @@ function showResultsPhase() {
         Object.keys(TOKEN_TYPES).forEach(tokenKey => {
             const token = TOKEN_TYPES[tokenKey];
             tokensHtml += `
-                <div class="token-button">
+                <div class="token-button" id="token-${index}-${tokenKey}">
                     <button class="button" style="padding: 8px 12px; font-size: 0.9em;"
                         onclick="awardToken(${index}, '${tokenKey}')">
                         ${token.icon} ${token.name}
@@ -693,8 +760,29 @@ function showResultsPhase() {
 }
 
 function awardToken(playerIndex, tokenType) {
+    // Check if this token type has already been awarded this round
+    if (gameState.tokensAwardedThisRound.includes(tokenType)) {
+        showNotification(`${TOKEN_TYPES[tokenType].name} has already been awarded this round!`, 'warning');
+        return;
+    }
+
+    // Award the token
     gameState.players[playerIndex].tokens[tokenType]++;
-    alert(`Awarded ${TOKEN_TYPES[tokenType].icon} ${TOKEN_TYPES[tokenType].name} token to ${gameState.players[playerIndex].name}!`);
+    gameState.tokensAwardedThisRound.push(tokenType);
+
+    // Visual feedback - mark all buttons of this token type as awarded
+    gameState.players.forEach((player, index) => {
+        const tokenButton = document.getElementById(`token-${index}-${tokenType}`);
+        if (tokenButton) {
+            tokenButton.classList.add('awarded');
+            const button = tokenButton.querySelector('button');
+            if (button) {
+                button.disabled = true;
+            }
+        }
+    });
+
+    showNotification(`${gameState.players[playerIndex].avatar || '🎨'} ${gameState.players[playerIndex].name} received ${TOKEN_TYPES[tokenType].icon} ${TOKEN_TYPES[tokenType].name}!`, 'success', 3000);
     updateScoreboard();
 }
 
@@ -703,7 +791,7 @@ function openStealModal(playerIndex) {
     const tokenCount = Object.values(player.tokens).reduce((a, b) => a + b, 0);
 
     if (tokenCount < 3) {
-        alert('Not enough tokens! You need 3 tokens to steal a point.');
+        showNotification('Not enough tokens! You need 3 tokens to steal a point.', 'warning');
         return;
     }
 
@@ -735,35 +823,33 @@ function executeSteal(fromPlayerIndex, toPlayerIndex) {
     const stealer = gameState.players[fromPlayerIndex];
     const victim = gameState.players[toPlayerIndex];
 
-    if (!confirm(`${stealer.name} will spend 3 tokens to steal 1 point from ${victim.name}. Proceed?`)) {
-        return;
-    }
+    showConfirm(`${stealer.name} will spend 3 tokens to steal 1 point from ${victim.name}. Proceed?`, () => {
+        let tokensRemoved = 0;
+        const tokenTypes = ['mindReader', 'technicalMerit', 'perfectAlignment', 'plotTwist'];
 
-    let tokensRemoved = 0;
-    const tokenTypes = ['mindReader', 'technicalMerit', 'perfectAlignment', 'plotTwist'];
-
-    for (let type of tokenTypes) {
-        while (stealer.tokens[type] > 0 && tokensRemoved < 3) {
-            stealer.tokens[type]--;
-            tokensRemoved++;
+        for (let type of tokenTypes) {
+            while (stealer.tokens[type] > 0 && tokensRemoved < 3) {
+                stealer.tokens[type]--;
+                tokensRemoved++;
+            }
+            if (tokensRemoved >= 3) break;
         }
-        if (tokensRemoved >= 3) break;
-    }
 
-    victim.score--;
-    stealer.score++;
+        victim.score--;
+        stealer.score++;
 
-    alert(`💰 ${stealer.name} stole 1 point from ${victim.name}!`);
+        showNotification(`💰 ${stealer.name} stole 1 point from ${victim.name}!`, 'success', 3000);
 
-    closeStealModal();
-    updateScoreboard();
+        closeStealModal();
+        updateScoreboard();
 
-    if (stealer.score >= gameState.targetScore) {
-        setTimeout(() => {
-            gameState.roundWinner = fromPlayerIndex;
-            showGameOver();
-        }, 1000);
-    }
+        if (stealer.score >= gameState.targetScore) {
+            setTimeout(() => {
+                gameState.roundWinner = fromPlayerIndex;
+                showGameOver();
+            }, 1000);
+        }
+    });
 }
 
 function nextRound() {
