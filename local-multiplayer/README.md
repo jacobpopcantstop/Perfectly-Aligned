@@ -4,16 +4,60 @@ A single-screen, local multiplayer version of Perfectly Aligned! Play the full g
 
 ## 📦 Versions Available
 
-- **V1.0** (`index.html` + `game.js`) - Original release, stable and simple
-- **V2.0** (`index-v2.html` + `game-v2.js`) - Enhanced edition with timer, token spending, eraser tool, and more!
+### 🎨 V3.0 - Physical Drawing Edition ⭐ **RECOMMENDED**
+**Files:** `index-v3.html` + `game-v3.js`
 
-**Recommended:** Use V2.0 for the best experience! See [CHANGELOG.md](CHANGELOG.md) for full details.
+🎯 **Draw on REAL paper!** Everyone draws simultaneously with actual pens/pencils while the app manages game flow and timing.
+
+**Perfect for:** Party games, family gatherings, anyone who prefers physical drawing over touchscreens!
+
+**Why V3?**
+- ✅ Everyone draws at the same time (much faster!)
+- ✅ Better drawing quality (real pens > touchscreen)
+- ✅ More social and natural party game experience
+- ✅ No device passing or waiting for turns
+- ✅ Works great on a TV or projected screen
+
+---
+
+### 💻 V2.0 - Enhanced Digital Drawing
+**Files:** `index-v2.html` + `game-v2.js`
+
+Full-featured digital drawing with eraser, color palette, line smoothing, timer, token spending, and more. Pass device to each player for their turn.
+
+**Best for:** Digital-only play, no physical materials available
+
+---
+
+### 📱 V1.0 - Original Release
+**Files:** `index.html` + `game.js`
+
+Simple digital drawing version with basic tools. Stable and straightforward.
+
+**Best for:** Minimalists, testing the game
+
+---
+
+**See [CHANGELOG.md](CHANGELOG.md) for complete version comparison and feature details.**
 
 ## 🎮 How to Play
 
+> **Note:** Instructions below apply to all versions. V3 (Physical Drawing) uses real paper instead of digital canvas!
+
+### What You Need (V3 Physical Drawing)
+
+Before starting V3, make sure you have:
+- 📄 **Paper** for each player (multiple sheets recommended)
+- ✏️ **Pens, pencils, or markers** for everyone
+- 📱 **A device** to display the app (tablet, laptop, TV, projector)
+- 👥 **3-8 players** ready to have fun!
+
 ### Setup
 
-1. **Open the Game**: Simply open `index.html` in any modern web browser (Chrome, Firefox, Safari, Edge)
+1. **Open the Game**:
+   - **V3 (Recommended):** Open `index-v3.html` in any browser
+   - **V2:** Open `index-v2.html` in any browser
+   - **V1:** Open `index.html` in any browser
 2. **Set Player Count**: Choose how many players (3-8) will be playing
 3. **Enter Player Names**: Type in each player's name
 4. **Select Card Decks**:
@@ -32,6 +76,14 @@ A single-screen, local multiplayer version of Perfectly Aligned! Play the full g
 - Judge **draws 3 prompt cards** and selects one
 
 #### 2. Drawing Phase
+
+**V3 (Physical Drawing):**
+- 🎨 All **non-judge players** draw **SIMULTANEOUSLY** on physical paper
+- ⏱️ Timer displays on screen for everyone to see
+- 📝 Everyone draws their interpretation at the same time
+- ✅ When done, click "Ready to Judge" button
+
+**V1 & V2 (Digital Drawing):**
 - All **non-judge players** take turns drawing on the shared canvas
 - **Pass the device** to each player for their turn
 - Each player interprets the prompt through the lens of the rolled alignment
@@ -43,7 +95,14 @@ A single-screen, local multiplayer version of Perfectly Aligned! Play the full g
 - Click **Submit Drawing** when done
 
 #### 3. Judging Phase
-- All submitted drawings are displayed (with player names)
+
+**V3 (Physical Drawing):**
+- 📝 Players hold up or pass around their **physical paper drawings**
+- The **Judge** looks at each drawing
+- Judge clicks the **player's name** on screen to select winner
+
+**V1 & V2 (Digital Drawing):**
+- All submitted drawings are displayed on screen (with player names)
 - The **Judge** reviews each drawing
 - Judge clicks on their favorite to select the winner
 
@@ -72,18 +131,29 @@ Special    U (Judge's Choice) - Judge picks any alignment
 
 ## ✨ Features
 
-### Core Features (V1 & V2)
+### Core Features (All Versions)
 - ✅ **No Server Required**: Runs entirely in the browser
 - ✅ **Single Screen**: Everyone plays on one device
-- ✅ **Full Drawing Tools**: Color tools, brush sizes, undo, and clear
 - ✅ **All Game Mechanics**: Complete alignment system, prompts, and scoring
 - ✅ **Token System**: Award achievement tokens for exceptional drawings
 - ✅ **Multiple Decks**: Choose from 3 themed prompt decks (200+ prompts)
 - ✅ **Customizable**: Set player count (3-8) and target score (3-7)
 - ✅ **Mobile Friendly**: Works on tablets and phones with touch support
-- ✅ **Pass-and-Play**: Simple turn-based gameplay
 
-### V2.0 Enhanced Features ⭐
+### V3.0 Physical Drawing Features 🎨 **NEW!**
+- ✅ **Real Paper Drawing**: Everyone draws on physical paper with pens
+- ✅ **Simultaneous Drawing**: All players draw at the same time (much faster!)
+- ✅ **Materials Checklist**: Reminds you to have paper and pens ready
+- ✅ **Group Timer**: Single countdown visible to everyone (1-3 min or manual)
+- ✅ **Token Spending**: Re-roll prompts (1 token) or steal points (3 tokens)
+- ✅ **Judge's Choice**: Select alignment when 'U' is rolled
+- ✅ **Anonymous Judging**: Hide player names during judging
+- ✅ **Round Counter**: See current round at a glance
+- ✅ **Simplified Interface**: Focus on game flow, not drawing tools
+- ✅ **Works on TV**: Perfect for projecting on large screens
+
+### V2.0 Digital Drawing Features ⭐
+- ✅ **Digital Canvas**: Pass-and-play with device drawing
 - ✅ **Token Spending**: Re-roll prompts (1 token) or steal points (3 tokens)
 - ✅ **Judge's Choice Fixed**: Select alignment when 'U' is rolled
 - ✅ **Built-in Timer**: Optional 60-second countdown per player
@@ -96,18 +166,34 @@ Special    U (Judge's Choice) - Judge picks any alignment
 - ✅ **Blank Canvas Warning**: Prevents accidental empty submissions
 - ✅ **Input Validation**: Sanitized names, validated settings
 
+### V1.0 Basic Features
+- ✅ **Simple Digital Drawing**: Basic canvas with color picker
+- ✅ **Pass-and-Play**: Turn-based gameplay
+- ✅ **Undo/Clear**: Basic drawing controls
+
 ## 🎯 Tips for Best Experience
 
-1. **Use V2.0**: Enhanced edition has all the improvements (use `index-v2.html`)
-2. **Use a Tablet or Large Screen**: Makes drawing easier for everyone
-3. **Enable Timer (V2)**: Keeps game moving, prevents slow players
-4. **Enable Anonymous Mode (V2)**: Makes judging more fair
-5. **Read Prompts Aloud**: Judge should announce the prompt so everyone hears it
-6. **Be Creative**: There's no "right" answer - have fun with interpretations!
-7. **Discuss Submissions**: Talk about each drawing before the Judge picks the winner
-8. **Use Touch Screen**: For the best drawing experience, use a device with a touchscreen
-9. **Use Eraser (V2)**: Fix mistakes without clearing entire drawing
-10. **Save Tokens**: Spend wisely - 3 tokens can steal a point!
+### For V3 (Physical Drawing) - Recommended! 🎨
+1. **Have Materials Ready**: Make sure everyone has paper and pens BEFORE starting
+2. **Use a Large Screen**: Project on TV or use tablet so everyone can see the timer/prompts
+3. **Set Appropriate Timer**: 90 seconds is perfect for most groups, 2-3 minutes for detail lovers
+4. **Everyone Draws Together**: Much faster and more exciting than taking turns!
+5. **Hold Up Drawings**: When judging, have everyone hold up their drawings at once
+6. **Use Multiple Sheets**: Each round uses one sheet - have extras ready
+7. **Enable Anonymous Mode**: Makes judging more fair when names are hidden
+
+### For V2 (Digital Drawing) 💻
+1. **Use a Tablet or Large Screen**: Makes drawing easier for everyone
+2. **Enable Timer**: Keeps game moving, prevents slow players
+3. **Use Touch Screen**: For the best drawing experience
+4. **Use Eraser**: Fix mistakes without clearing entire drawing
+
+### For All Versions
+1. **Read Prompts Aloud**: Judge should announce the prompt so everyone hears it
+2. **Be Creative**: There's no "right" answer - have fun with interpretations!
+3. **Discuss Submissions**: Talk about each drawing before the Judge picks the winner
+4. **Save Tokens**: Spend wisely - 3 tokens can steal a point!
+5. **Try Different Decks**: Mix decks for variety, or stick to Core for family-friendly games
 
 ## 🔧 Technical Requirements
 

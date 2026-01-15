@@ -1,5 +1,70 @@
 # Changelog - Perfectly Aligned Local Multiplayer
 
+## Version 3.0 (Physical Drawing Edition) - 2026-01-15
+
+### 🎨 Complete Redesign: Paper and Pen Party Game!
+
+**Major Philosophy Change:** Removed ALL digital drawing! Players now draw on real paper with actual pens/pencils. The app purely manages game flow, timing, and scoring.
+
+#### Why Physical Drawing?
+
+1. **Faster Gameplay** - Everyone draws simultaneously (no device passing!)
+2. **Better Quality** - Real pens produce better drawings than touchscreens
+3. **More Social** - Natural party game experience
+4. **True Local Multiplayer** - Everyone participates at once
+5. **No Technical Barriers** - Anyone can use paper and pen
+
+### 🎯 What Changed from V2
+
+#### Removed Features
+- ❌ Digital canvas (completely removed)
+- ❌ Drawing tools (pencil, eraser, colors, brush sizes)
+- ❌ Pass-and-play turns (now simultaneous)
+- ❌ Drawing submissions/storage
+- ❌ Visual judging (no drawings displayed on screen)
+
+#### New Features
+- ✅ **Physical Drawing Instructions** - Clear prompts to draw on paper
+- ✅ **Simultaneous Drawing** - All non-judge players draw at the same time
+- ✅ **Materials Checklist** - Reminds players to have paper and pens ready
+- ✅ **Group Timer** - Single countdown for everyone drawing together
+- ✅ **Name-Only Judging** - Judge clicks player names (drawings shown physically)
+- ✅ **Flexible Timer Options** - 1-3 minutes or manual (no timer)
+- ✅ **Simplified Interface** - Focus on game management, not drawing tools
+
+#### Retained Features (from V2)
+- ✅ Token spending (re-roll prompts, steal points)
+- ✅ Judge's Choice alignment selection
+- ✅ Anonymous judging mode
+- ✅ Round counter
+- ✅ All alignment and prompt systems
+- ✅ Scoreboard with steal buttons
+- ✅ Input validation
+
+### 📋 How V3 Works
+
+1. **Setup Phase** - Players enter names, app reminds them to grab paper and pens
+2. **Judge Phase** - Judge rolls alignment and selects prompt (on screen)
+3. **Drawing Phase** - ALL players draw simultaneously on physical paper (timer shows on screen)
+4. **Judging Phase** - Players hold up drawings, judge clicks winner's name on screen
+5. **Results Phase** - Winner announced, tokens awarded, next round begins
+
+### 🎮 Perfect For
+
+- **Party Games** - Fast, social, natural experience
+- **Family Gatherings** - Everyone has paper and pen
+- **Casual Play** - No learning curve for drawing tools
+- **Large Groups** - Everyone participates simultaneously
+- **Traditional Gamers** - Prefer physical materials
+
+### 📦 File Size Comparison
+
+- **V1**: 40KB (digital drawing, pass-and-play)
+- **V2**: 60KB (enhanced digital drawing)
+- **V3**: 35KB (physical drawing, simpler code!)
+
+---
+
 ## Version 2.0 (Enhanced Edition) - 2026-01-15
 
 ### 🎉 Major New Features
