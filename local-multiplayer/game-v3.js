@@ -350,14 +350,28 @@ function updateScoreboard() {
     const scoreboardList = document.getElementById('scoreboardList');
     scoreboardList.innerHTML = '';
 
-    gameState.players.forEach((player, index) => {
+    // Create array with players and their original indices
+    const playersWithIndices = gameState.players.map((player, index) => ({
+        player: player,
+        index: index,
+        tokenCount: Object.values(player.tokens).reduce((a, b) => a + b, 0)
+    }));
+
+    // Sort by score (descending), then by token count (descending)
+    playersWithIndices.sort((a, b) => {
+        if (b.player.score !== a.player.score) {
+            return b.player.score - a.player.score;
+        }
+        return b.tokenCount - a.tokenCount;
+    });
+
+    // Display sorted players
+    playersWithIndices.forEach(({ player, index, tokenCount }) => {
         const card = document.createElement('div');
         card.className = 'player-card';
         if (index === gameState.currentJudgeIndex) {
             card.classList.add('judge');
         }
-
-        const tokenCount = Object.values(player.tokens).reduce((a, b) => a + b, 0);
 
         let stealButton = '';
         if (tokenCount >= 3 && index !== gameState.currentJudgeIndex) {
