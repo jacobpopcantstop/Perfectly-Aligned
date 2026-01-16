@@ -319,70 +319,100 @@
         .alignment-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin: 25px 0;
-            max-width: 700px;
-            margin-left: auto;
-            margin-right: auto;
+            gap: 0;
+            margin: 25px auto;
+            max-width: 650px;
+            background: rgba(255, 105, 180, 0.1);
+            border: 4px solid #FF69B4;
+            border-radius: 8px;
+            padding: 0;
+            overflow: hidden;
         }
 
         .alignment-cell {
-            background: linear-gradient(135deg, rgba(255, 182, 193, 0.2) 0%, rgba(255, 105, 180, 0.2) 100%);
-            padding: 25px;
-            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.7) 100%);
+            padding: 30px 20px;
             text-align: center;
-            border: 3px solid #FF69B4;
+            border: 2px solid #FF69B4;
             cursor: pointer;
             transition: all 0.3s;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            position: relative;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Tic-tac-toe grid effect - remove borders on edges */
+        .alignment-cell:nth-child(1),
+        .alignment-cell:nth-child(2),
+        .alignment-cell:nth-child(3) {
+            border-top: none;
+        }
+
+        .alignment-cell:nth-child(7),
+        .alignment-cell:nth-child(8),
+        .alignment-cell:nth-child(9) {
+            border-bottom: none;
+        }
+
+        .alignment-cell:nth-child(1),
+        .alignment-cell:nth-child(4),
+        .alignment-cell:nth-child(7) {
+            border-left: none;
+        }
+
+        .alignment-cell:nth-child(3),
+        .alignment-cell:nth-child(6),
+        .alignment-cell:nth-child(9) {
+            border-right: none;
         }
 
         .alignment-cell:hover {
-            background: linear-gradient(135deg, rgba(255, 105, 180, 0.4) 0%, rgba(255, 20, 147, 0.4) 100%);
-            transform: translateY(-3px);
-            box-shadow: 0 6px 15px rgba(255, 105, 180, 0.5);
+            background: linear-gradient(135deg, rgba(255, 105, 180, 0.3) 0%, rgba(255, 20, 147, 0.3) 100%);
+            box-shadow: inset 0 0 30px rgba(255, 105, 180, 0.4);
         }
 
         .alignment-cell.selected {
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(255, 165, 0, 0.4) 100%);
+            box-shadow:
+                inset 0 0 40px rgba(255, 215, 0, 0.6),
+                0 0 30px rgba(255, 215, 0, 0.8);
             border-color: #FFD700;
-            box-shadow: 0 0 25px rgba(255, 215, 0, 0.9);
-            transform: scale(1.1);
-            background: linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 165, 0, 0.3) 100%);
         }
 
         .alignment-cell.rolling {
             animation: shimmer-glitter 0.15s ease-in-out infinite, rolling-pulse 0.3s ease-in-out infinite;
         }
 
+        .alignment-grid.judges-choice .alignment-cell {
+            animation: judges-choice-glow 1.5s ease-in-out infinite;
+        }
+
         @keyframes shimmer-glitter {
             0% {
-                border-color: #FFD700;
+                background: linear-gradient(135deg, rgba(255, 215, 0, 0.5) 0%, rgba(255, 182, 193, 0.5) 100%);
                 box-shadow:
-                    0 0 20px rgba(255, 215, 0, 1),
-                    0 0 40px rgba(255, 182, 193, 0.8),
-                    0 0 60px rgba(255, 215, 0, 0.5),
-                    inset 0 0 20px rgba(255, 215, 0, 0.6);
-                background: linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(255, 182, 193, 0.4) 100%);
+                    inset 0 0 25px rgba(255, 215, 0, 0.8),
+                    0 0 20px rgba(255, 215, 0, 0.6);
+                border-color: #FFD700;
                 filter: brightness(1.5) saturate(1.3);
             }
             50% {
-                border-color: #FF69B4;
+                background: linear-gradient(135deg, rgba(255, 105, 180, 0.6) 0%, rgba(255, 215, 0, 0.6) 100%);
                 box-shadow:
-                    0 0 35px rgba(255, 105, 180, 1.2),
-                    0 0 70px rgba(255, 215, 0, 1),
-                    0 0 90px rgba(255, 20, 147, 0.6),
-                    inset 0 0 30px rgba(255, 105, 180, 0.7);
-                background: linear-gradient(135deg, rgba(255, 105, 180, 0.5) 0%, rgba(255, 215, 0, 0.5) 100%);
+                    inset 0 0 35px rgba(255, 105, 180, 0.9),
+                    0 0 30px rgba(255, 105, 180, 0.8);
+                border-color: #FF1493;
                 filter: brightness(1.8) saturate(1.5);
             }
             100% {
-                border-color: #FFD700;
+                background: linear-gradient(135deg, rgba(255, 215, 0, 0.5) 0%, rgba(255, 182, 193, 0.5) 100%);
                 box-shadow:
-                    0 0 20px rgba(255, 215, 0, 1),
-                    0 0 40px rgba(255, 182, 193, 0.8),
-                    0 0 60px rgba(255, 215, 0, 0.5),
-                    inset 0 0 20px rgba(255, 215, 0, 0.6);
-                background: linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(255, 182, 193, 0.4) 100%);
+                    inset 0 0 25px rgba(255, 215, 0, 0.8),
+                    0 0 20px rgba(255, 215, 0, 0.6);
+                border-color: #FFD700;
                 filter: brightness(1.5) saturate(1.3);
             }
         }
@@ -392,7 +422,28 @@
                 transform: scale(1);
             }
             50% {
-                transform: scale(1.06);
+                transform: scale(1.05);
+            }
+        }
+
+        @keyframes judges-choice-glow {
+            0% {
+                background: linear-gradient(135deg, rgba(138, 43, 226, 0.3) 0%, rgba(75, 0, 130, 0.3) 100%);
+                box-shadow: inset 0 0 20px rgba(138, 43, 226, 0.6);
+                border-color: #8A2BE2;
+            }
+            50% {
+                background: linear-gradient(135deg, rgba(138, 43, 226, 0.5) 0%, rgba(75, 0, 130, 0.5) 100%);
+                box-shadow:
+                    inset 0 0 40px rgba(138, 43, 226, 0.9),
+                    0 0 25px rgba(138, 43, 226, 0.7);
+                border-color: #9370DB;
+                filter: brightness(1.3);
+            }
+            100% {
+                background: linear-gradient(135deg, rgba(138, 43, 226, 0.3) 0%, rgba(75, 0, 130, 0.3) 100%);
+                box-shadow: inset 0 0 20px rgba(138, 43, 226, 0.6);
+                border-color: #8A2BE2;
             }
         }
 
