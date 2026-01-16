@@ -161,7 +161,6 @@ let gameState = {
     drawingTimeSeconds: 90,
     timerSeconds: 90,
     timerInterval: null,
-    anonymousMode: false,
     tokensAwardedThisRound: []
 };
 
@@ -179,13 +178,37 @@ function showNotification(message, type = 'info', duration = 4000) {
     }, duration);
 }
 
-function showConfirm(message, onYes, onNo = null) {
+function showConfirm(message, onYes, onNo = null, confirmKey = null) {
+    // Check if user has disabled this specific confirmation
+    if (confirmKey && localStorage.getItem(`skipConfirm_${confirmKey}`) === 'true') {
+        if (onYes) onYes();
+        return;
+    }
+
     const container = document.getElementById('notificationContainer');
     const notification = document.createElement('div');
     notification.className = 'notification confirm';
 
     const messageDiv = document.createElement('div');
     messageDiv.textContent = message;
+
+    const checkboxDiv = document.createElement('div');
+    checkboxDiv.style.marginTop = '10px';
+    checkboxDiv.style.fontSize = '0.9em';
+    checkboxDiv.style.opacity = '0.8';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'dontShowAgain';
+    checkbox.style.marginRight = '8px';
+
+    const checkboxLabel = document.createElement('label');
+    checkboxLabel.htmlFor = 'dontShowAgain';
+    checkboxLabel.textContent = "Don't show this again";
+    checkboxLabel.style.cursor = 'pointer';
+
+    checkboxDiv.appendChild(checkbox);
+    checkboxDiv.appendChild(checkboxLabel);
 
     const buttonsDiv = document.createElement('div');
     buttonsDiv.className = 'notification-buttons';
@@ -194,6 +217,9 @@ function showConfirm(message, onYes, onNo = null) {
     yesBtn.className = 'btn-yes';
     yesBtn.textContent = 'Yes';
     yesBtn.onclick = () => {
+        if (confirmKey && checkbox.checked) {
+            localStorage.setItem(`skipConfirm_${confirmKey}`, 'true');
+        }
         notification.remove();
         if (onYes) onYes();
     };
@@ -202,6 +228,9 @@ function showConfirm(message, onYes, onNo = null) {
     noBtn.className = 'btn-no';
     noBtn.textContent = 'No';
     noBtn.onclick = () => {
+        if (confirmKey && checkbox.checked) {
+            localStorage.setItem(`skipConfirm_${confirmKey}`, 'true');
+        }
         notification.remove();
         if (onNo) onNo();
     };
@@ -210,8 +239,19 @@ function showConfirm(message, onYes, onNo = null) {
     buttonsDiv.appendChild(noBtn);
 
     notification.appendChild(messageDiv);
+    if (confirmKey) {
+        notification.appendChild(checkboxDiv);
+    }
     notification.appendChild(buttonsDiv);
     container.appendChild(notification);
+}
+
+// Scoreboard Toggle
+function toggleScoreboard() {
+    const scoreboard = document.getElementById('scoreboard');
+    const toggle = document.getElementById('scoreboardToggle');
+    scoreboard.classList.toggle('collapsed');
+    toggle.textContent = scoreboard.classList.contains('collapsed') ? '▶' : '▼';
 }
 
 // Initialize
@@ -327,7 +367,6 @@ function startGame() {
     // Get settings
     gameState.targetScore = parseInt(document.getElementById('targetScore').value);
     gameState.drawingTimeSeconds = parseInt(document.getElementById('drawingTime').value);
-    gameState.anonymousMode = document.getElementById('anonymousMode').checked;
 
     // Switch to game screen
     document.getElementById('setupScreen').classList.remove('active');
@@ -586,7 +625,7 @@ function spendTokenForReroll() {
         drawPrompts();
         updateScoreboard();
         showNotification('New prompts drawn!', 'success');
-    });
+    }, null, 'rerollPrompts');
 }
 
 function selectPrompt(prompt, cardElement) {
@@ -656,7 +695,8 @@ function finishDrawing() {
     if (gameState.drawingTimeSeconds > 0 && gameState.timerSeconds > 0) {
         showConfirm('There\'s still time left! Are you sure everyone is done drawing?',
             () => startJudgingPhase(),
-            () => startTimer()
+            () => startTimer(),
+            'finishEarly'
         );
         return;
     }
@@ -682,19 +722,11 @@ function startJudgingPhase() {
         card.className = 'player-card';
         card.onclick = () => selectWinner(index, card);
 
-        if (gameState.anonymousMode) {
-            card.innerHTML = `
-                <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
-                <h3 style="filter: blur(8px); user-select: none;">${player.name}</h3>
-                <p style="font-size: 1.2em; margin-top: 10px;">📝 Drawing ${index + 1}</p>
-            `;
-        } else {
-            card.innerHTML = `
-                <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
-                <h3>${player.name}</h3>
-                <p style="font-size: 1.2em; margin-top: 10px;">📝 Click to select</p>
-            `;
-        }
+        card.innerHTML = `
+            <div style="font-size: 2em; margin-bottom: 5px;">${player.avatar || '🎨'}</div>
+            <h3>${player.name}</h3>
+            <p style="font-size: 1.2em; margin-top: 10px;">📝 Click to select</p>
+        `;
 
         playerList.appendChild(card);
     });
@@ -721,7 +753,7 @@ function selectWinner(playerIndex, cardElement) {
 
             showResultsPhase();
         }, 500);
-    });
+    }, null, 'selectWinner');
 }
 
 function showResultsPhase() {
@@ -784,11 +816,19 @@ function awardToken(playerIndex, tokenType) {
     gameState.players[playerIndex].tokens[tokenType]++;
     gameState.tokensAwardedThisRound.push(tokenType);
 
-    // Visual feedback - mark all buttons of this token type as awarded
+    // Visual feedback - mark winner's button green, others grey
     gameState.players.forEach((player, index) => {
+        if (index === gameState.currentJudgeIndex) return; // Skip judge
+
         const tokenButton = document.getElementById(`token-${index}-${tokenType}`);
         if (tokenButton) {
-            tokenButton.classList.add('awarded');
+            if (index === playerIndex) {
+                // Winner gets green
+                tokenButton.classList.add('awarded');
+            } else {
+                // Others get greyed out
+                tokenButton.classList.add('unavailable');
+            }
             const button = tokenButton.querySelector('button');
             if (button) {
                 button.disabled = true;
@@ -863,7 +903,7 @@ function executeSteal(fromPlayerIndex, toPlayerIndex) {
                 showGameOver();
             }, 1000);
         }
-    });
+    }, null, 'stealPoint');
 }
 
 function nextRound() {
