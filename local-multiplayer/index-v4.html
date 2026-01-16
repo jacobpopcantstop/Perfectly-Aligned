@@ -351,36 +351,48 @@
         }
 
         .alignment-cell.rolling {
-            animation: shimmer-glitter 0.12s ease-in-out infinite;
+            animation: shimmer-glitter 0.15s ease-in-out infinite, rolling-pulse 0.3s ease-in-out infinite;
         }
 
         @keyframes shimmer-glitter {
             0% {
                 border-color: #FFD700;
                 box-shadow:
-                    0 0 15px rgba(255, 215, 0, 0.9),
-                    0 0 30px rgba(255, 182, 193, 0.6),
-                    inset 0 0 15px rgba(255, 215, 0, 0.4);
-                background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 182, 193, 0.25) 100%);
-                filter: brightness(1.3);
+                    0 0 20px rgba(255, 215, 0, 1),
+                    0 0 40px rgba(255, 182, 193, 0.8),
+                    0 0 60px rgba(255, 215, 0, 0.5),
+                    inset 0 0 20px rgba(255, 215, 0, 0.6);
+                background: linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(255, 182, 193, 0.4) 100%);
+                filter: brightness(1.5) saturate(1.3);
             }
             50% {
                 border-color: #FF69B4;
                 box-shadow:
-                    0 0 25px rgba(255, 105, 180, 1),
-                    0 0 50px rgba(255, 215, 0, 0.8),
-                    inset 0 0 25px rgba(255, 105, 180, 0.5);
-                background: linear-gradient(135deg, rgba(255, 105, 180, 0.35) 0%, rgba(255, 215, 0, 0.35) 100%);
-                filter: brightness(1.6);
+                    0 0 35px rgba(255, 105, 180, 1.2),
+                    0 0 70px rgba(255, 215, 0, 1),
+                    0 0 90px rgba(255, 20, 147, 0.6),
+                    inset 0 0 30px rgba(255, 105, 180, 0.7);
+                background: linear-gradient(135deg, rgba(255, 105, 180, 0.5) 0%, rgba(255, 215, 0, 0.5) 100%);
+                filter: brightness(1.8) saturate(1.5);
             }
             100% {
                 border-color: #FFD700;
                 box-shadow:
-                    0 0 15px rgba(255, 215, 0, 0.9),
-                    0 0 30px rgba(255, 182, 193, 0.6),
-                    inset 0 0 15px rgba(255, 215, 0, 0.4);
-                background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 182, 193, 0.25) 100%);
-                filter: brightness(1.3);
+                    0 0 20px rgba(255, 215, 0, 1),
+                    0 0 40px rgba(255, 182, 193, 0.8),
+                    0 0 60px rgba(255, 215, 0, 0.5),
+                    inset 0 0 20px rgba(255, 215, 0, 0.6);
+                background: linear-gradient(135deg, rgba(255, 215, 0, 0.4) 0%, rgba(255, 182, 193, 0.4) 100%);
+                filter: brightness(1.5) saturate(1.3);
+            }
+        }
+
+        @keyframes rolling-pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.06);
             }
         }
 
@@ -461,6 +473,8 @@
         }
 
         .prompt-card.dealing {
+            opacity: 0;
+            transform: translateX(-120vw) translateY(-20px) rotate(-8deg) scale(0.8);
             animation: deal-card 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
         }
 
@@ -476,6 +490,24 @@
             100% {
                 opacity: 1;
                 transform: translateX(0) translateY(0) rotate(0deg) scale(1);
+            }
+        }
+
+        @keyframes curse-draw {
+            0% {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.5) rotate(-15deg);
+            }
+            60% {
+                opacity: 1;
+                transform: translateY(5px) scale(1.08) rotate(3deg);
+            }
+            80% {
+                transform: translateY(-3px) scale(0.98) rotate(-1deg);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1) rotate(0deg);
             }
         }
 

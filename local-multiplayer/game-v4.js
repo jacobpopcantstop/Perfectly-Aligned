@@ -366,7 +366,8 @@ function startGame() {
                 perfectAlignment: 0,
                 plotTwist: 0
             },
-            activeModifier: null
+            activeModifiers: [],
+            heldCurse: null
         });
     }
 
@@ -407,12 +408,12 @@ function startNewRound() {
 
     // Clear all active modifiers from previous round
     gameState.players.forEach(player => {
-        player.activeModifier = null;
+        player.activeModifiers = [];
     });
 
-    // Apply pending modifiers from last round
+    // Apply pending modifiers from last round (allows stacking multiple curses)
     gameState.pendingModifiers.forEach(({targetIndex, modifier}) => {
-        gameState.players[targetIndex].activeModifier = modifier;
+        gameState.players[targetIndex].activeModifiers.push(modifier);
     });
     gameState.pendingModifiers = [];
 
@@ -454,11 +455,13 @@ function updateScoreboard() {
         }
 
         let modifierDisplay = '';
-        if (player.activeModifier) {
-            modifierDisplay = `<div style="margin-top: 8px; padding: 6px; background: rgba(255, 20, 147, 0.3); border: 2px solid #FF1493; border-radius: 8px;">
-                <div style="font-size: 1.5em;">${player.activeModifier.icon} CURSED!</div>
-                <div style="font-size: 0.9em; font-style: italic;">${player.activeModifier.name}</div>
-            </div>`;
+        if (player.activeModifiers && player.activeModifiers.length > 0) {
+            modifierDisplay = player.activeModifiers.map(mod => `
+                <div style="margin-top: 8px; padding: 6px; background: rgba(255, 20, 147, 0.3); border: 2px solid #FF1493; border-radius: 8px;">
+                    <div style="font-size: 1.5em;">${mod.icon} CURSED!</div>
+                    <div style="font-size: 0.9em; font-style: italic;">${mod.name}</div>
+                </div>
+            `).join('');
         }
 
         card.innerHTML = `
@@ -705,7 +708,7 @@ function startDrawingPhase() {
     document.getElementById('drawingPrompt').textContent = gameState.selectedPrompt;
 
     // Display active modifiers if any
-    const cursedPlayers = gameState.players.filter(p => p.activeModifier !== null);
+    const cursedPlayers = gameState.players.filter(p => p.activeModifiers && p.activeModifiers.length > 0);
     if (cursedPlayers.length > 0) {
         document.getElementById('activeModifiersSection').classList.remove('hidden');
         const modifiersList = document.getElementById('activeModifiersList');
@@ -718,14 +721,18 @@ function startDrawingPhase() {
             card.style.borderColor = '#FF1493';
             card.style.boxShadow = '0 0 25px rgba(255, 20, 147, 0.8)';
 
+            const cursesHtml = player.activeModifiers.map(mod => `
+                <div style="margin-top: 15px; padding: 10px; background: rgba(255, 20, 147, 0.3); border: 2px solid #FF1493; border-radius: 10px;">
+                    <div style="font-size: 2.5em; margin-bottom: 8px;">${mod.icon}</div>
+                    <div style="font-size: 1.3em; font-weight: bold; color: #FFD700; margin-bottom: 8px;">${mod.name}</div>
+                    <div style="font-size: 1em; color: #FFB6C1; font-style: italic;">${mod.description}</div>
+                </div>
+            `).join('');
+
             card.innerHTML = `
                 <div style="font-size: 2.5em; margin-bottom: 10px;">${player.avatar || '🎨'}</div>
                 <h3>${player.name}</h3>
-                <div style="margin-top: 15px; padding: 10px; background: rgba(255, 20, 147, 0.3); border: 2px solid #FF1493; border-radius: 10px;">
-                    <div style="font-size: 2.5em; margin-bottom: 8px;">${player.activeModifier.icon}</div>
-                    <div style="font-size: 1.3em; font-weight: bold; color: #FFD700; margin-bottom: 8px;">${player.activeModifier.name}</div>
-                    <div style="font-size: 1em; color: #FFB6C1; font-style: italic;">${player.activeModifier.description}</div>
-                </div>
+                ${cursesHtml}
             `;
 
             modifiersList.appendChild(card);
@@ -999,61 +1006,150 @@ function checkForModifierPhase() {
         return;
     }
 
-    // Find leader score
+    // Find lowest score
+    const lowestScore = Math.min(...gameState.players.map(p => p.score));
+
+    // Find all players in last place
+    const lastPlacePlayers = gameState.players
+        .map((player, index) => ({player, index}))
+        .filter(({player}) => player.score === lowestScore);
+
+    // Only give curse if there's actually a last place (not everyone tied at 0 on round 1, for example)
     const leaderScore = Math.max(...gameState.players.map(p => p.score));
-
-    // Find players who are 2+ points behind
-    const trailingPlayers = gameState.players
-        .map((player, index) => ({player, index, deficit: leaderScore - player.score}))
-        .filter(({deficit}) => deficit >= 2);
-
-    if (trailingPlayers.length === 0) {
+    if (lowestScore === leaderScore && gameState.roundNumber === 1) {
         nextRound();
         return;
     }
 
+    // Pick ONE random player from last place to curse
+    const curserData = lastPlacePlayers[Math.floor(Math.random() * lastPlacePlayers.length)];
+
     // Show modifier phase
-    showModifierPhase(trailingPlayers);
+    showModifierPhase(curserData);
 }
 
-function showModifierPhase(trailingPlayers) {
+function showModifierPhase(curserData) {
     hideAllPhases();
     document.getElementById('modifierPhase').classList.remove('hidden');
 
+    const {player, index: curserIndex} = curserData;
     const modifierQueue = document.getElementById('modifierQueue');
-    modifierQueue.innerHTML = '<h2 class="center" style="color: #FF1493;">😈 CURSE TIME!</h2><p class="center" style="margin-bottom: 20px;">Trailing players get to curse their opponents!</p>';
 
-    let processedCount = 0;
+    // Check if player has held curse from previous round
+    if (player.heldCurse) {
+        modifierQueue.innerHTML = `
+            <div class="center">
+                <h2 style="color: #FF1493; margin: 20px 0;">
+                    😈 ${player.avatar} ${player.name} - You're in Last Place!
+                </h2>
+                <p style="font-size: 1.3em; margin-bottom: 30px;">You have a held curse from last round!</p>
 
-    function processNextCurser() {
-        if (processedCount >= trailingPlayers.length) {
-            // All curses assigned, move to next round
-            nextRound();
-            return;
-        }
+                <div class="modifier-card" style="animation: curse-draw 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;">
+                    <div style="font-size: 4em; margin-bottom: 15px;">${player.heldCurse.icon}</div>
+                    <h3 style="font-size: 2em; color: #FFD700; margin-bottom: 15px;">${player.heldCurse.name}</h3>
+                    <p style="font-size: 1.3em; color: #FFB6C1; line-height: 1.5;">${player.heldCurse.description}</p>
+                </div>
 
-        const {player, index: curserIndex, deficit} = trailingPlayers[processedCount];
-        processedCount++;
+                <div class="center" style="margin-top: 30px;">
+                    <button class="button large" onclick="useHeldCurse(${curserIndex})" style="margin: 10px;">
+                        ⚡ Use This Curse
+                    </button>
+                    <button class="button large secondary" onclick="drawNewCurseCard(${curserIndex}, true)" style="margin: 10px;">
+                        🎴 Draw New Curse (Discard This)
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        modifierQueue.innerHTML = `
+            <div class="center">
+                <h2 style="color: #FF1493; margin: 20px 0;">
+                    😈 ${player.avatar} ${player.name} - You're in Last Place!
+                </h2>
+                <p style="font-size: 1.3em; margin-bottom: 30px;">You get to draw a curse card!</p>
 
-        // Draw random modifier
-        const modifier = MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
-
-        showModifierCard(curserIndex, modifier, processNextCurser);
+                <div class="center">
+                    <button class="button large" onclick="drawNewCurseCard(${curserIndex}, false)" style="font-size: 1.5em; padding: 25px 40px;">
+                        🎴 DRAW CURSE CARD
+                    </button>
+                </div>
+            </div>
+        `;
     }
-
-    processNextCurser();
 }
 
-function showModifierCard(curserIndex, modifier, onComplete) {
+function drawNewCurseCard(curserIndex, replacingHeld) {
     const curser = gameState.players[curserIndex];
-    const modifierQueue = document.getElementById('modifierQueue');
+    const modifier = MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
 
+    // If replacing held curse, clear it
+    if (replacingHeld) {
+        curser.heldCurse = null;
+    }
+
+    const modifierQueue = document.getElementById('modifierQueue');
     modifierQueue.innerHTML = `
         <div class="center">
             <h2 style="color: #FFB6C1; margin: 20px 0;">
-                ${curser.avatar} ${curser.name} - You're Trailing!
+                ${curser.avatar} ${curser.name} draws...
             </h2>
-            <p style="font-size: 1.2em; margin-bottom: 30px;">Draw a curse card to handicap an opponent:</p>
+
+            <div class="modifier-card" style="animation: curse-draw 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;">
+                <div style="font-size: 4em; margin-bottom: 15px;">${modifier.icon}</div>
+                <h3 style="font-size: 2em; color: #FFD700; margin-bottom: 15px;">${modifier.name}</h3>
+                <p style="font-size: 1.3em; color: #FFB6C1; line-height: 1.5;">${modifier.description}</p>
+            </div>
+
+            <h3 style="margin-top: 40px; margin-bottom: 20px; color: #FF1493;">Who do you curse?</h3>
+            <div class="player-list" id="curseTargetList"></div>
+
+            <div class="center" style="margin-top: 30px;">
+                <button class="button secondary" onclick="holdCurseForLater(${curserIndex})" style="font-size: 1.1em;">
+                    💾 Hold for Next Round
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Store the current modifier temporarily
+    curser.tempModifier = modifier;
+
+    const targetList = document.getElementById('curseTargetList');
+    gameState.players.forEach((target, targetIndex) => {
+        // Can't curse yourself or the judge
+        if (targetIndex === curserIndex || targetIndex === gameState.currentJudgeIndex) return;
+
+        const card = document.createElement('div');
+        card.className = 'player-card';
+        card.style.cursor = 'pointer';
+        card.onclick = () => {
+            gameState.pendingModifiers.push({curserIndex, targetIndex, modifier});
+            curser.tempModifier = null;
+            showNotification(`${target.name} has been cursed with ${modifier.name}!`, 'success', 3000);
+            setTimeout(() => nextRound(), 1500);
+        };
+
+        card.innerHTML = `
+            <div style="font-size: 2em; margin-bottom: 5px;">${target.avatar || '🎨'}</div>
+            <h3>${target.name}</h3>
+            <div class="player-score">${target.score} pts</div>
+        `;
+
+        targetList.appendChild(card);
+    });
+}
+
+function useHeldCurse(curserIndex) {
+    const curser = gameState.players[curserIndex];
+    const modifier = curser.heldCurse;
+    curser.heldCurse = null;
+
+    const modifierQueue = document.getElementById('modifierQueue');
+    modifierQueue.innerHTML = `
+        <div class="center">
+            <h2 style="color: #FFB6C1; margin: 20px 0;">
+                ${curser.avatar} ${curser.name} uses held curse!
+            </h2>
 
             <div class="modifier-card">
                 <div style="font-size: 4em; margin-bottom: 15px;">${modifier.icon}</div>
@@ -1077,7 +1173,7 @@ function showModifierCard(curserIndex, modifier, onComplete) {
         card.onclick = () => {
             gameState.pendingModifiers.push({curserIndex, targetIndex, modifier});
             showNotification(`${target.name} has been cursed with ${modifier.name}!`, 'success', 3000);
-            onComplete();
+            setTimeout(() => nextRound(), 1500);
         };
 
         card.innerHTML = `
@@ -1088,6 +1184,15 @@ function showModifierCard(curserIndex, modifier, onComplete) {
 
         targetList.appendChild(card);
     });
+}
+
+function holdCurseForLater(curserIndex) {
+    const curser = gameState.players[curserIndex];
+    curser.heldCurse = curser.tempModifier;
+    curser.tempModifier = null;
+
+    showNotification(`${curser.name} holds the curse for next round!`, 'info', 3000);
+    setTimeout(() => nextRound(), 1500);
 }
 
 function nextRound() {
