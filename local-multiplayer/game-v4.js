@@ -567,7 +567,11 @@ function rollAlignment() {
             `;
 
             if (randomAlignment === 'U') {
+                // Add judges-choice class to make entire grid light up
+                grid.classList.add('judges-choice');
                 showJudgeChoiceSelection();
+            } else {
+                grid.classList.remove('judges-choice');
             }
         }
     }, 100);
@@ -602,6 +606,10 @@ function selectJudgeAlignment(alignment, cellElement) {
         cell.classList.remove('selected');
     });
     cellElement.classList.add('selected');
+
+    // Remove judges-choice glow from main grid
+    const mainGrid = document.getElementById('alignmentGrid');
+    mainGrid.classList.remove('judges-choice');
 
     const description = document.getElementById('alignmentDescription');
     description.innerHTML = `
