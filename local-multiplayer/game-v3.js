@@ -479,21 +479,31 @@ function rollAlignment() {
         grid.appendChild(cell);
     });
 
-    // Animate the rolling effect
+    // Animate the rolling effect with multiple cells glittering
     let rollCount = 0;
     const maxRolls = 25;
     const rollInterval = setInterval(() => {
         const cells = grid.querySelectorAll('.alignment-cell');
         cells.forEach(cell => cell.classList.remove('rolling'));
 
-        const randomCell = cells[Math.floor(Math.random() * cells.length)];
-        randomCell.classList.add('rolling');
+        // Light up 2-4 random cells at once for more dramatic effect
+        const numCellsToLight = 2 + Math.floor(Math.random() * 3); // 2-4 cells
+        const litCells = new Set();
+
+        while (litCells.size < numCellsToLight && litCells.size < cells.length) {
+            const randomIndex = Math.floor(Math.random() * cells.length);
+            litCells.add(randomIndex);
+        }
+
+        litCells.forEach(index => {
+            cells[index].classList.add('rolling');
+        });
 
         rollCount++;
         if (rollCount >= maxRolls) {
             clearInterval(rollInterval);
 
-            // Show final result
+            // Show final result - turn off all glittering
             cells.forEach(cell => cell.classList.remove('rolling'));
 
             if (randomAlignment !== 'U') {
@@ -584,7 +594,7 @@ function displayPrompts() {
         const card = document.createElement('div');
         card.className = 'prompt-card dealing';
         card.style.animationDelay = `${index * 0.2}s`;
-        card.innerHTML = `<h3>Option ${index + 1}</h3><p>${prompt}</p>`;
+        card.innerHTML = `<p>${prompt}</p>`;
         card.onclick = () => selectPrompt(prompt, card);
         promptsList.appendChild(card);
 

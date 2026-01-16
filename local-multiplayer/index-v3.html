@@ -241,13 +241,14 @@
             margin: 25px 0;
             transition: all 0.3s ease-in-out;
             max-height: 2000px;
-            overflow: hidden;
+            overflow: visible;
         }
 
         #scoreboard.collapsed .player-list {
             max-height: 0;
             margin: 0;
             opacity: 0;
+            overflow: hidden;
         }
 
         .player-card {
@@ -262,7 +263,7 @@
         }
 
         .player-card:hover {
-            transform: translateY(-5px) scale(1.03);
+            transform: translateY(-3px) scale(1.01);
             box-shadow: 0 8px 25px rgba(255, 105, 180, 0.6);
             border-color: #FF1493;
         }
@@ -443,11 +444,12 @@
 
         .prompt-card p {
             text-align: center;
-            font-size: 1.4em;
+            font-size: 1.7em;
             font-weight: bold;
-            line-height: 1.6;
+            line-height: 1.5;
             color: #FFB6C1;
-            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            padding: 20px;
         }
 
         .prompt-card.selected {
