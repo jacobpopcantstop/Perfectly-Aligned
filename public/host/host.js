@@ -24,7 +24,10 @@ let gameState = {
         selectedDecks: ['core_white', 'creative_cyan'],
         timerDuration: 90,
         targetScore: 5
-    }
+    },
+    // Modifier state
+    currentCurser: null,
+    currentModifier: null
 };
 
 // DOM Elements
@@ -57,6 +60,20 @@ const elements = {
     drawingPhase: document.getElementById('drawing-phase'),
     judgingPhase: document.getElementById('judging-phase'),
     scoringPhase: document.getElementById('scoring-phase'),
+    modifiersPhase: document.getElementById('modifiers-phase'),
+
+    // Modifiers
+    curserAvatar: document.getElementById('curser-avatar'),
+    curserName: document.getElementById('curser-name'),
+    modifierCard: document.getElementById('modifier-card'),
+    modifierIcon: document.getElementById('modifier-icon'),
+    modifierName: document.getElementById('modifier-name'),
+    modifierDescription: document.getElementById('modifier-description'),
+    drawCurseBtn: document.getElementById('draw-curse-btn'),
+    useHeldCurseBtn: document.getElementById('use-held-curse-btn'),
+    holdCurseBtn: document.getElementById('hold-curse-btn'),
+    curseTargets: document.getElementById('curse-targets'),
+    skipModifiersBtn: document.getElementById('skip-modifiers-btn'),
 
     // Alignment
     alignmentGrid: document.getElementById('alignment-grid'),
@@ -168,6 +185,12 @@ function setupSocketListeners() {
     socket.on('game:newRound', handleNewRound);
     socket.on('game:stealExecuted', handleStealExecuted);
     socket.on('game:over', handleGameOver);
+
+    // Modifier events
+    socket.on('game:modifierPhase', handleModifierPhase);
+    socket.on('game:curseCardDrawn', handleCurseCardDrawn);
+    socket.on('game:curseApplied', handleCurseApplied);
+    socket.on('game:curseHeld', handleCurseHeld);
 
     // Connection events
     socket.on('connect', () => console.log('Connected to server'));
@@ -318,17 +341,31 @@ function rollAlignment() {
     elements.rollBtn.disabled = true;
     playSound('roll');
 
-    // Flicker animation
+    // Enhanced flicker animation - multiple cells at once (like local V4)
     const cells = document.querySelectorAll('.alignment-cell');
     let flickerCount = 0;
+    const maxFlickers = 25;
     const flickerInterval = setInterval(() => {
-        cells.forEach(c => c.classList.remove('flicker'));
-        const randomCell = cells[Math.floor(Math.random() * cells.length)];
-        randomCell.classList.add('flicker');
+        cells.forEach(c => c.classList.remove('flicker', 'rolling'));
+
+        // Light up 2-4 random cells at once for more dramatic effect
+        const numCellsToLight = 2 + Math.floor(Math.random() * 3);
+        const litCells = new Set();
+
+        while (litCells.size < numCellsToLight && litCells.size < cells.length) {
+            const randomIndex = Math.floor(Math.random() * cells.length);
+            litCells.add(randomIndex);
+        }
+
+        litCells.forEach(index => {
+            cells[index].classList.add('rolling');
+        });
+
         flickerCount++;
 
-        if (flickerCount >= 15) {
+        if (flickerCount >= maxFlickers) {
             clearInterval(flickerInterval);
+            cells.forEach(c => c.classList.remove('rolling'));
             socket.emit('host:rollAlignment', (response) => {
                 if (!response.success) {
                     alert('Failed to roll: ' + response.error);
@@ -341,16 +378,30 @@ function rollAlignment() {
 
 function handleAlignmentRolled(data) {
     const cells = document.querySelectorAll('.alignment-cell');
+    const alignmentGrid = document.getElementById('alignment-grid');
+
     cells.forEach(c => {
-        c.classList.remove('flicker');
-        c.classList.remove('highlighted');
-        if (c.dataset.alignment === data.alignment) {
-            c.classList.add('highlighted');
-        }
+        c.classList.remove('flicker', 'rolling', 'highlighted');
     });
 
     gameState.alignment = data.alignment;
     gameState.alignmentName = data.fullName;
+
+    // Handle Judge's Choice ('U') with purple glow on entire grid
+    if (data.alignment === 'U') {
+        if (alignmentGrid) {
+            alignmentGrid.classList.add('judges-choice');
+        }
+    } else {
+        if (alignmentGrid) {
+            alignmentGrid.classList.remove('judges-choice');
+        }
+        cells.forEach(c => {
+            if (c.dataset.alignment === data.alignment) {
+                c.classList.add('highlighted');
+            }
+        });
+    }
 
     elements.rolledAlignment.textContent = data.alignment;
     elements.rolledAlignmentName.textContent = data.fullName;
@@ -600,10 +651,219 @@ function nextRound() {
         });
     }
 
-    // Advance to next round
-    socket.emit('host:nextRound', (response) => {
+    // Check for modifier phase before advancing
+    socket.emit('host:checkModifiers', (response) => {
+        if (response.hasModifierPhase) {
+            // Modifier phase will be shown via socket event
+        } else {
+            // No modifier phase, advance directly
+            socket.emit('host:nextRound', (nextResponse) => {
+                if (!nextResponse.success) {
+                    alert('Failed to advance: ' + nextResponse.error);
+                }
+            });
+        }
+    });
+}
+
+// ==================== MODIFIER PHASE ====================
+
+function handleModifierPhase(data) {
+    gameState.currentCurser = data.curser;
+    gameState.currentModifier = null;
+
+    showPhase('modifiers');
+
+    // Set curser display
+    if (elements.curserAvatar) {
+        elements.curserAvatar.style.backgroundImage = `url('/assets/images/avatars/${data.curser.avatar}')`;
+    }
+    if (elements.curserName) {
+        elements.curserName.textContent = data.curser.name;
+    }
+
+    // Hide modifier card initially
+    if (elements.modifierCard) {
+        elements.modifierCard.style.display = 'none';
+    }
+
+    // Show/hide held curse button
+    if (elements.useHeldCurseBtn) {
+        if (data.hasHeldCurse && data.heldCurse) {
+            elements.useHeldCurseBtn.style.display = 'inline-block';
+            elements.useHeldCurseBtn.textContent = `Use Held Curse: ${data.heldCurse.icon} ${data.heldCurse.name}`;
+            elements.useHeldCurseBtn.onclick = () => useHeldCurse(data.heldCurse);
+        } else {
+            elements.useHeldCurseBtn.style.display = 'none';
+        }
+    }
+
+    // Show draw button, hide others
+    if (elements.drawCurseBtn) {
+        elements.drawCurseBtn.style.display = 'inline-block';
+        elements.drawCurseBtn.disabled = false;
+    }
+    if (elements.holdCurseBtn) {
+        elements.holdCurseBtn.style.display = 'none';
+    }
+    if (elements.curseTargets) {
+        elements.curseTargets.innerHTML = '';
+        elements.curseTargets.style.display = 'none';
+    }
+    if (elements.skipModifiersBtn) {
+        elements.skipModifiersBtn.style.display = 'inline-block';
+    }
+}
+
+function drawCurseCard() {
+    if (elements.drawCurseBtn) {
+        elements.drawCurseBtn.disabled = true;
+    }
+
+    socket.emit('host:drawCurseCard', (response) => {
         if (!response.success) {
-            alert('Failed to advance: ' + response.error);
+            alert('Failed to draw curse: ' + response.error);
+            if (elements.drawCurseBtn) {
+                elements.drawCurseBtn.disabled = false;
+            }
+        }
+    });
+}
+
+function handleCurseCardDrawn(data) {
+    gameState.currentModifier = data.modifier;
+
+    // Show the modifier card with animation
+    if (elements.modifierCard) {
+        elements.modifierCard.style.display = 'block';
+        elements.modifierCard.classList.add('dealing');
+        setTimeout(() => elements.modifierCard.classList.remove('dealing'), 800);
+    }
+    if (elements.modifierIcon) {
+        elements.modifierIcon.textContent = data.modifier.icon;
+    }
+    if (elements.modifierName) {
+        elements.modifierName.textContent = data.modifier.name;
+    }
+    if (elements.modifierDescription) {
+        elements.modifierDescription.textContent = data.modifier.description;
+    }
+
+    // Hide draw button, show target selection
+    if (elements.drawCurseBtn) {
+        elements.drawCurseBtn.style.display = 'none';
+    }
+    if (elements.useHeldCurseBtn) {
+        elements.useHeldCurseBtn.style.display = 'none';
+    }
+    if (elements.holdCurseBtn) {
+        elements.holdCurseBtn.style.display = 'inline-block';
+    }
+
+    // Generate target buttons
+    generateCurseTargets(data.modifier);
+}
+
+function generateCurseTargets(modifier) {
+    if (!elements.curseTargets) return;
+
+    elements.curseTargets.innerHTML = '<h4>Choose target:</h4>';
+    elements.curseTargets.style.display = 'block';
+
+    gameState.players.forEach((player, index) => {
+        // Skip curser and judge
+        if (player.id === gameState.currentCurser?.id) return;
+        if (player.isJudge) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'curse-target-btn';
+        btn.innerHTML = `
+            <div class="mini-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
+            <span>${player.name}</span>
+        `;
+        btn.onclick = () => applyCurseToTarget(index, modifier);
+        elements.curseTargets.appendChild(btn);
+    });
+}
+
+function applyCurseToTarget(targetIndex, modifier) {
+    socket.emit('host:applyCurse', { targetIndex, modifier }, (response) => {
+        if (!response.success) {
+            alert('Failed to apply curse: ' + response.error);
+        }
+    });
+}
+
+function useHeldCurse(heldCurse) {
+    gameState.currentModifier = heldCurse;
+
+    // Show the modifier card
+    if (elements.modifierCard) {
+        elements.modifierCard.style.display = 'block';
+    }
+    if (elements.modifierIcon) {
+        elements.modifierIcon.textContent = heldCurse.icon;
+    }
+    if (elements.modifierName) {
+        elements.modifierName.textContent = heldCurse.name;
+    }
+    if (elements.modifierDescription) {
+        elements.modifierDescription.textContent = heldCurse.description;
+    }
+
+    // Hide buttons, show targets
+    if (elements.drawCurseBtn) {
+        elements.drawCurseBtn.style.display = 'none';
+    }
+    if (elements.useHeldCurseBtn) {
+        elements.useHeldCurseBtn.style.display = 'none';
+    }
+    if (elements.holdCurseBtn) {
+        elements.holdCurseBtn.style.display = 'none';
+    }
+
+    generateCurseTargets(heldCurse);
+}
+
+function holdCurseForLater() {
+    if (!gameState.currentModifier) return;
+
+    socket.emit('host:holdCurse', gameState.currentModifier, (response) => {
+        if (response.success) {
+            showNotification(`Curse held for next round!`);
+            // Advance to next round
+            socket.emit('host:nextRound', (nextResponse) => {
+                if (!nextResponse.success) {
+                    alert('Failed to advance: ' + nextResponse.error);
+                }
+            });
+        } else {
+            alert('Failed to hold curse: ' + response.error);
+        }
+    });
+}
+
+function handleCurseApplied(data) {
+    showNotification(`${data.targetName} has been cursed with ${data.modifier.name}!`);
+
+    // Advance to next round after showing curse
+    setTimeout(() => {
+        socket.emit('host:nextRound', (response) => {
+            if (!response.success) {
+                alert('Failed to advance: ' + response.error);
+            }
+        });
+    }, 2000);
+}
+
+function handleCurseHeld(data) {
+    // State updated via socket, now advance
+}
+
+function skipModifierPhase() {
+    socket.emit('host:skipModifiers', (response) => {
+        if (!response.success) {
+            alert('Failed to skip: ' + response.error);
         }
     });
 }
@@ -632,8 +892,12 @@ function handleNewRound(data) {
 function resetPhaseUI() {
     // Alignment phase
     document.querySelectorAll('.alignment-cell').forEach(c => {
-        c.classList.remove('flicker', 'highlighted');
+        c.classList.remove('flicker', 'highlighted', 'judges-choice');
     });
+    const alignmentGrid = document.getElementById('alignment-grid');
+    if (alignmentGrid) {
+        alignmentGrid.classList.remove('judges-choice');
+    }
     elements.alignmentResult.style.display = 'none';
     elements.rollBtn.disabled = false;
 
@@ -653,6 +917,16 @@ function resetPhaseUI() {
 
     // Scoring phase
     elements.tokenAwards.innerHTML = '';
+
+    // Modifiers phase
+    gameState.currentCurser = null;
+    gameState.currentModifier = null;
+    if (elements.modifierCard) {
+        elements.modifierCard.style.display = 'none';
+    }
+    if (elements.curseTargets) {
+        elements.curseTargets.innerHTML = '';
+    }
 }
 
 function handleStealExecuted(data) {
@@ -682,11 +956,26 @@ function updateScoreboard() {
 
         const totalTokens = Object.values(player.tokens || {}).reduce((a, b) => a + b, 0);
 
+        // Check for active modifiers
+        let modifierDisplay = '';
+        if (player.activeModifiers && player.activeModifiers.length > 0) {
+            const modIcons = player.activeModifiers.map(m => m.icon).join(' ');
+            modifierDisplay = `<span class="curse-badge" title="Cursed!">${modIcons}</span>`;
+        }
+
+        // Check for held curse
+        let heldCurseDisplay = '';
+        if (player.heldCurse) {
+            heldCurseDisplay = `<span class="held-curse-badge" title="Held: ${player.heldCurse.name}">💾${player.heldCurse.icon}</span>`;
+        }
+
         li.innerHTML = `
             <div class="score-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
             <span class="score-name">${player.name}</span>
             <span class="score-value">${player.score}</span>
             ${totalTokens > 0 ? `<span class="score-tokens" title="Total tokens: ${totalTokens}">${totalTokens}T</span>` : ''}
+            ${modifierDisplay}
+            ${heldCurseDisplay}
             ${player.isJudge ? '<span class="judge-badge">JUDGE</span>' : ''}
         `;
         elements.scoreboardList.appendChild(li);

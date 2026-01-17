@@ -2,7 +2,7 @@
  * Room - Manages a single game room with all players and game state
  */
 
-const { THEMED_DECKS, ALIGNMENTS, ALIGNMENT_FULL_NAMES, TOKEN_TYPES, AVATARS } = require('./constants');
+const { THEMED_DECKS, ALIGNMENTS, ALIGNMENT_FULL_NAMES, TOKEN_TYPES, MODIFIERS, AVATARS } = require('./constants');
 
 class Room {
     constructor(code, hostId) {
@@ -14,9 +14,14 @@ class Room {
 
         // Game state
         this.gameStarted = false;
-        this.gamePhase = 'lobby'; // lobby, alignment, prompts, drawing, judging, scoring, gameOver
+        this.gamePhase = 'lobby'; // lobby, alignment, prompts, drawing, judging, scoring, modifiers, gameOver
         this.currentRound = 0;
         this.judgeIndex = 0;
+
+        // Modifier/curse state
+        this.modifiersEnabled = true;
+        this.pendingModifiers = []; // {curserIndex, targetIndex, modifier}
+        this.currentCurser = null; // Player who can assign curse this round
 
         // Round state
         this.currentAlignment = null;
@@ -84,7 +89,9 @@ class Room {
                 plotTwist: 0
             },
             connected: true,
-            isJudge: false
+            isJudge: false,
+            activeModifiers: [], // Current round curses
+            heldCurse: null // Curse held for next round
         };
 
         this.players.push(player);
@@ -393,6 +400,131 @@ class Room {
     }
 
     /**
+     * Check if modifier phase should happen
+     */
+    checkForModifierPhase() {
+        if (!this.modifiersEnabled) {
+            return { hasModifierPhase: false };
+        }
+
+        // Find lowest score
+        const lowestScore = Math.min(...this.players.map(p => p.score));
+        const leaderScore = Math.max(...this.players.map(p => p.score));
+
+        // Find all players in last place (excluding judge)
+        const lastPlacePlayers = this.players
+            .map((player, index) => ({ player, index }))
+            .filter(({ player, index }) => player.score === lowestScore && index !== this.judgeIndex);
+
+        // Only give curse if there's actually a last place
+        // Skip on round 1 if everyone is tied at 0
+        if (lowestScore === leaderScore && this.currentRound === 1) {
+            return { hasModifierPhase: false };
+        }
+
+        // Skip if no valid last place players
+        if (lastPlacePlayers.length === 0) {
+            return { hasModifierPhase: false };
+        }
+
+        // Pick ONE random player from last place to curse
+        const curserData = lastPlacePlayers[Math.floor(Math.random() * lastPlacePlayers.length)];
+        this.currentCurser = curserData;
+
+        this.gamePhase = 'modifiers';
+        this.lastActivity = Date.now();
+
+        return {
+            hasModifierPhase: true,
+            curser: curserData.player,
+            curserIndex: curserData.index,
+            hasHeldCurse: !!curserData.player.heldCurse,
+            heldCurse: curserData.player.heldCurse
+        };
+    }
+
+    /**
+     * Draw a random curse card
+     */
+    drawCurseCard() {
+        if (this.gamePhase !== 'modifiers') {
+            return { success: false, error: 'Wrong phase' };
+        }
+
+        const modifier = MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
+        this.lastActivity = Date.now();
+
+        return { success: true, modifier };
+    }
+
+    /**
+     * Apply curse to a target player
+     */
+    applyCurse(targetIndex, modifier) {
+        if (this.gamePhase !== 'modifiers') {
+            return { success: false, error: 'Wrong phase' };
+        }
+
+        const target = this.players[targetIndex];
+        if (!target) {
+            return { success: false, error: 'Target not found' };
+        }
+
+        if (targetIndex === this.judgeIndex) {
+            return { success: false, error: 'Cannot curse the judge' };
+        }
+
+        if (this.currentCurser && targetIndex === this.currentCurser.index) {
+            return { success: false, error: 'Cannot curse yourself' };
+        }
+
+        // Add to pending modifiers (will be applied next round)
+        this.pendingModifiers.push({
+            curserIndex: this.currentCurser ? this.currentCurser.index : null,
+            targetIndex,
+            modifier
+        });
+
+        // Clear held curse if player used it
+        if (this.currentCurser) {
+            this.currentCurser.player.heldCurse = null;
+        }
+
+        this.lastActivity = Date.now();
+
+        return {
+            success: true,
+            targetName: target.name,
+            modifier
+        };
+    }
+
+    /**
+     * Hold curse for later
+     */
+    holdCurse(modifier) {
+        if (this.gamePhase !== 'modifiers') {
+            return { success: false, error: 'Wrong phase' };
+        }
+
+        if (!this.currentCurser) {
+            return { success: false, error: 'No curser set' };
+        }
+
+        this.currentCurser.player.heldCurse = modifier;
+        this.lastActivity = Date.now();
+
+        return { success: true };
+    }
+
+    /**
+     * Skip modifier phase and advance to next round
+     */
+    skipModifierPhase() {
+        return this.advanceRound();
+    }
+
+    /**
      * Advance to next round
      */
     advanceRound() {
@@ -407,6 +539,20 @@ class Room {
         this.currentRound++;
         this.judgeIndex = (this.judgeIndex + 1) % this.players.length;
         this.updateJudge();
+
+        // Clear all active modifiers from previous round
+        this.players.forEach(player => {
+            player.activeModifiers = [];
+        });
+
+        // Apply pending modifiers (curses from last round)
+        this.pendingModifiers.forEach(({ targetIndex, modifier }) => {
+            if (this.players[targetIndex]) {
+                this.players[targetIndex].activeModifiers.push(modifier);
+            }
+        });
+        this.pendingModifiers = [];
+        this.currentCurser = null;
 
         // Reset round state
         this.currentAlignment = null;
@@ -518,7 +664,9 @@ class Room {
             tokens: { ...p.tokens },
             totalTokens: this.getPlayerTokenTotal(p),
             connected: p.connected,
-            isJudge: p.isJudge
+            isJudge: p.isJudge,
+            activeModifiers: p.activeModifiers || [],
+            heldCurse: p.heldCurse || null
         }));
     }
 
@@ -540,7 +688,16 @@ class Room {
             selectedPrompt: this.selectedPrompt,
             submissionCount: this.submissions.size,
             selectedWinner: this.selectedWinner,
-            settings: this.settings
+            settings: this.settings,
+            modifiersEnabled: this.modifiersEnabled,
+            currentCurser: this.currentCurser ? {
+                playerId: this.currentCurser.player.id,
+                playerName: this.currentCurser.player.name,
+                playerAvatar: this.currentCurser.player.avatar,
+                index: this.currentCurser.index,
+                hasHeldCurse: !!this.currentCurser.player.heldCurse,
+                heldCurse: this.currentCurser.player.heldCurse
+            } : null
         };
     }
 

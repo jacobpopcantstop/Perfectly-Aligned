@@ -211,7 +211,103 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host advances to next round
+    // Host checks for modifier phase before advancing
+    socket.on('host:checkModifiers', (callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const result = room.checkForModifierPhase();
+        if (result.hasModifierPhase) {
+            io.to(room.code).emit('game:modifierPhase', {
+                curser: result.curser,
+                curserIndex: result.curserIndex,
+                hasHeldCurse: result.hasHeldCurse,
+                heldCurse: result.heldCurse,
+                gameState: room.getState()
+            });
+        }
+        callback(result);
+    });
+
+    // Host draws a curse card
+    socket.on('host:drawCurseCard', (callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const result = room.drawCurseCard();
+        if (result.success) {
+            io.to(room.code).emit('game:curseCardDrawn', {
+                modifier: result.modifier
+            });
+        }
+        callback(result);
+    });
+
+    // Host applies curse to target
+    socket.on('host:applyCurse', (data, callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const { targetIndex, modifier } = data;
+        const result = room.applyCurse(targetIndex, modifier);
+        if (result.success) {
+            io.to(room.code).emit('game:curseApplied', {
+                targetName: result.targetName,
+                modifier: result.modifier,
+                gameState: room.getState()
+            });
+        }
+        callback(result);
+    });
+
+    // Host holds curse for later
+    socket.on('host:holdCurse', (modifier, callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const result = room.holdCurse(modifier);
+        if (result.success) {
+            io.to(room.code).emit('game:curseHeld', {
+                gameState: room.getState()
+            });
+        }
+        callback(result);
+    });
+
+    // Host skips modifier phase and advances to next round
+    socket.on('host:skipModifiers', (callback) => {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room || !socket.isHost) {
+            return callback({ success: false, error: 'Not authorized' });
+        }
+
+        const result = room.advanceRound();
+        if (result.success) {
+            if (result.gameOver) {
+                io.to(room.code).emit('game:over', {
+                    winner: result.winner,
+                    finalScores: room.getScores()
+                });
+            } else {
+                io.to(room.code).emit('game:newRound', {
+                    round: room.currentRound,
+                    judge: room.getCurrentJudge(),
+                    gameState: room.getState()
+                });
+            }
+        }
+        callback(result);
+    });
+
+    // Host advances to next round (after modifier phase or directly)
     socket.on('host:nextRound', (callback) => {
         const room = gameManager.getRoom(socket.roomCode);
         if (!room || !socket.isHost) {
