@@ -685,6 +685,241 @@
     }
 }
 
+/* Tic-Tac-Toe Grid Style */
+.alignment-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    max-width: 400px;
+    margin: 20px auto;
+    border: 4px solid var(--neon-blue);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.alignment-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8em;
+    background: rgba(20, 20, 40, 0.9);
+    border: none;
+    transition: all 0.2s ease;
+    position: relative;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Internal grid lines only */
+.alignment-cell:nth-child(1), .alignment-cell:nth-child(2), .alignment-cell:nth-child(3),
+.alignment-cell:nth-child(4), .alignment-cell:nth-child(5), .alignment-cell:nth-child(6) {
+    border-bottom: 2px solid var(--neon-blue);
+}
+
+.alignment-cell:nth-child(1), .alignment-cell:nth-child(2),
+.alignment-cell:nth-child(4), .alignment-cell:nth-child(5),
+.alignment-cell:nth-child(7), .alignment-cell:nth-child(8) {
+    border-right: 2px solid var(--neon-blue);
+}
+
+/* Rolling animation - multiple cells at once */
+.alignment-cell.rolling {
+    background: linear-gradient(135deg, var(--neon-blue) 0%, var(--neon-pink) 100%);
+    color: var(--panel-bg);
+    animation: shimmer-glitter 0.3s ease-in-out;
+    box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes shimmer-glitter {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.5); }
+}
+
+/* Judge's Choice - entire grid glows purple */
+.alignment-grid.judges-choice {
+    animation: judges-choice-glow 1.5s ease-in-out infinite;
+    border-color: #a855f7;
+    box-shadow: 0 0 40px rgba(168, 85, 247, 0.8);
+}
+
+@keyframes judges-choice-glow {
+    0%, 100% {
+        box-shadow: 0 0 40px rgba(168, 85, 247, 0.6), inset 0 0 30px rgba(168, 85, 247, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 60px rgba(168, 85, 247, 0.9), inset 0 0 50px rgba(168, 85, 247, 0.4);
+    }
+}
+
+.alignment-grid.judges-choice .alignment-cell {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(139, 92, 246, 0.3) 100%);
+}
+
+/* ==================== MODIFIER/CURSE PHASE ==================== */
+.curser-display {
+    margin-bottom: 30px;
+}
+
+.curse-intro {
+    font-size: 1.2em;
+    color: var(--neon-pink);
+    margin-bottom: 20px;
+}
+
+.curser-display .avatar-large {
+    border-color: var(--neon-pink);
+    box-shadow: 0 0 30px var(--neon-pink);
+}
+
+#curser-name {
+    display: block;
+    font-size: 1.8em;
+    color: var(--neon-green);
+    margin-top: 15px;
+}
+
+/* Curse Card */
+.curse-card {
+    max-width: 300px;
+    margin: 30px auto;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    border: 4px solid var(--neon-pink);
+    border-radius: 15px;
+    padding: 30px;
+    box-shadow: 0 0 30px rgba(255, 0, 255, 0.5),
+                inset 0 0 20px rgba(255, 0, 255, 0.1);
+}
+
+.curse-card.dealing {
+    animation: curse-deal 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes curse-deal {
+    0% {
+        opacity: 0;
+        transform: translateY(-100px) rotateZ(-20deg) scale(0.5);
+    }
+    60% {
+        transform: translateY(10px) rotateZ(5deg) scale(1.1);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) rotateZ(0) scale(1);
+    }
+}
+
+.curse-card-inner {
+    text-align: center;
+}
+
+.curse-icon {
+    display: block;
+    font-size: 4em;
+    margin-bottom: 15px;
+    animation: icon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.curse-name {
+    display: block;
+    font-size: 1.5em;
+    color: var(--neon-yellow);
+    text-shadow: 2px 2px 0 var(--neon-pink);
+    margin-bottom: 15px;
+}
+
+.curse-description {
+    font-family: var(--readable-font);
+    font-size: 1em;
+    color: var(--light-grey);
+    margin: 0;
+}
+
+/* Curse Actions */
+.curse-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 15px;
+    margin: 30px 0;
+}
+
+.action-button.curse {
+    background: linear-gradient(135deg, var(--neon-pink) 0%, #a855f7 100%);
+    color: white;
+    border-color: var(--neon-pink);
+}
+
+.action-button.curse:hover {
+    box-shadow: 0 0 20px var(--neon-pink);
+}
+
+.action-button.held {
+    background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+    color: white;
+    border-color: #f59e0b;
+}
+
+/* Curse Targets */
+.curse-targets {
+    margin-top: 30px;
+}
+
+.curse-targets h4 {
+    color: var(--neon-pink);
+    margin-bottom: 20px;
+}
+
+.curse-target-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: var(--panel-bg);
+    border: 2px solid var(--medium-grey);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 5px;
+}
+
+.curse-target-btn:hover {
+    border-color: var(--neon-pink);
+    background: rgba(255, 0, 255, 0.1);
+    transform: translateY(-3px);
+}
+
+.curse-target-btn .mini-avatar {
+    width: 40px;
+    height: 40px;
+    background-size: cover;
+    border-radius: 50%;
+    border: 2px solid var(--neon-blue);
+}
+
+/* Scoreboard Curse Badges */
+.curse-badge {
+    font-size: 0.9em;
+    background: linear-gradient(135deg, rgba(255, 0, 255, 0.3) 0%, rgba(239, 68, 68, 0.3) 100%);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--neon-pink);
+    margin-left: 5px;
+}
+
+.held-curse-badge {
+    font-size: 0.8em;
+    background: rgba(245, 158, 11, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #f59e0b;
+    margin-left: 5px;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
     #scoreboard {

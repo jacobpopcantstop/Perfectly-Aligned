@@ -17,7 +17,9 @@ let playerState = {
     score: 0,
     tokens: { mindReader: 0, technicalMerit: 0, perfectAlignment: 0, plotTwist: 0 },
     hasSubmitted: false,
-    currentPhase: 'join'
+    currentPhase: 'join',
+    activeModifiers: [],
+    heldCurse: null
 };
 
 // Available avatars (matches server constants)
@@ -183,6 +185,11 @@ function setupSocketListeners() {
     socket.on('game:newRound', handleNewRound);
     socket.on('game:stealExecuted', handleStealExecuted);
     socket.on('game:over', handleGameOver);
+
+    // Modifier events
+    socket.on('game:modifierPhase', handleModifierPhase);
+    socket.on('game:curseCardDrawn', handleCurseCardDrawn);
+    socket.on('game:curseApplied', handleCurseApplied);
 }
 
 // ==================== SCREENS ====================
@@ -265,6 +272,8 @@ function handleGameState(state) {
         playerState.isJudge = me.isJudge;
         playerState.score = me.score;
         playerState.tokens = me.tokens;
+        playerState.activeModifiers = me.activeModifiers || [];
+        playerState.heldCurse = me.heldCurse || null;
     }
 
     switch (state.gamePhase) {
@@ -291,6 +300,12 @@ function handleGameState(state) {
             break;
         case 'scoring':
             showScreen('results');
+            break;
+        case 'modifiers':
+            showScreen('waiting');
+            if (state.currentCurser) {
+                elements.judgeNameWaiting.textContent = state.currentCurser.playerName + ' (Cursing)';
+            }
             break;
         case 'gameOver':
             showScreen('gameover');
@@ -372,11 +387,33 @@ function handleStartDrawing(data) {
     elements.submissionStatus.textContent = '';
     elements.submitDrawingBtn.disabled = false;
 
+    // Update active modifiers display
+    updateModifiersDisplay();
+
     // Reset canvas
     clearCanvas();
     resizeCanvas();
 
     showScreen('drawing');
+}
+
+function updateModifiersDisplay() {
+    const modifiersContainer = document.getElementById('active-modifiers');
+    if (!modifiersContainer) return;
+
+    if (playerState.activeModifiers && playerState.activeModifiers.length > 0) {
+        modifiersContainer.style.display = 'block';
+        modifiersContainer.innerHTML = playerState.activeModifiers.map(mod =>
+            `<div class="modifier-badge">
+                <span class="mod-icon">${mod.icon}</span>
+                <span class="mod-name">${mod.name}</span>
+                <span class="mod-desc">${mod.description}</span>
+            </div>`
+        ).join('');
+    } else {
+        modifiersContainer.style.display = 'none';
+        modifiersContainer.innerHTML = '';
+    }
 }
 
 // ==================== DRAWING ====================
@@ -644,6 +681,8 @@ function handleNewRound(data) {
         playerState.isJudge = me.isJudge;
         playerState.score = me.score;
         playerState.tokens = me.tokens;
+        playerState.activeModifiers = me.activeModifiers || [];
+        playerState.heldCurse = me.heldCurse || null;
     }
 
     playerState.hasSubmitted = false;
@@ -707,6 +746,46 @@ function handleStealExecuted(data) {
         showNotification(`You stole a point from ${data.targetName}!`);
     } else if (data.targetId === playerState.playerId) {
         showNotification(`${data.stealerName} stole a point from you!`);
+    }
+}
+
+// ==================== MODIFIER PHASE ====================
+
+function handleModifierPhase(data) {
+    // Update player state from game state
+    if (data.gameState) {
+        const me = data.gameState.players.find(p => p.id === playerState.playerId);
+        if (me) {
+            playerState.activeModifiers = me.activeModifiers || [];
+            playerState.heldCurse = me.heldCurse || null;
+        }
+    }
+
+    // Show notification about curse phase
+    showNotification(`${data.curser.name} is choosing a curse!`);
+
+    // Show waiting screen during modifier phase
+    showScreen('waiting');
+    updateJudgeDisplay(data.curser);
+    elements.judgeNameWaiting.textContent = data.curser.name + ' (Cursing)';
+}
+
+function handleCurseCardDrawn(data) {
+    showNotification(`Curse drawn: ${data.modifier.icon} ${data.modifier.name}`);
+}
+
+function handleCurseApplied(data) {
+    // Check if curse was applied to me
+    const me = data.gameState.players.find(p => p.id === playerState.playerId);
+    if (me) {
+        playerState.activeModifiers = me.activeModifiers || [];
+    }
+
+    if (me && me.activeModifiers && me.activeModifiers.length > 0) {
+        const latestCurse = me.activeModifiers[me.activeModifiers.length - 1];
+        showNotification(`You've been cursed! ${latestCurse.icon} ${latestCurse.name}`);
+    } else if (data.targetName) {
+        showNotification(`${data.targetName} has been cursed!`);
     }
 }
 

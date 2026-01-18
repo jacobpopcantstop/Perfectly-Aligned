@@ -39,21 +39,47 @@ const ALIGNMENT_EXAMPLES = {
 const TOKEN_TYPES = {
     mindReader: {
         name: 'Mind Reader',
+        icon: '🧠',
         description: "Close match to Judge's thought."
     },
     technicalMerit: {
         name: 'Technical Merit',
+        icon: '🎨',
         description: "Exceptional artistic skill."
     },
     perfectAlignment: {
         name: 'Perfect Alignment',
+        icon: '⚖️',
         description: "Brilliant alignment capture."
     },
     plotTwist: {
         name: 'Plot Twist',
+        icon: '🌀',
         description: "Surprising/unexpected interpretation."
     }
 };
+
+const MODIFIERS = [
+    { id: 'drink', name: "Liquid Courage", description: "Must finish your drink before presentation is finished", icon: "🍺" },
+    { id: 'delay15', name: "Slow Start", description: "Can't start drawing until 15 seconds pass", icon: "⏳" },
+    { id: 'delay30', name: "Fashionably Late", description: "Can't start drawing until after 30 second mark", icon: "⌛" },
+    { id: 'noRebuttal', name: "Waterlogged", description: "No rebuttals. Can't rebut criticisms - must keep water in mouth or you're eliminated", icon: "💧" },
+    { id: 'nonDominant', name: "Wrong Hand", description: "Must use your non-dominant hand to draw", icon: "✋" },
+    { id: 'year1750', name: "Time Traveler", description: "Your drawing must have been possible in the year 1750", icon: "🕰️" },
+    { id: 'monkey', name: "Monkey Business", description: "Must include a monkey", icon: "🐵" },
+    { id: 'skeleton', name: "Bone Zone", description: "Must include a skeleton", icon: "💀" },
+    { id: 'dinosaur', name: "Jurassic Spark", description: "Must involve a dinosaur", icon: "🦖" },
+    { id: 'crime', name: "Criminal Mind", description: "Must commit a crime", icon: "🔪" },
+    { id: 'halloween', name: "Spooky Season", description: "Must be visibly on Halloween", icon: "🎃" },
+    { id: 'christmas', name: "Holiday Spirit", description: "Must be visibly on Christmas", icon: "🎄" },
+    { id: 'giant', name: "Larger Than Life", description: "Must be performed by a giant", icon: "🗿" },
+    { id: 'moon', name: "Lunar Logic", description: "Must include the moon", icon: "🌙" },
+    { id: 'superhero', name: "Cape Crusader", description: "Must include a superhero", icon: "🦸" },
+    { id: 'notEarth', name: "Off World", description: "Cannot occur on Earth", icon: "🌍" },
+    { id: '3breaths', name: "Breathless", description: "Must present in 3 breaths", icon: "💨" },
+    { id: 'filmed', name: "On Camera", description: "Must be filmed", icon: "📹" },
+    { id: 'plantAnimal', name: "Nature's Audience", description: "Must present to a nearby plant or animal", icon: "🌿" }
+];
 
 const THEMED_DECKS = {
     core_white: [
@@ -164,5 +190,6 @@ module.exports = {
     ALIGNMENT_FULL_NAMES,
     ALIGNMENT_EXAMPLES,
     TOKEN_TYPES,
+    MODIFIERS,
     THEMED_DECKS
 };

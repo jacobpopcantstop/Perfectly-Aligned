@@ -147,6 +147,35 @@
             <button id="next-round-btn" class="action-button green">Next Round</button>
         </section>
 
+        <!-- Modifiers Phase (Curse Cards) -->
+        <section id="modifiers-phase" class="game-phase" style="display: none;">
+            <h2>Curse Time!</h2>
+            <div class="curser-display">
+                <p class="curse-intro">In last place gets to curse someone!</p>
+                <div id="curser-avatar" class="avatar-large"></div>
+                <span id="curser-name">---</span>
+            </div>
+
+            <div id="modifier-card" class="curse-card" style="display: none;">
+                <div class="curse-card-inner">
+                    <span id="modifier-icon" class="curse-icon">?</span>
+                    <span id="modifier-name" class="curse-name">---</span>
+                    <p id="modifier-description" class="curse-description">---</p>
+                </div>
+            </div>
+
+            <div class="curse-actions">
+                <button id="draw-curse-btn" class="action-button curse" onclick="drawCurseCard()">Draw Curse Card</button>
+                <button id="use-held-curse-btn" class="action-button held" style="display: none;">Use Held Curse</button>
+                <button id="hold-curse-btn" class="action-button secondary" style="display: none;" onclick="holdCurseForLater()">Hold for Later</button>
+                <button id="skip-modifiers-btn" class="action-button secondary" onclick="skipModifierPhase()">Skip</button>
+            </div>
+
+            <div id="curse-targets" class="curse-targets" style="display: none;">
+                <!-- Target buttons will be generated here -->
+            </div>
+        </section>
+
         <!-- Scoreboard (always visible during game) -->
         <aside id="scoreboard">
             <h3>Scoreboard</h3>

@@ -683,6 +683,54 @@ body {
     }
 }
 
+/* ==================== ACTIVE MODIFIERS (CURSES) ==================== */
+
+.active-modifiers {
+    background: linear-gradient(135deg, rgba(255, 0, 255, 0.2) 0%, rgba(239, 68, 68, 0.2) 100%);
+    border: 2px solid var(--neon-pink);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+    animation: curse-pulse 2s ease-in-out infinite;
+}
+
+@keyframes curse-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(255, 0, 255, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(255, 0, 255, 0.6); }
+}
+
+.modifier-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 5px;
+    margin-bottom: 5px;
+}
+
+.modifier-badge:last-child {
+    margin-bottom: 0;
+}
+
+.modifier-badge .mod-icon {
+    font-size: 1.8em;
+}
+
+.modifier-badge .mod-name {
+    font-size: 0.9em;
+    color: var(--neon-yellow);
+    display: block;
+}
+
+.modifier-badge .mod-desc {
+    font-size: 0.75em;
+    color: var(--light-grey);
+    font-family: var(--readable-font);
+    display: block;
+    margin-top: 3px;
+}
+
 /* ==================== RESPONSIVE ==================== */
 
 @media (min-width: 600px) {
