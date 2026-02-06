@@ -1,12 +1,47 @@
 /**
  * Perfectly Aligned - Host Controller
- * Manages the main game display (TV/projector screen)
+ * ====================================
+ * Manages the main display (TV/projector screen) for the Jackbox-style
+ * online multiplayer party drawing game. Communicates with the server
+ * via Socket.IO to orchestrate the complete game flow.
+ *
+ * @module host/host
  */
 
-// Socket connection
-const socket = io();
+// =============================================================================
+// GAME CONSTANTS
+// =============================================================================
 
-// Game state
+const ALIGNMENT_NAMES = {
+    LG: "Lawful Good", NG: "Neutral Good", CG: "Chaotic Good",
+    LN: "Lawful Neutral", TN: "True Neutral", CN: "Chaotic Neutral",
+    LE: "Lawful Evil", NE: "Neutral Evil", CE: "Chaotic Evil",
+    U: "Judge's Choice"
+};
+
+const ALIGNMENT_EXAMPLES = {
+    LG: "Superman, Captain America", NG: "Spider-Man, Wonder Woman",
+    CG: "Robin Hood, Han Solo", LN: "Judge Dredd, James Bond",
+    TN: "The Watcher, Tom Bombadil", CN: "Jack Sparrow, Deadpool",
+    LE: "Darth Vader, Dolores Umbridge", NE: "Lord Voldemort, Sauron",
+    CE: "The Joker, Cthulhu", U: "The Judge picks any alignment!"
+};
+
+const ALIGNMENT_GRID_ORDER = ['LG', 'NG', 'CG', 'LN', 'TN', 'CN', 'LE', 'NE', 'CE'];
+
+const TOKEN_TYPES = {
+    mindReader: { icon: "\uD83E\uDDE0", name: "Mind Reader", description: "Perfectly captured what the Judge was thinking!" },
+    technicalMerit: { icon: "\uD83C\uDFA8", name: "Technical Merit", description: "Exceptional artistic skill and technique." },
+    perfectAlignment: { icon: "\u2696\uFE0F", name: "Perfect Alignment", description: "Brilliantly embodied the alignment!" },
+    plotTwist: { icon: "\uD83C\uDF00", name: "Plot Twist", description: "Surprising and creative interpretation!" }
+};
+
+const TOKEN_TYPE_KEYS = Object.keys(TOKEN_TYPES);
+
+// =============================================================================
+// GAME STATE
+// =============================================================================
+
 let gameState = {
     roomCode: null,
     players: [],
@@ -19,1006 +54,1740 @@ let gameState = {
     prompts: [],
     selectedPrompt: null,
     submissions: [],
-    winner: null,
     settings: {
-        selectedDecks: ['core_white', 'creative_cyan'],
+        selectedDecks: ['core_white'],
         timerDuration: 90,
-        targetScore: 5
+        targetScore: 5,
+        modifiersEnabled: true
     },
-    // Modifier state
     currentCurser: null,
-    currentModifier: null
+    currentModifier: null,
+    tokensAwardedThisRound: []
 };
 
-// DOM Elements
-const elements = {
+let timerInterval = null;
+let timerRemaining = 0;
+let currentSubmissions = [];
+let pendingModifierData = null;
+
+// =============================================================================
+// SOCKET CONNECTION
+// =============================================================================
+
+const socket = io();
+
+// =============================================================================
+// DOM ELEMENT CACHE
+// =============================================================================
+
+const dom = {};
+
+function cacheDomElements() {
     // Screens
-    lobbyScreen: document.getElementById('lobby-screen'),
-    gameScreen: document.getElementById('game-screen'),
-    gameoverScreen: document.getElementById('gameover-screen'),
+    dom.lobbyScreen = document.getElementById('lobby-screen');
+    dom.gameScreen = document.getElementById('game-screen');
 
-    // Lobby
-    createRoomBtn: document.getElementById('create-room-btn'),
-    roomCodeDisplay: document.getElementById('room-code-display'),
-    roomCode: document.getElementById('room-code'),
-    joinUrl: document.getElementById('join-url'),
-    lobbyPlayers: document.getElementById('lobby-players'),
-    deckSelection: document.getElementById('deck-selection'),
-    startGameArea: document.getElementById('start-game-area'),
-    playerCountMsg: document.getElementById('player-count-msg'),
-    startGameBtn: document.getElementById('start-game-btn'),
+    // Lobby elements
+    dom.createRoomBtn = document.getElementById('create-room-btn');
+    dom.roomCodeDisplay = document.getElementById('room-code-display');
+    dom.roomCode = document.getElementById('room-code-value');
+    dom.joinUrl = document.getElementById('room-code-join-url');
+    dom.roomCodeRepeat = document.getElementById('room-code-repeat');
+    dom.lobbyPlayerGrid = document.getElementById('player-lobby-list');
+    dom.playerCount = document.getElementById('player-count-msg');
+    dom.startGameBtn = document.getElementById('start-game-btn');
+    dom.deckOptions = document.querySelector('.deck-options');
+    dom.timerSelect = document.getElementById('timer-duration');
+    dom.targetScoreSelect = document.getElementById('target-score');
+    dom.modifiersToggle = document.getElementById('modifiers-toggle');
 
-    // Game Header
-    roundNumber: document.getElementById('round-number'),
-    targetScore: document.getElementById('target-score'),
-    judgeAvatar: document.getElementById('judge-avatar'),
-    judgeName: document.getElementById('judge-name'),
+    // Game phases
+    dom.alignmentPhase = document.getElementById('alignment-phase');
+    dom.judgeChoicePhase = document.getElementById('judges-choice-section');
+    dom.promptPhase = document.getElementById('prompts-phase');
+    dom.drawingPhase = document.getElementById('drawing-phase');
+    dom.judgingPhase = document.getElementById('judging-phase');
+    dom.resultsPhase = document.getElementById('results-phase');
+    dom.modifierPhase = document.getElementById('modifier-phase');
+    dom.gameoverPhase = document.getElementById('gameover-phase');
 
-    // Phases
-    alignmentPhase: document.getElementById('alignment-phase'),
-    promptsPhase: document.getElementById('prompts-phase'),
-    drawingPhase: document.getElementById('drawing-phase'),
-    judgingPhase: document.getElementById('judging-phase'),
-    scoringPhase: document.getElementById('scoring-phase'),
-    modifiersPhase: document.getElementById('modifiers-phase'),
+    // Alignment elements
+    dom.alignmentGrid = document.getElementById('alignment-grid');
+    dom.rollBtn = document.getElementById('roll-dice-btn');
+    dom.alignmentResult = document.getElementById('alignment-result');
+    dom.alignmentResultName = document.getElementById('alignment-result-name');
+    dom.alignmentDescription = document.getElementById('alignment-result-desc');
+    dom.drawCardsBtn = document.getElementById('draw-cards-btn');
 
-    // Modifiers
-    curserAvatar: document.getElementById('curser-avatar'),
-    curserName: document.getElementById('curser-name'),
-    modifierCard: document.getElementById('modifier-card'),
-    modifierIcon: document.getElementById('modifier-icon'),
-    modifierName: document.getElementById('modifier-name'),
-    modifierDescription: document.getElementById('modifier-description'),
-    drawCurseBtn: document.getElementById('draw-curse-btn'),
-    useHeldCurseBtn: document.getElementById('use-held-curse-btn'),
-    holdCurseBtn: document.getElementById('hold-curse-btn'),
-    curseTargets: document.getElementById('curse-targets'),
-    skipModifiersBtn: document.getElementById('skip-modifiers-btn'),
+    // Judge choice elements
+    dom.judgeChoiceGrid = document.getElementById('judges-choice-grid');
 
-    // Alignment
-    alignmentGrid: document.getElementById('alignment-grid'),
-    alignmentResult: document.getElementById('alignment-result'),
-    rolledAlignment: document.getElementById('rolled-alignment'),
-    rolledAlignmentName: document.getElementById('rolled-alignment-name'),
-    rollBtn: document.getElementById('roll-btn'),
+    // Prompt elements
+    dom.drawPromptsBtn = document.getElementById('draw-prompts-btn');
+    dom.promptCards = document.getElementById('prompt-cards-container');
+    dom.confirmPromptBtn = document.getElementById('confirm-prompt-btn');
+    dom.promptsAlignmentDisplay = document.getElementById('prompts-alignment-display');
 
-    // Prompts
-    phaseAlignment: document.getElementById('phase-alignment'),
-    phaseAlignmentName: document.getElementById('phase-alignment-name'),
-    promptsContainer: document.getElementById('prompts-container'),
-    drawPromptsBtn: document.getElementById('draw-prompts-btn'),
+    // Drawing phase elements
+    dom.drawingPromptDisplay = document.getElementById('drawing-prompt');
+    dom.drawingAlignmentDisplay = document.getElementById('drawing-alignment');
+    dom.timerText = document.getElementById('timer-value');
+    dom.endDrawingBtn = document.getElementById('end-drawing-btn');
+    dom.submissionCounter = document.getElementById('submission-counter');
+    dom.activeModifiers = document.getElementById('active-modifiers-list');
 
-    // Drawing
-    drawingAlignment: document.getElementById('drawing-alignment'),
-    drawingPrompt: document.getElementById('drawing-prompt'),
-    timer: document.getElementById('timer'),
-    startTimerBtn: document.getElementById('start-timer-btn'),
-    stopTimerBtn: document.getElementById('stop-timer-btn'),
-    submissionCount: document.getElementById('submission-count'),
-    totalArtists: document.getElementById('total-artists'),
+    // Judging phase elements
+    dom.submissionGallery = document.getElementById('submissions-gallery');
+    dom.judgingAlignment = document.getElementById('judging-alignment');
+    dom.judgingPrompt = document.getElementById('judging-prompt');
+    dom.confirmWinnerBtn = document.getElementById('confirm-winner-btn');
 
-    // Judging
-    judgingAlignment: document.getElementById('judging-alignment'),
-    judgingPrompt: document.getElementById('judging-prompt'),
-    submissionsGallery: document.getElementById('submissions-gallery'),
+    // Results phase elements
+    dom.resultsWinner = document.getElementById('winner-announcement');
+    dom.winnerAvatar = document.getElementById('winner-avatar');
+    dom.winnerName = document.getElementById('winner-name');
+    dom.tokenAwards = document.getElementById('token-awards-list');
+    dom.nextRoundBtn = document.getElementById('next-round-btn');
 
-    // Scoring
-    winnerAvatar: document.getElementById('winner-avatar'),
-    winnerName: document.getElementById('winner-name'),
-    tokenAwards: document.getElementById('token-awards'),
-    nextRoundBtn: document.getElementById('next-round-btn'),
+    // Modifier phase elements
+    dom.modifierCurserInfo = document.getElementById('curser-display');
+    dom.curserAvatar = document.getElementById('curser-avatar');
+    dom.curserName = document.getElementById('curser-name');
+    dom.drawCurseBtn = document.getElementById('draw-curse-btn');
+    dom.skipModifiersBtn = document.getElementById('skip-curse-btn');
+    dom.curseCardDisplay = document.getElementById('curse-card-display');
+    dom.curseCardIcon = document.getElementById('curse-card-icon');
+    dom.curseCardName = document.getElementById('curse-card-name');
+    dom.curseCardDesc = document.getElementById('curse-card-desc');
+    dom.curseTargetHeading = document.getElementById('curse-target-heading');
+    dom.curseTargetSelection = document.getElementById('curse-target-grid');
+    dom.curseActions = document.getElementById('curse-actions');
+    dom.applyCurseBtn = document.getElementById('apply-curse-btn');
+    dom.holdCurseBtn = document.getElementById('hold-curse-btn');
 
-    // Scoreboard
-    scoreboardList: document.getElementById('scoreboard-list'),
+    // Scoreboard elements
+    dom.scoreboard = document.getElementById('scoreboard-content');
+    dom.scoreboardList = document.getElementById('scoreboard-grid');
+    dom.scoreboardToggle = document.getElementById('scoreboard-toggle');
 
-    // Game Over
-    finalWinnerAvatar: document.getElementById('final-winner-avatar'),
-    finalWinnerName: document.getElementById('final-winner-name'),
-    finalScores: document.getElementById('final-scores'),
-    playAgainBtn: document.getElementById('play-again-btn')
-};
+    // Game info elements
+    dom.roundDisplay = document.getElementById('round-number');
+    dom.judgeNameDisplay = document.getElementById('judge-name');
+    dom.judgeAvatarDisplay = document.getElementById('judge-avatar');
+    dom.targetScoreDisplay = document.getElementById('target-score-display');
 
-// Sound effects
-const sounds = {
-    roll: document.getElementById('sfx-roll'),
-    timerEnd: document.getElementById('sfx-timer-end'),
-    tokenGain: document.getElementById('sfx-token-gain'),
-    pointGain: document.getElementById('sfx-point-gain'),
-    steal: document.getElementById('sfx-steal'),
-    win: document.getElementById('sfx-win'),
-    draw: document.getElementById('sfx-draw')
-};
+    // Game over elements
+    dom.gameOverWinner = document.getElementById('gameover-winner-name');
+    dom.finalRankings = document.getElementById('final-scoreboard');
+    dom.playAgainBtn = document.getElementById('play-again-btn');
+
+    // Steal modal
+    dom.stealModal = document.getElementById('steal-modal');
+    dom.stealTargetList = document.getElementById('steal-target-list');
+    dom.stealModalClose = document.getElementById('steal-close-btn');
+
+    // Notification container
+    dom.notificationContainer = document.getElementById('notification-container');
+}
+
+// =============================================================================
+// SOUND EFFECTS
+// =============================================================================
+
+const sounds = {};
+
+function loadSounds() {
+    const soundNames = ['roll', 'timer-end', 'token-gain', 'point-gain', 'steal', 'win', 'draw'];
+    soundNames.forEach(name => {
+        const el = document.getElementById(`sfx-${name}`);
+        if (el) {
+            sounds[name] = el;
+        }
+    });
+}
 
 function playSound(name) {
     const sound = sounds[name];
     if (sound) {
         sound.currentTime = 0;
-        sound.play().catch(e => console.log('Audio play failed:', e));
+        sound.play().catch(() => {
+            // Autoplay may be blocked; ignore
+        });
     }
 }
 
-// ==================== INITIALIZATION ====================
+// =============================================================================
+// INITIALIZATION
+// =============================================================================
 
-function init() {
+document.addEventListener('DOMContentLoaded', () => {
+    cacheDomElements();
+    loadSounds();
+    setupJudgeChoiceGrid();
     setupEventListeners();
     setupSocketListeners();
+});
+
+function setupJudgeChoiceGrid() {
+    if (!dom.judgeChoiceGrid) return;
+    const cells = dom.judgeChoiceGrid.querySelectorAll('.judges-choice-cell');
+    cells.forEach(cell => {
+        const code = cell.dataset.align;
+        if (code) {
+            cell.addEventListener('click', () => {
+                handleJudgeAlignmentClick(code, cell);
+            });
+        }
+    });
 }
+
+// =============================================================================
+// EVENT LISTENERS
+// =============================================================================
 
 function setupEventListeners() {
-    // Lobby
-    elements.createRoomBtn.addEventListener('click', createRoom);
-    elements.startGameBtn.addEventListener('click', startGame);
+    // Create room
+    if (dom.createRoomBtn) {
+        dom.createRoomBtn.addEventListener('click', createRoom);
+    }
 
-    // Deck selection
-    document.querySelectorAll('.deck-option').forEach(option => {
-        option.addEventListener('click', () => toggleDeck(option));
-    });
+    // Deck option clicks (deck-card class, not deck-option)
+    if (dom.deckOptions) {
+        dom.deckOptions.addEventListener('click', (e) => {
+            const option = e.target.closest('.deck-card');
+            if (!option) return;
+            option.classList.toggle('selected');
+            updateStartButtonState();
+        });
+    }
 
-    // Game controls
-    elements.rollBtn.addEventListener('click', rollAlignment);
-    elements.drawPromptsBtn.addEventListener('click', drawPrompts);
-    elements.startTimerBtn.addEventListener('click', () => startTimer(gameState.settings.timerDuration));
-    elements.stopTimerBtn.addEventListener('click', stopTimer);
-    elements.nextRoundBtn.addEventListener('click', nextRound);
-    elements.playAgainBtn.addEventListener('click', () => location.reload());
+    // Start game
+    if (dom.startGameBtn) {
+        dom.startGameBtn.addEventListener('click', startGame);
+    }
+
+    // Roll alignment
+    if (dom.rollBtn) {
+        dom.rollBtn.addEventListener('click', rollAlignment);
+    }
+
+    // Draw prompts
+    if (dom.drawPromptsBtn) {
+        dom.drawPromptsBtn.addEventListener('click', drawPrompts);
+    }
+
+    // End drawing
+    if (dom.endDrawingBtn) {
+        dom.endDrawingBtn.addEventListener('click', endDrawing);
+    }
+
+    // Next round
+    if (dom.nextRoundBtn) {
+        dom.nextRoundBtn.addEventListener('click', nextRound);
+    }
+
+    // Modifier phase buttons
+    if (dom.drawCurseBtn) {
+        dom.drawCurseBtn.addEventListener('click', drawCurseCard);
+    }
+
+    if (dom.skipModifiersBtn) {
+        dom.skipModifiersBtn.addEventListener('click', skipModifiers);
+    }
+
+    if (dom.holdCurseBtn) {
+        dom.holdCurseBtn.addEventListener('click', () => {
+            if (gameState.currentModifier) {
+                holdCurse();
+            }
+        });
+    }
+
+    // Play again
+    if (dom.playAgainBtn) {
+        dom.playAgainBtn.addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
+
+    // Scoreboard toggle
+    if (dom.scoreboardToggle) {
+        dom.scoreboardToggle.addEventListener('click', () => {
+            if (dom.scoreboard) {
+                dom.scoreboard.classList.toggle('collapsed');
+            }
+        });
+    }
+
+    // Steal modal close
+    if (dom.stealModalClose) {
+        dom.stealModalClose.addEventListener('click', () => {
+            closeStealModal();
+        });
+    }
+
+    // Close steal modal on backdrop click
+    if (dom.stealModal) {
+        dom.stealModal.addEventListener('click', (e) => {
+            if (e.target === dom.stealModal) {
+                closeStealModal();
+            }
+        });
+    }
 }
+
+// =============================================================================
+// SOCKET LISTENERS
+// =============================================================================
 
 function setupSocketListeners() {
-    // Room events
-    socket.on('room:playerJoined', handlePlayerJoined);
-    socket.on('room:playerLeft', handlePlayerLeft);
-    socket.on('room:playerDisconnected', handlePlayerDisconnected);
-    socket.on('room:playerReconnected', handlePlayerReconnected);
+    // -- Room events --
 
-    // Game events
-    socket.on('game:started', handleGameStarted);
-    socket.on('game:alignmentRolled', handleAlignmentRolled);
-    socket.on('game:promptsDrawn', handlePromptsDrawn);
-    socket.on('game:promptSelected', handlePromptSelected);
-    socket.on('game:timerStarted', handleTimerStarted);
-    socket.on('game:timerTick', handleTimerTick);
-    socket.on('game:timerEnd', handleTimerEnd);
-    socket.on('game:submissionReceived', handleSubmissionReceived);
-    socket.on('game:submissionsCollected', handleSubmissionsCollected);
-    socket.on('game:winnerSelected', handleWinnerSelected);
-    socket.on('game:tokensAwarded', handleTokensAwarded);
-    socket.on('game:newRound', handleNewRound);
-    socket.on('game:stealExecuted', handleStealExecuted);
-    socket.on('game:over', handleGameOver);
+    socket.on('room:playerJoined', (data) => {
+        gameState.players = data.players;
+        updateLobbyPlayers();
+        updateStartButtonState();
+        showNotification(`${data.player.name} joined!`, 'info');
+    });
 
-    // Modifier events
-    socket.on('game:modifierPhase', handleModifierPhase);
-    socket.on('game:curseCardDrawn', handleCurseCardDrawn);
-    socket.on('game:curseApplied', handleCurseApplied);
-    socket.on('game:curseHeld', handleCurseHeld);
+    socket.on('room:playerLeft', (data) => {
+        gameState.players = data.players;
+        updateLobbyPlayers();
+        updateStartButtonState();
+        updateScoreboard();
+    });
 
-    // Connection events
-    socket.on('connect', () => console.log('Connected to server'));
-    socket.on('disconnect', () => console.log('Disconnected from server'));
+    socket.on('room:playerDisconnected', (data) => {
+        gameState.players = data.players;
+        const player = data.players.find(p => p.id === data.playerId);
+        const name = player ? player.name : 'A player';
+        showNotification(`${name} disconnected`, 'warning');
+        updateLobbyPlayers();
+        updateScoreboard();
+    });
+
+    socket.on('room:playerReconnected', (data) => {
+        showNotification(`${data.playerName} reconnected!`, 'success');
+        // Request fresh state
+        socket.emit('game:getState', (response) => {
+            if (response.success) {
+                syncFromServerState(response.gameState);
+            }
+        });
+    });
+
+    socket.on('room:closed', (data) => {
+        showNotification(`Room closed: ${data.reason}`, 'error', 5000);
+    });
+
+    // -- Game events --
+
+    socket.on('game:started', (state) => {
+        syncFromServerState(state);
+        gameState.gameStarted = true;
+        showScreen('game');
+        showPhase('alignment');
+        updateGameUI();
+        showNotification('Game started!', 'success');
+    });
+
+    socket.on('game:alignmentRolled', (data) => {
+        handleAlignmentRolled(data);
+    });
+
+    socket.on('game:judgeAlignmentSelected', (data) => {
+        gameState.alignment = data.alignment;
+        gameState.alignmentName = data.fullName;
+        updateAlignmentDisplay(data.alignment, data.fullName);
+        showNotification(`Judge chose: ${data.fullName}`, 'info');
+
+        // Transition to prompt phase after brief delay
+        setTimeout(() => {
+            showPhase('prompt');
+            if (dom.promptsAlignmentDisplay) {
+                dom.promptsAlignmentDisplay.textContent = data.fullName;
+            }
+            if (dom.drawPromptsBtn) {
+                dom.drawPromptsBtn.disabled = false;
+            }
+        }, 1500);
+    });
+
+    socket.on('game:promptsDrawn', (data) => {
+        handlePromptsDrawn(data);
+    });
+
+    socket.on('game:promptSelected', (data) => {
+        gameState.selectedPrompt = data.prompt;
+        highlightSelectedPromptCard(data.prompt);
+    });
+
+    socket.on('game:startDrawing', (data) => {
+        startDrawingPhase(data);
+    });
+
+    socket.on('game:timerStarted', (data) => {
+        timerRemaining = data.duration;
+        updateTimerDisplay(data.duration, data.duration);
+    });
+
+    socket.on('game:timerTick', (data) => {
+        timerRemaining = data.timeLeft;
+        updateTimerDisplay(data.timeLeft, gameState.settings.timerDuration);
+    });
+
+    socket.on('game:timerEnd', () => {
+        timerRemaining = 0;
+        updateTimerDisplay(0, gameState.settings.timerDuration);
+        playSound('timer-end');
+        showNotification("Time's up!", 'warning');
+        if (dom.endDrawingBtn) dom.endDrawingBtn.disabled = false;
+    });
+
+    socket.on('game:submissionReceived', (data) => {
+        updateSubmissionCounter(data.submissionCount);
+    });
+
+    socket.on('game:submissionsCollected', (data) => {
+        handleSubmissionsCollected(data);
+    });
+
+    socket.on('game:winnerSelected', (data) => {
+        handleWinnerSelected(data);
+    });
+
+    socket.on('game:tokenAwarded', (data) => {
+        gameState.players = data.players;
+        playSound('token-gain');
+        updateScoreboard();
+    });
+
+    socket.on('game:newRound', (data) => {
+        handleNewRound(data);
+    });
+
+    socket.on('game:stealExecuted', (data) => {
+        playSound('steal');
+        showNotification(
+            `${data.stealerName} stole a point from ${data.targetName}!`,
+            'warning',
+            4000
+        );
+        // Update local player scores from server data
+        data.scores.forEach(scoreData => {
+            const player = gameState.players.find(p => p.id === scoreData.id);
+            if (player) {
+                player.score = scoreData.score;
+                player.tokens = scoreData.tokens;
+            }
+        });
+        updateScoreboard();
+    });
+
+    socket.on('game:over', (data) => {
+        showGameOver(data);
+    });
+
+    socket.on('game:modifierPhase', (data) => {
+        showModifierPhase(data);
+    });
+
+    socket.on('game:curseCardDrawn', (data) => {
+        handleCurseCardDrawn(data);
+    });
+
+    socket.on('game:curseApplied', (data) => {
+        showNotification(
+            `${data.modifier.icon} ${data.modifier.name} applied to ${data.targetName}!`,
+            'warning',
+            3000
+        );
+        syncFromServerState(data.gameState);
+    });
+
+    socket.on('game:curseHeld', (data) => {
+        showNotification('Curse card held for later!', 'info');
+        syncFromServerState(data.gameState);
+    });
+
+    // Handle disconnect
+    socket.on('disconnect', () => {
+        showNotification('Disconnected from server. Attempting to reconnect...', 'error', 5000);
+    });
+
+    socket.on('connect', () => {
+        // If we had a room, try to rejoin host status
+        if (gameState.roomCode) {
+            showNotification('Reconnected to server.', 'success');
+        }
+    });
 }
 
-// ==================== ROOM MANAGEMENT ====================
+// =============================================================================
+// SYNC HELPER
+// =============================================================================
+
+function syncFromServerState(state) {
+    if (!state) return;
+
+    gameState.roomCode = state.code || gameState.roomCode;
+    gameState.players = state.players || gameState.players;
+    gameState.gameStarted = state.gameStarted || false;
+    gameState.currentRound = state.currentRound || 0;
+    gameState.alignment = state.currentAlignment;
+    gameState.alignmentName = state.currentAlignmentFullName;
+    gameState.selectedPrompt = state.selectedPrompt;
+    gameState.settings.targetScore = state.targetScore || state.settings?.targetScore || gameState.settings.targetScore;
+    gameState.settings.timerDuration = state.settings?.timerDuration || gameState.settings.timerDuration;
+    gameState.settings.modifiersEnabled = state.modifiersEnabled !== undefined ? state.modifiersEnabled : gameState.settings.modifiersEnabled;
+
+    if (state.judge) {
+        gameState.judge = state.judge;
+    }
+
+    updateGameUI();
+    updateScoreboard();
+}
+
+// =============================================================================
+// ROOM & LOBBY
+// =============================================================================
 
 function createRoom() {
+    if (dom.createRoomBtn) dom.createRoomBtn.disabled = true;
+
     socket.emit('host:createRoom', (response) => {
         if (response.success) {
             gameState.roomCode = response.roomCode;
-            updateRoomDisplay();
-            elements.createRoomBtn.style.display = 'none';
-            elements.roomCodeDisplay.style.display = 'flex';
-            elements.deckSelection.style.display = 'block';
-            elements.startGameArea.style.display = 'block';
+            syncFromServerState(response.gameState);
+
+            // Show room code
+            if (dom.roomCodeDisplay) {
+                dom.roomCodeDisplay.classList.add('visible');
+            }
+            if (dom.roomCode) {
+                dom.roomCode.textContent = response.roomCode;
+            }
+            if (dom.roomCodeRepeat) {
+                dom.roomCodeRepeat.textContent = response.roomCode;
+            }
+            if (dom.joinUrl) {
+                const url = `${window.location.origin}/play/${response.roomCode}`;
+                dom.joinUrl.textContent = `Join at: ${url}`;
+            }
+
+            // Hide create button, show lobby settings
+            if (dom.createRoomBtn) {
+                dom.createRoomBtn.style.display = 'none';
+            }
+
+            showNotification(`Room ${response.roomCode} created!`, 'success');
         } else {
-            alert('Failed to create room: ' + response.error);
+            showNotification(`Failed to create room: ${response.error}`, 'error');
+            if (dom.createRoomBtn) dom.createRoomBtn.disabled = false;
         }
     });
-}
-
-function updateRoomDisplay() {
-    elements.roomCode.textContent = gameState.roomCode;
-    const baseUrl = window.location.origin;
-    elements.joinUrl.textContent = `${baseUrl}/play`;
-}
-
-function toggleDeck(option) {
-    option.classList.toggle('selected');
-    updateSelectedDecks();
-}
-
-function updateSelectedDecks() {
-    gameState.settings.selectedDecks = [];
-    document.querySelectorAll('.deck-option.selected').forEach(option => {
-        gameState.settings.selectedDecks.push(option.dataset.deck);
-    });
-}
-
-// ==================== LOBBY ====================
-
-function handlePlayerJoined(data) {
-    gameState.players = data.players;
-    updateLobbyPlayers();
-    updateStartButton();
-}
-
-function handlePlayerLeft(data) {
-    gameState.players = data.players;
-    updateLobbyPlayers();
-    updateScoreboard();
-    updateStartButton();
-}
-
-function handlePlayerDisconnected(data) {
-    gameState.players = data.players;
-    updateLobbyPlayers();
-    updateScoreboard();
-}
-
-function handlePlayerReconnected(data) {
-    const player = gameState.players.find(p => p.id === data.playerId);
-    if (player) {
-        player.connected = true;
-    }
-    updateLobbyPlayers();
-    updateScoreboard();
 }
 
 function updateLobbyPlayers() {
-    elements.lobbyPlayers.innerHTML = '';
+    if (!dom.lobbyPlayerGrid) return;
+
+    dom.lobbyPlayerGrid.innerHTML = '';
+
     gameState.players.forEach(player => {
-        const playerEl = document.createElement('div');
-        playerEl.className = `player-card ${player.connected ? '' : 'disconnected'}`;
-        playerEl.innerHTML = `
-            <div class="player-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span class="player-name">${player.name}</span>
+        const card = document.createElement('div');
+        card.classList.add('player-card');
+        if (!player.connected) {
+            card.classList.add('disconnected');
+        }
+
+        card.innerHTML = `
+            <div class="player-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
+            <div class="player-name">${escapeHtml(player.name)}</div>
+            ${!player.connected ? '<div class="player-status">Disconnected</div>' : ''}
         `;
-        elements.lobbyPlayers.appendChild(playerEl);
+
+        dom.lobbyPlayerGrid.appendChild(card);
     });
+
+    if (dom.playerCount) {
+        dom.playerCount.textContent = `${gameState.players.length} / 8 players`;
+    }
 }
 
-function updateStartButton() {
-    const count = gameState.players.length;
-    if (count < 3) {
-        elements.playerCountMsg.textContent = `Waiting for players... (${count}/3 minimum)`;
-        elements.startGameBtn.disabled = true;
-    } else if (count >= 8) {
-        elements.playerCountMsg.textContent = `Room full! (${count}/8 players)`;
-        elements.startGameBtn.disabled = false;
+function updateStartButtonState() {
+    if (!dom.startGameBtn) return;
+    const hasEnoughPlayers = gameState.players.length >= 3;
+    const hasDecks = getSelectedDecks().length > 0;
+    dom.startGameBtn.disabled = !(hasEnoughPlayers && hasDecks);
+
+    if (!hasEnoughPlayers) {
+        dom.startGameBtn.title = 'Need at least 3 players to start';
+    } else if (!hasDecks) {
+        dom.startGameBtn.title = 'Select at least one deck';
     } else {
-        elements.playerCountMsg.textContent = `${count} players ready!`;
-        elements.startGameBtn.disabled = false;
+        dom.startGameBtn.title = '';
     }
+}
+
+function getSelectedDecks() {
+    if (!dom.deckOptions) return ['core_white'];
+    const selected = dom.deckOptions.querySelectorAll('.deck-card.selected');
+    const decks = [];
+    selected.forEach(el => {
+        if (el.dataset.deck) {
+            decks.push(el.dataset.deck);
+        }
+    });
+    return decks.length > 0 ? decks : ['core_white'];
 }
 
 function startGame() {
-    if (gameState.settings.selectedDecks.length === 0) {
-        alert('Please select at least one card deck!');
-        return;
-    }
+    const settings = {
+        selectedDecks: getSelectedDecks(),
+        timerDuration: dom.timerSelect ? parseInt(dom.timerSelect.value, 10) : 90,
+        targetScore: dom.targetScoreSelect ? parseInt(dom.targetScoreSelect.value, 10) : 5,
+        modifiersEnabled: dom.modifiersToggle ? dom.modifiersToggle.checked : true
+    };
 
-    socket.emit('host:startGame', gameState.settings, (response) => {
+    gameState.settings = { ...gameState.settings, ...settings };
+
+    if (dom.startGameBtn) dom.startGameBtn.disabled = true;
+
+    socket.emit('host:startGame', settings, (response) => {
         if (!response.success) {
-            alert('Failed to start game: ' + response.error);
+            showNotification(`Failed to start: ${response.error}`, 'error');
+            if (dom.startGameBtn) dom.startGameBtn.disabled = false;
         }
     });
 }
 
-function handleGameStarted(state) {
-    gameState = { ...gameState, ...state };
-    gameState.gameStarted = true;
-    showScreen('game');
-    updateGameUI();
-    showPhase('alignment');
+// =============================================================================
+// SCREEN & PHASE MANAGEMENT
+// =============================================================================
+
+function showScreen(name) {
+    const screens = [dom.lobbyScreen, dom.gameScreen];
+    screens.forEach(screen => {
+        if (screen) screen.classList.remove('active');
+    });
+
+    switch (name) {
+        case 'lobby':
+            if (dom.lobbyScreen) dom.lobbyScreen.classList.add('active');
+            break;
+        case 'game':
+            if (dom.gameScreen) dom.gameScreen.classList.add('active');
+            break;
+        case 'gameover':
+            // Game over is a phase inside game-screen
+            if (dom.gameScreen) dom.gameScreen.classList.add('active');
+            showPhase('gameover');
+            break;
+    }
 }
 
-// ==================== GAME PHASES ====================
+function showPhase(name) {
+    const phases = [
+        dom.alignmentPhase,
+        dom.judgeChoicePhase,
+        dom.promptPhase,
+        dom.drawingPhase,
+        dom.judgingPhase,
+        dom.resultsPhase,
+        dom.modifierPhase,
+        dom.gameoverPhase
+    ];
 
-function showScreen(screenName) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(`${screenName}-screen`).classList.add('active');
-}
+    phases.forEach(phase => {
+        if (phase) phase.classList.remove('active');
+    });
 
-function showPhase(phaseName) {
-    gameState.currentPhase = phaseName;
-    document.querySelectorAll('.game-phase').forEach(p => p.style.display = 'none');
-    document.getElementById(`${phaseName}-phase`).style.display = 'block';
+    const phaseMap = {
+        'alignment': dom.alignmentPhase,
+        'judge-choice': dom.judgeChoicePhase,
+        'prompt': dom.promptPhase,
+        'drawing': dom.drawingPhase,
+        'judging': dom.judgingPhase,
+        'results': dom.resultsPhase,
+        'modifier': dom.modifierPhase,
+        'gameover': dom.gameoverPhase
+    };
+
+    const target = phaseMap[name];
+    if (target) {
+        target.classList.add('active');
+    }
+
+    gameState.currentPhase = name;
 }
 
 function updateGameUI() {
-    elements.roundNumber.textContent = gameState.currentRound;
-    elements.targetScore.textContent = gameState.targetScore;
+    // Round display
+    if (dom.roundDisplay) {
+        dom.roundDisplay.textContent = gameState.currentRound;
+    }
 
-    if (gameState.judge) {
-        elements.judgeAvatar.style.backgroundImage = `url('/assets/images/avatars/${gameState.judge.avatar}')`;
-        elements.judgeName.textContent = gameState.judge.name;
+    // Judge display
+    const judge = gameState.judge || gameState.players.find(p => p.isJudge);
+    if (judge) {
+        if (dom.judgeAvatarDisplay) {
+            dom.judgeAvatarDisplay.textContent = judge.avatar || '\uD83C\uDFA8';
+        }
+        if (dom.judgeNameDisplay) {
+            dom.judgeNameDisplay.textContent = escapeHtml(judge.name);
+        }
+    }
+
+    // Target score
+    if (dom.targetScoreDisplay) {
+        dom.targetScoreDisplay.textContent = gameState.settings.targetScore;
     }
 
     updateScoreboard();
 }
 
-// ==================== ALIGNMENT PHASE ====================
+// =============================================================================
+// ALIGNMENT PHASE
+// =============================================================================
 
 function rollAlignment() {
-    elements.rollBtn.disabled = true;
+    if (dom.rollBtn) dom.rollBtn.disabled = true;
+
     playSound('roll');
 
-    // Enhanced flicker animation - multiple cells at once (like local V4)
-    const cells = document.querySelectorAll('.alignment-cell');
-    let flickerCount = 0;
-    const maxFlickers = 25;
-    const flickerInterval = setInterval(() => {
-        cells.forEach(c => c.classList.remove('flicker', 'rolling'));
+    // Run rolling animation: 25 iterations at 100ms
+    let iteration = 0;
+    const totalIterations = 25;
+    const gridCells = dom.alignmentGrid ? dom.alignmentGrid.querySelectorAll('.alignment-cell') : [];
 
-        // Light up 2-4 random cells at once for more dramatic effect
-        const numCellsToLight = 2 + Math.floor(Math.random() * 3);
-        const litCells = new Set();
+    // Clear any previous state
+    gridCells.forEach(cell => {
+        cell.classList.remove('rolling', 'selected', 'judges-choice');
+    });
 
-        while (litCells.size < numCellsToLight && litCells.size < cells.length) {
-            const randomIndex = Math.floor(Math.random() * cells.length);
-            litCells.add(randomIndex);
+    const animInterval = setInterval(() => {
+        // Clear previous rolling highlights
+        gridCells.forEach(cell => cell.classList.remove('rolling'));
+
+        // Highlight 2-4 random cells
+        const count = 2 + Math.floor(Math.random() * 3);
+        const indices = new Set();
+        while (indices.size < count && indices.size < gridCells.length) {
+            indices.add(Math.floor(Math.random() * gridCells.length));
         }
-
-        litCells.forEach(index => {
-            cells[index].classList.add('rolling');
+        indices.forEach(i => {
+            gridCells[i].classList.add('rolling');
         });
 
-        flickerCount++;
+        iteration++;
+        if (iteration >= totalIterations) {
+            clearInterval(animInterval);
 
-        if (flickerCount >= maxFlickers) {
-            clearInterval(flickerInterval);
-            cells.forEach(c => c.classList.remove('rolling'));
+            // Clear rolling highlights
+            gridCells.forEach(cell => cell.classList.remove('rolling'));
+
+            // Now emit to server for the actual roll result
             socket.emit('host:rollAlignment', (response) => {
                 if (!response.success) {
-                    alert('Failed to roll: ' + response.error);
-                    elements.rollBtn.disabled = false;
+                    showNotification(`Roll failed: ${response.error}`, 'error');
+                    if (dom.rollBtn) dom.rollBtn.disabled = false;
                 }
+                // Result handled by game:alignmentRolled listener
             });
         }
     }, 100);
 }
 
 function handleAlignmentRolled(data) {
-    const cells = document.querySelectorAll('.alignment-cell');
-    const alignmentGrid = document.getElementById('alignment-grid');
+    const { alignment, fullName, isJudgeChoice } = data;
+    gameState.alignment = alignment;
+    gameState.alignmentName = fullName;
 
-    cells.forEach(c => {
-        c.classList.remove('flicker', 'rolling', 'highlighted');
-    });
+    const gridCells = dom.alignmentGrid ? dom.alignmentGrid.querySelectorAll('.alignment-cell') : [];
 
-    gameState.alignment = data.alignment;
-    gameState.alignmentName = data.fullName;
+    // Clear animation leftovers
+    gridCells.forEach(cell => cell.classList.remove('rolling', 'selected', 'judges-choice'));
 
-    // Handle Judge's Choice ('U') with purple glow on entire grid
-    if (data.alignment === 'U') {
-        if (alignmentGrid) {
-            alignmentGrid.classList.add('judges-choice');
+    if (isJudgeChoice) {
+        // Highlight entire grid with judge's choice effect
+        if (dom.alignmentGrid) {
+            dom.alignmentGrid.classList.add('judges-choice');
         }
+
+        updateAlignmentResult("Judge's Choice!", "The Judge picks any alignment!");
+
+        // Show judge choice phase (inside alignment phase)
+        setTimeout(() => {
+            if (dom.judgeChoicePhase) {
+                dom.judgeChoicePhase.style.display = 'block';
+            }
+        }, 1500);
     } else {
-        if (alignmentGrid) {
-            alignmentGrid.classList.remove('judges-choice');
-        }
-        cells.forEach(c => {
-            if (c.dataset.alignment === data.alignment) {
-                c.classList.add('highlighted');
+        // Highlight the final selected cell
+        gridCells.forEach(cell => {
+            if (cell.dataset.align === alignment) {
+                cell.classList.add('selected');
             }
         });
+
+        updateAlignmentResult(fullName, ALIGNMENT_EXAMPLES[alignment] || '');
+        updateAlignmentDisplay(alignment, fullName);
+
+        // Enable draw prompts after delay
+        setTimeout(() => {
+            showPhase('prompt');
+            if (dom.promptsAlignmentDisplay) {
+                dom.promptsAlignmentDisplay.textContent = fullName;
+            }
+            if (dom.drawPromptsBtn) {
+                dom.drawPromptsBtn.disabled = false;
+            }
+        }, 2000);
     }
-
-    elements.rolledAlignment.textContent = data.alignment;
-    elements.rolledAlignmentName.textContent = data.fullName;
-    elements.alignmentResult.style.display = 'block';
-
-    // Transition to prompts phase after delay
-    setTimeout(() => {
-        showPhase('prompts');
-        elements.phaseAlignment.textContent = data.alignment;
-        elements.phaseAlignmentName.textContent = data.fullName;
-    }, 2000);
 }
 
-// ==================== PROMPTS PHASE ====================
+function updateAlignmentResult(title, description) {
+    if (dom.alignmentResult) {
+        dom.alignmentResult.classList.add('visible');
+    }
+    if (dom.alignmentResultName) {
+        dom.alignmentResultName.textContent = title;
+    }
+    if (dom.alignmentDescription) {
+        dom.alignmentDescription.textContent = description;
+    }
+}
+
+function updateAlignmentDisplay(alignment, fullName) {
+    gameState.alignment = alignment;
+    gameState.alignmentName = fullName;
+}
+
+function handleJudgeAlignmentClick(alignment, cell) {
+    // Clear previous selections in judge choice grid
+    if (dom.judgeChoiceGrid) {
+        dom.judgeChoiceGrid.querySelectorAll('.judges-choice-cell').forEach(c => {
+            c.classList.remove('selected');
+        });
+    }
+    cell.classList.add('selected');
+
+    socket.emit('host:selectJudgeAlignment', alignment, (response) => {
+        if (!response.success) {
+            showNotification(`Selection failed: ${response.error}`, 'error');
+            cell.classList.remove('selected');
+        }
+        // Result handled by game:judgeAlignmentSelected listener
+    });
+}
+
+// =============================================================================
+// PROMPT PHASE
+// =============================================================================
 
 function drawPrompts() {
-    elements.drawPromptsBtn.disabled = true;
-    playSound('draw');
+    if (dom.drawPromptsBtn) dom.drawPromptsBtn.disabled = true;
 
     socket.emit('host:drawPrompts', (response) => {
         if (!response.success) {
-            alert('Failed to draw prompts: ' + response.error);
-            elements.drawPromptsBtn.disabled = false;
+            showNotification(`Failed to draw prompts: ${response.error}`, 'error');
+            if (dom.drawPromptsBtn) dom.drawPromptsBtn.disabled = false;
         }
+        // Results handled by game:promptsDrawn listener
     });
 }
 
 function handlePromptsDrawn(data) {
     gameState.prompts = data.prompts;
-    elements.promptsContainer.innerHTML = '';
-    elements.drawPromptsBtn.style.display = 'none';
+
+    if (!dom.promptCards) return;
+    dom.promptCards.innerHTML = '';
 
     data.prompts.forEach((prompt, index) => {
         const card = document.createElement('div');
-        card.className = 'prompt-card';
-        card.textContent = prompt;
-        card.addEventListener('click', () => selectPrompt(index));
-        elements.promptsContainer.appendChild(card);
+        card.classList.add('prompt-card');
+        card.dataset.index = index;
+
+        // Staggered dealing animation
+        card.style.animationDelay = `${index * 200}ms`;
+        card.classList.add('dealing');
+
+        card.innerHTML = `
+            <div class="prompt-card-content">
+                <div class="prompt-number">#${index + 1}</div>
+                <div class="prompt-text">${escapeHtml(prompt)}</div>
+            </div>
+        `;
+
+        card.addEventListener('click', () => {
+            selectPrompt(index);
+        });
+
+        dom.promptCards.appendChild(card);
     });
+
+    playSound('draw');
 }
 
 function selectPrompt(index) {
+    // Disable all prompt cards
+    if (dom.promptCards) {
+        dom.promptCards.querySelectorAll('.prompt-card').forEach(card => {
+            card.classList.add('disabled');
+        });
+    }
+
     socket.emit('host:selectPrompt', index, (response) => {
         if (!response.success) {
-            alert('Failed to select prompt: ' + response.error);
+            showNotification(`Failed to select prompt: ${response.error}`, 'error');
+            // Re-enable cards
+            if (dom.promptCards) {
+                dom.promptCards.querySelectorAll('.prompt-card').forEach(card => {
+                    card.classList.remove('disabled');
+                });
+            }
         }
     });
 }
 
-function handlePromptSelected(data) {
-    gameState.selectedPrompt = data.prompt;
+function highlightSelectedPromptCard(prompt) {
+    if (!dom.promptCards) return;
 
-    // Highlight selected card
-    const cards = elements.promptsContainer.querySelectorAll('.prompt-card');
-    cards.forEach((card, i) => {
-        if (card.textContent === data.prompt) {
+    dom.promptCards.querySelectorAll('.prompt-card').forEach(card => {
+        const textEl = card.querySelector('.prompt-text');
+        if (textEl && textEl.textContent === prompt) {
             card.classList.add('selected');
         } else {
-            card.classList.add('disabled');
+            card.classList.add('dimmed');
         }
     });
-
-    // Transition to drawing phase
-    setTimeout(() => {
-        showPhase('drawing');
-        elements.drawingAlignment.textContent = data.alignment;
-        elements.drawingPrompt.textContent = data.prompt;
-        elements.totalArtists.textContent = gameState.players.filter(p => !p.isJudge).length;
-        elements.submissionCount.textContent = '0';
-    }, 1500);
 }
 
-// ==================== DRAWING PHASE ====================
+// =============================================================================
+// DRAWING PHASE
+// =============================================================================
 
-function startTimer(duration) {
-    elements.startTimerBtn.disabled = true;
-    elements.stopTimerBtn.disabled = false;
+function startDrawingPhase(data) {
+    showPhase('drawing');
+
+    // Display prompt and alignment
+    if (dom.drawingPromptDisplay) {
+        dom.drawingPromptDisplay.textContent = data.prompt;
+    }
+    if (dom.drawingAlignmentDisplay) {
+        dom.drawingAlignmentDisplay.textContent = data.alignmentFullName;
+    }
+
+    // Show active modifiers for all players
+    renderActiveModifiers();
+
+    // Reset submission counter
+    updateSubmissionCounter(0);
+
+    // Setup timer display
+    const duration = data.timeLimit || gameState.settings.timerDuration;
+    if (duration && duration > 0) {
+        updateTimerDisplay(duration, duration);
+    } else {
+        if (dom.timerText) dom.timerText.textContent = 'No Timer';
+    }
+
+    if (dom.endDrawingBtn) {
+        dom.endDrawingBtn.disabled = false;
+    }
+
+    // Auto-start timer
+    startTimer();
+
+    gameState.selectedPrompt = data.prompt;
+}
+
+function renderActiveModifiers() {
+    if (!dom.activeModifiers) return;
+    dom.activeModifiers.innerHTML = '';
+
+    const modifiedPlayers = gameState.players.filter(
+        p => p.activeModifiers && p.activeModifiers.length > 0 && !p.isJudge
+    );
+
+    if (modifiedPlayers.length === 0) {
+        dom.activeModifiers.style.display = 'none';
+        return;
+    }
+
+    dom.activeModifiers.style.display = '';
+    modifiedPlayers.forEach(player => {
+        player.activeModifiers.forEach(mod => {
+            const modEl = document.createElement('div');
+            modEl.classList.add('active-modifier');
+            modEl.innerHTML = `
+                <span class="modifier-icon">${mod.icon || '\u26A0\uFE0F'}</span>
+                <span class="modifier-target">${escapeHtml(player.name)}</span>
+                <span class="modifier-name">${escapeHtml(mod.name)}</span>
+                <span class="modifier-desc">${escapeHtml(mod.description)}</span>
+            `;
+            dom.activeModifiers.appendChild(modEl);
+        });
+    });
+}
+
+function startTimer() {
+    const duration = gameState.settings.timerDuration;
+    if (!duration || duration <= 0) return;
 
     socket.emit('host:startTimer', duration, (response) => {
         if (!response.success) {
-            alert('Failed to start timer: ' + response.error);
-            elements.startTimerBtn.disabled = false;
-            elements.stopTimerBtn.disabled = true;
+            showNotification('Failed to start timer', 'error');
         }
     });
 }
 
-function stopTimer() {
-    elements.stopTimerBtn.disabled = true;
-    elements.startTimerBtn.disabled = false;
-    // Timer will be stopped server-side when submissions are collected
+function updateTimerDisplay(timeLeft, totalDuration) {
+    if (dom.timerText) {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        dom.timerText.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        // Warning class when low
+        if (timeLeft <= 10 && timeLeft > 0) {
+            dom.timerText.classList.add('warning');
+        } else {
+            dom.timerText.classList.remove('warning');
+        }
+
+        if (timeLeft <= 0) {
+            dom.timerText.classList.add('expired');
+        } else {
+            dom.timerText.classList.remove('expired');
+        }
+    }
 }
 
-function handleTimerStarted(data) {
-    formatTimer(data.duration);
+function updateSubmissionCounter(count) {
+    if (!dom.submissionCounter) return;
+    const nonJudgePlayers = gameState.players.filter(p => !p.isJudge);
+    const total = nonJudgePlayers.length;
+    dom.submissionCounter.textContent = `${count} / ${total} drawings submitted`;
 }
 
-function handleTimerTick(data) {
-    formatTimer(data.timeLeft);
+function endDrawing() {
+    if (dom.endDrawingBtn) dom.endDrawingBtn.disabled = true;
+
+    socket.emit('host:endDrawing', (response) => {
+        if (!response.success) {
+            showNotification('Failed to end drawing phase', 'error');
+            if (dom.endDrawingBtn) dom.endDrawingBtn.disabled = false;
+        }
+        // Results handled by game:submissionsCollected listener
+    });
 }
 
-function handleTimerEnd() {
-    playSound('timerEnd');
-    elements.timer.textContent = "TIME'S UP!";
-    elements.startTimerBtn.disabled = true;
-    elements.stopTimerBtn.disabled = true;
-}
-
-function formatTimer(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    elements.timer.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-function handleSubmissionReceived(data) {
-    elements.submissionCount.textContent = data.submissionCount;
-}
+// =============================================================================
+// JUDGING PHASE
+// =============================================================================
 
 function handleSubmissionsCollected(data) {
-    gameState.submissions = data.submissions;
+    currentSubmissions = data.submissions || [];
     showPhase('judging');
+    renderSubmissionGallery(currentSubmissions);
+}
 
-    elements.judgingAlignment.textContent = gameState.alignment;
-    elements.judgingPrompt.textContent = gameState.selectedPrompt;
+function renderSubmissionGallery(submissions) {
+    if (!dom.submissionGallery) return;
+    dom.submissionGallery.innerHTML = '';
 
-    // Display submissions
-    elements.submissionsGallery.innerHTML = '';
-    data.submissions.forEach(submission => {
+    if (submissions.length === 0) {
+        dom.submissionGallery.innerHTML = '<div class="no-submissions">No drawings were submitted this round.</div>';
+        return;
+    }
+
+    submissions.forEach((sub, index) => {
         const card = document.createElement('div');
-        card.className = 'submission-card';
+        card.classList.add('submission-card');
+        card.dataset.playerId = sub.playerId;
+
+        // Staggered reveal animation
+        card.style.animationDelay = `${index * 150}ms`;
+        card.classList.add('revealing');
+
         card.innerHTML = `
             <div class="submission-drawing">
-                <img src="${submission.drawing}" alt="Drawing by ${submission.playerName}">
+                <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}" />
             </div>
             <div class="submission-info">
-                <div class="submission-avatar" style="background-image: url('/assets/images/avatars/${submission.playerAvatar}')"></div>
-                <span class="submission-name">${submission.playerName}</span>
+                <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                <span class="submission-name">${escapeHtml(sub.playerName)}</span>
             </div>
         `;
-        card.addEventListener('click', () => selectWinner(submission.playerId));
-        elements.submissionsGallery.appendChild(card);
+
+        card.addEventListener('click', () => {
+            selectWinner(sub.playerId);
+        });
+
+        dom.submissionGallery.appendChild(card);
     });
 }
-
-// ==================== JUDGING & SCORING ====================
 
 function selectWinner(playerId) {
+    // Highlight selected and disable all
+    if (dom.submissionGallery) {
+        dom.submissionGallery.querySelectorAll('.submission-card').forEach(card => {
+            card.classList.add('disabled');
+            if (card.dataset.playerId === playerId) {
+                card.classList.add('winner');
+            }
+        });
+    }
+
     socket.emit('host:selectWinner', playerId, (response) => {
         if (!response.success) {
-            alert('Failed to select winner: ' + response.error);
+            showNotification(`Failed to select winner: ${response.error}`, 'error');
+            // Re-enable cards
+            if (dom.submissionGallery) {
+                dom.submissionGallery.querySelectorAll('.submission-card').forEach(card => {
+                    card.classList.remove('disabled', 'winner');
+                });
+            }
         }
+        // Result handled by game:winnerSelected listener
     });
 }
+
+// =============================================================================
+// RESULTS / SCORING PHASE
+// =============================================================================
 
 function handleWinnerSelected(data) {
-    playSound('pointGain');
+    playSound('point-gain');
 
-    // Highlight winning submission
-    const submissions = elements.submissionsGallery.querySelectorAll('.submission-card');
-    submissions.forEach(card => {
-        const name = card.querySelector('.submission-name').textContent;
-        if (name === data.winnerName) {
-            card.classList.add('winner');
-        } else {
-            card.classList.add('not-winner');
+    // Update local scores
+    data.scores.forEach(scoreData => {
+        const player = gameState.players.find(p => p.id === scoreData.id);
+        if (player) {
+            player.score = scoreData.score;
+            player.tokens = scoreData.tokens;
         }
     });
 
-    // Update scores
-    gameState.players = gameState.players.map(p => {
-        const score = data.scores.find(s => s.id === p.id);
-        return score ? { ...p, score: score.score, tokens: score.tokens } : p;
-    });
+    if (data.gameOver) {
+        // Game over handled by game:over event
+        return;
+    }
 
-    updateScoreboard();
-
-    // Transition to scoring phase
-    setTimeout(() => {
-        showPhase('scoring');
-        const winner = gameState.players.find(p => p.id === data.winnerId);
-        if (winner) {
-            elements.winnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${winner.avatar}')`;
-            elements.winnerName.textContent = winner.name;
-        }
-        generateTokenAwardsUI();
-    }, 2000);
+    showResultsPhase(data);
 }
 
-function generateTokenAwardsUI() {
-    elements.tokenAwards.innerHTML = '';
+function showResultsPhase(data) {
+    showPhase('results');
 
-    const tokenTypes = [
-        { key: 'mindReader', name: 'Mind Reader', desc: "Close match to Judge's thought" },
-        { key: 'technicalMerit', name: 'Technical Merit', desc: "Exceptional artistic skill" },
-        { key: 'perfectAlignment', name: 'Perfect Alignment', desc: "Brilliant alignment capture" },
-        { key: 'plotTwist', name: 'Plot Twist', desc: "Surprising interpretation" }
-    ];
+    // Reset tokens tracking for this round
+    gameState.tokensAwardedThisRound = [];
 
-    // Create token type sections
-    tokenTypes.forEach(token => {
-        const section = document.createElement('div');
-        section.className = 'token-section';
-        section.innerHTML = `
-            <div class="token-header">
-                <span class="token-name">${token.name}</span>
-                <span class="token-desc">${token.desc}</span>
+    // Show winner announcement
+    const winner = gameState.players.find(p => p.id === data.winnerId);
+    if (dom.winnerAvatar) {
+        dom.winnerAvatar.textContent = winner ? (winner.avatar || '\uD83C\uDFA8') : '\uD83C\uDFC6';
+    }
+    if (dom.winnerName) {
+        dom.winnerName.textContent = escapeHtml(data.winnerName);
+    }
+
+    // Generate token award UI for each non-judge player
+    renderTokenAwards();
+
+    // Enable next round button
+    if (dom.nextRoundBtn) {
+        dom.nextRoundBtn.disabled = false;
+    }
+
+    updateScoreboard();
+}
+
+function renderTokenAwards() {
+    if (!dom.tokenAwards) return;
+    dom.tokenAwards.innerHTML = '';
+
+    const nonJudgePlayers = gameState.players.filter(p => !p.isJudge);
+
+    nonJudgePlayers.forEach(player => {
+        const playerRow = document.createElement('div');
+        playerRow.classList.add('token-award-row');
+        playerRow.dataset.playerId = player.id;
+
+        let buttonsHtml = '';
+        TOKEN_TYPE_KEYS.forEach(tokenType => {
+            const tokenInfo = TOKEN_TYPES[tokenType];
+            const isAwarded = gameState.tokensAwardedThisRound.includes(tokenType);
+            const awardedToThis = gameState.tokensAwardedThisRound.find(
+                t => t === tokenType
+            );
+            buttonsHtml += `
+                <button class="token-btn ${isAwarded ? 'unavailable' : ''}"
+                        data-player-id="${player.id}"
+                        data-token-type="${tokenType}"
+                        ${isAwarded ? 'disabled' : ''}
+                        title="${tokenInfo.description}">
+                    ${tokenInfo.icon} ${tokenInfo.name}
+                </button>
+            `;
+        });
+
+        playerRow.innerHTML = `
+            <div class="token-player-info">
+                <span class="token-player-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+                <span class="token-player-name">${escapeHtml(player.name)}</span>
             </div>
-            <div class="token-players" data-token="${token.key}">
-                ${gameState.players.filter(p => !p.isJudge).map(p => `
-                    <button class="token-player-btn" data-player="${p.id}" data-token="${token.key}">
-                        <div class="mini-avatar" style="background-image: url('/assets/images/avatars/${p.avatar}')"></div>
-                        <span>${p.name}</span>
-                    </button>
-                `).join('')}
+            <div class="token-buttons">
+                ${buttonsHtml}
             </div>
         `;
-        elements.tokenAwards.appendChild(section);
+
+        dom.tokenAwards.appendChild(playerRow);
     });
 
-    // Add click handlers
-    elements.tokenAwards.querySelectorAll('.token-player-btn').forEach(btn => {
+    // Attach click handlers to token buttons
+    dom.tokenAwards.querySelectorAll('.token-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const tokenType = btn.dataset.token;
-            const playerId = btn.dataset.player;
-
-            // Toggle selection within this token type
-            const siblings = btn.parentElement.querySelectorAll('.token-player-btn');
-            siblings.forEach(s => s.classList.remove('selected'));
-            btn.classList.add('selected');
+            const playerId = btn.dataset.playerId;
+            const tokenType = btn.dataset.tokenType;
+            awardToken(playerId, tokenType, btn);
         });
     });
 }
+
+function awardToken(playerId, tokenType, buttonEl) {
+    // Check if this token type was already awarded this round
+    if (gameState.tokensAwardedThisRound.includes(tokenType)) {
+        showNotification('This token type was already awarded this round.', 'warning');
+        return;
+    }
+
+    buttonEl.disabled = true;
+
+    socket.emit('host:awardToken', { playerId, tokenType }, (response) => {
+        if (response.success) {
+            // Mark as awarded
+            gameState.tokensAwardedThisRound.push(tokenType);
+            buttonEl.classList.add('awarded');
+            buttonEl.disabled = true;
+
+            // Grey out same token type for other players
+            if (dom.tokenAwards) {
+                dom.tokenAwards.querySelectorAll(`.token-btn[data-token-type="${tokenType}"]`).forEach(otherBtn => {
+                    if (otherBtn !== buttonEl) {
+                        otherBtn.classList.add('unavailable');
+                        otherBtn.disabled = true;
+                    }
+                });
+            }
+        } else {
+            showNotification(`Failed to award token: ${response.error}`, 'error');
+            buttonEl.disabled = false;
+        }
+    });
+}
+
+// =============================================================================
+// NEXT ROUND / MODIFIERS
+// =============================================================================
 
 function nextRound() {
-    // Collect token awards
-    const tokenAwards = {};
-    elements.tokenAwards.querySelectorAll('.token-player-btn.selected').forEach(btn => {
-        tokenAwards[btn.dataset.player] = btn.dataset.token;
-    });
+    if (dom.nextRoundBtn) dom.nextRoundBtn.disabled = true;
 
-    // Send token awards if any
-    if (Object.keys(tokenAwards).length > 0) {
-        socket.emit('host:awardTokens', tokenAwards, (response) => {
-            if (response.success) {
-                playSound('tokenGain');
-            }
-        });
-    }
-
-    // Check for modifier phase before advancing
+    // Check for modifier phase first
     socket.emit('host:checkModifiers', (response) => {
         if (response.hasModifierPhase) {
-            // Modifier phase will be shown via socket event
-        } else {
-            // No modifier phase, advance directly
-            socket.emit('host:nextRound', (nextResponse) => {
-                if (!nextResponse.success) {
-                    alert('Failed to advance: ' + nextResponse.error);
-                }
-            });
+            // Modifier phase will be shown via game:modifierPhase event
+            return;
         }
-    });
-}
 
-// ==================== MODIFIER PHASE ====================
-
-function handleModifierPhase(data) {
-    gameState.currentCurser = data.curser;
-    gameState.currentModifier = null;
-
-    showPhase('modifiers');
-
-    // Set curser display
-    if (elements.curserAvatar) {
-        elements.curserAvatar.style.backgroundImage = `url('/assets/images/avatars/${data.curser.avatar}')`;
-    }
-    if (elements.curserName) {
-        elements.curserName.textContent = data.curser.name;
-    }
-
-    // Hide modifier card initially
-    if (elements.modifierCard) {
-        elements.modifierCard.style.display = 'none';
-    }
-
-    // Show/hide held curse button
-    if (elements.useHeldCurseBtn) {
-        if (data.hasHeldCurse && data.heldCurse) {
-            elements.useHeldCurseBtn.style.display = 'inline-block';
-            elements.useHeldCurseBtn.textContent = `Use Held Curse: ${data.heldCurse.icon} ${data.heldCurse.name}`;
-            elements.useHeldCurseBtn.onclick = () => useHeldCurse(data.heldCurse);
-        } else {
-            elements.useHeldCurseBtn.style.display = 'none';
-        }
-    }
-
-    // Show draw button, hide others
-    if (elements.drawCurseBtn) {
-        elements.drawCurseBtn.style.display = 'inline-block';
-        elements.drawCurseBtn.disabled = false;
-    }
-    if (elements.holdCurseBtn) {
-        elements.holdCurseBtn.style.display = 'none';
-    }
-    if (elements.curseTargets) {
-        elements.curseTargets.innerHTML = '';
-        elements.curseTargets.style.display = 'none';
-    }
-    if (elements.skipModifiersBtn) {
-        elements.skipModifiersBtn.style.display = 'inline-block';
-    }
-}
-
-function drawCurseCard() {
-    if (elements.drawCurseBtn) {
-        elements.drawCurseBtn.disabled = true;
-    }
-
-    socket.emit('host:drawCurseCard', (response) => {
-        if (!response.success) {
-            alert('Failed to draw curse: ' + response.error);
-            if (elements.drawCurseBtn) {
-                elements.drawCurseBtn.disabled = false;
+        // No modifier phase, advance directly
+        socket.emit('host:nextRound', (roundResponse) => {
+            if (!roundResponse.success) {
+                showNotification(`Failed to advance round: ${roundResponse.error}`, 'error');
+                if (dom.nextRoundBtn) dom.nextRoundBtn.disabled = false;
             }
-        }
-    });
-}
-
-function handleCurseCardDrawn(data) {
-    gameState.currentModifier = data.modifier;
-
-    // Show the modifier card with animation
-    if (elements.modifierCard) {
-        elements.modifierCard.style.display = 'block';
-        elements.modifierCard.classList.add('dealing');
-        setTimeout(() => elements.modifierCard.classList.remove('dealing'), 800);
-    }
-    if (elements.modifierIcon) {
-        elements.modifierIcon.textContent = data.modifier.icon;
-    }
-    if (elements.modifierName) {
-        elements.modifierName.textContent = data.modifier.name;
-    }
-    if (elements.modifierDescription) {
-        elements.modifierDescription.textContent = data.modifier.description;
-    }
-
-    // Hide draw button, show target selection
-    if (elements.drawCurseBtn) {
-        elements.drawCurseBtn.style.display = 'none';
-    }
-    if (elements.useHeldCurseBtn) {
-        elements.useHeldCurseBtn.style.display = 'none';
-    }
-    if (elements.holdCurseBtn) {
-        elements.holdCurseBtn.style.display = 'inline-block';
-    }
-
-    // Generate target buttons
-    generateCurseTargets(data.modifier);
-}
-
-function generateCurseTargets(modifier) {
-    if (!elements.curseTargets) return;
-
-    elements.curseTargets.innerHTML = '<h4>Choose target:</h4>';
-    elements.curseTargets.style.display = 'block';
-
-    gameState.players.forEach((player, index) => {
-        // Skip curser and judge
-        if (player.id === gameState.currentCurser?.id) return;
-        if (player.isJudge) return;
-
-        const btn = document.createElement('button');
-        btn.className = 'curse-target-btn';
-        btn.innerHTML = `
-            <div class="mini-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span>${player.name}</span>
-        `;
-        btn.onclick = () => applyCurseToTarget(index, modifier);
-        elements.curseTargets.appendChild(btn);
-    });
-}
-
-function applyCurseToTarget(targetIndex, modifier) {
-    socket.emit('host:applyCurse', { targetIndex, modifier }, (response) => {
-        if (!response.success) {
-            alert('Failed to apply curse: ' + response.error);
-        }
-    });
-}
-
-function useHeldCurse(heldCurse) {
-    gameState.currentModifier = heldCurse;
-
-    // Show the modifier card
-    if (elements.modifierCard) {
-        elements.modifierCard.style.display = 'block';
-    }
-    if (elements.modifierIcon) {
-        elements.modifierIcon.textContent = heldCurse.icon;
-    }
-    if (elements.modifierName) {
-        elements.modifierName.textContent = heldCurse.name;
-    }
-    if (elements.modifierDescription) {
-        elements.modifierDescription.textContent = heldCurse.description;
-    }
-
-    // Hide buttons, show targets
-    if (elements.drawCurseBtn) {
-        elements.drawCurseBtn.style.display = 'none';
-    }
-    if (elements.useHeldCurseBtn) {
-        elements.useHeldCurseBtn.style.display = 'none';
-    }
-    if (elements.holdCurseBtn) {
-        elements.holdCurseBtn.style.display = 'none';
-    }
-
-    generateCurseTargets(heldCurse);
-}
-
-function holdCurseForLater() {
-    if (!gameState.currentModifier) return;
-
-    socket.emit('host:holdCurse', gameState.currentModifier, (response) => {
-        if (response.success) {
-            showNotification(`Curse held for next round!`);
-            // Advance to next round
-            socket.emit('host:nextRound', (nextResponse) => {
-                if (!nextResponse.success) {
-                    alert('Failed to advance: ' + nextResponse.error);
-                }
-            });
-        } else {
-            alert('Failed to hold curse: ' + response.error);
-        }
-    });
-}
-
-function handleCurseApplied(data) {
-    showNotification(`${data.targetName} has been cursed with ${data.modifier.name}!`);
-
-    // Advance to next round after showing curse
-    setTimeout(() => {
-        socket.emit('host:nextRound', (response) => {
-            if (!response.success) {
-                alert('Failed to advance: ' + response.error);
-            }
+            // Results handled by game:newRound or game:over listeners
         });
-    }, 2000);
-}
-
-function handleCurseHeld(data) {
-    // State updated via socket, now advance
-}
-
-function skipModifierPhase() {
-    socket.emit('host:skipModifiers', (response) => {
-        if (!response.success) {
-            alert('Failed to skip: ' + response.error);
-        }
     });
-}
-
-function handleTokensAwarded(data) {
-    gameState.players = data.players;
-    updateScoreboard();
 }
 
 function handleNewRound(data) {
     gameState.currentRound = data.round;
     gameState.judge = data.judge;
-    gameState.players = data.gameState.players;
-    gameState.alignment = null;
-    gameState.alignmentName = null;
-    gameState.prompts = [];
-    gameState.selectedPrompt = null;
-    gameState.submissions = [];
 
-    // Reset UI
-    updateGameUI();
-    resetPhaseUI();
+    if (data.gameState) {
+        syncFromServerState(data.gameState);
+    }
+
+    // Reset UI for new round
+    resetRoundUI();
+
     showPhase('alignment');
+    updateGameUI();
+    showNotification(`Round ${data.round} - ${data.judge.name} is the Judge!`, 'info');
 }
 
-function resetPhaseUI() {
-    // Alignment phase
-    document.querySelectorAll('.alignment-cell').forEach(c => {
-        c.classList.remove('flicker', 'highlighted', 'judges-choice');
-    });
-    const alignmentGrid = document.getElementById('alignment-grid');
-    if (alignmentGrid) {
-        alignmentGrid.classList.remove('judges-choice');
+function resetRoundUI() {
+    // Clear alignment grid highlights
+    if (dom.alignmentGrid) {
+        dom.alignmentGrid.classList.remove('judges-choice');
+        dom.alignmentGrid.querySelectorAll('.alignment-cell').forEach(cell => {
+            cell.classList.remove('rolling', 'selected', 'judges-choice');
+        });
     }
-    elements.alignmentResult.style.display = 'none';
-    elements.rollBtn.disabled = false;
 
-    // Prompts phase
-    elements.promptsContainer.innerHTML = '';
-    elements.drawPromptsBtn.style.display = 'block';
-    elements.drawPromptsBtn.disabled = false;
+    // Hide judges choice section
+    if (dom.judgeChoicePhase) {
+        dom.judgeChoicePhase.style.display = 'none';
+    }
 
-    // Drawing phase
-    elements.timer.textContent = '--:--';
-    elements.startTimerBtn.disabled = false;
-    elements.stopTimerBtn.disabled = true;
-    elements.submissionCount.textContent = '0';
+    // Reset alignment result
+    if (dom.alignmentResult) {
+        dom.alignmentResult.classList.remove('visible');
+    }
+    if (dom.alignmentResultName) {
+        dom.alignmentResultName.textContent = '---';
+    }
+    if (dom.alignmentDescription) {
+        dom.alignmentDescription.textContent = '---';
+    }
 
-    // Judging phase
-    elements.submissionsGallery.innerHTML = '';
+    // Re-enable roll button
+    if (dom.rollBtn) dom.rollBtn.disabled = false;
 
-    // Scoring phase
-    elements.tokenAwards.innerHTML = '';
+    // Reset prompt cards - restore placeholders
+    if (dom.promptCards) {
+        dom.promptCards.querySelectorAll('.prompt-card').forEach(card => {
+            card.textContent = '\u00A0';
+            card.classList.remove('selected', 'dimmed', 'dealing', 'disabled');
+        });
+    }
+    if (dom.drawPromptsBtn) dom.drawPromptsBtn.disabled = true;
+    if (dom.confirmPromptBtn) dom.confirmPromptBtn.disabled = true;
 
-    // Modifiers phase
-    gameState.currentCurser = null;
+    // Reset timer
+    if (dom.timerText) {
+        dom.timerText.textContent = '--';
+        dom.timerText.classList.remove('warning', 'expired');
+    }
+
+    // Reset submission gallery
+    if (dom.submissionGallery) dom.submissionGallery.innerHTML = '';
+
+    // Reset results
+    if (dom.winnerAvatar) dom.winnerAvatar.textContent = '\uD83C\uDFA8';
+    if (dom.winnerName) dom.winnerName.textContent = '---';
+    if (dom.tokenAwards) dom.tokenAwards.innerHTML = '';
+
+    // Reset modifier phase
+    if (dom.curseCardDisplay) dom.curseCardDisplay.style.display = 'none';
+    if (dom.curseTargetSelection) dom.curseTargetSelection.innerHTML = '';
+
+    // Reset tracking
+    currentSubmissions = [];
+    gameState.tokensAwardedThisRound = [];
     gameState.currentModifier = null;
-    if (elements.modifierCard) {
-        elements.modifierCard.style.display = 'none';
-    }
-    if (elements.curseTargets) {
-        elements.curseTargets.innerHTML = '';
-    }
+    pendingModifierData = null;
 }
 
-function handleStealExecuted(data) {
-    playSound('steal');
-    gameState.players = gameState.players.map(p => {
-        const score = data.scores.find(s => s.id === p.id);
-        return score ? { ...p, score: score.score, tokens: score.tokens } : p;
+// =============================================================================
+// MODIFIER (CURSE) PHASE
+// =============================================================================
+
+function showModifierPhase(data) {
+    pendingModifierData = data;
+    showPhase('modifier');
+
+    const curser = data.curser;
+    if (dom.curserAvatar) {
+        dom.curserAvatar.textContent = curser.avatar || '\uD83D\uDE08';
+    }
+    if (dom.curserName) {
+        dom.curserName.textContent = escapeHtml(curser.name);
+    }
+
+    // Show/hide buttons
+    if (dom.drawCurseBtn) {
+        dom.drawCurseBtn.disabled = false;
+        dom.drawCurseBtn.style.display = '';
+    }
+
+    if (dom.skipModifiersBtn) {
+        dom.skipModifiersBtn.disabled = false;
+    }
+
+    // Hide curse card details and target selection until card is drawn
+    if (dom.curseCardDisplay) dom.curseCardDisplay.style.display = 'none';
+    if (dom.curseTargetHeading) dom.curseTargetHeading.style.display = 'none';
+    if (dom.curseTargetSelection) {
+        dom.curseTargetSelection.style.display = 'none';
+        dom.curseTargetSelection.innerHTML = '';
+    }
+    if (dom.curseActions) dom.curseActions.style.display = 'none';
+}
+
+function drawCurseCard() {
+    if (dom.drawCurseBtn) dom.drawCurseBtn.disabled = true;
+
+    socket.emit('host:drawCurseCard', (response) => {
+        if (!response.success) {
+            showNotification(`Failed to draw curse: ${response.error}`, 'error');
+            if (dom.drawCurseBtn) dom.drawCurseBtn.disabled = false;
+        }
+        // Result handled by game:curseCardDrawn listener
     });
-    updateScoreboard();
-
-    // Show steal notification
-    showNotification(`${data.stealerName} stole a point from ${data.targetName}!`);
 }
 
-// ==================== SCOREBOARD ====================
+function handleCurseCardDrawn(data) {
+    const modifier = data.modifier;
+    gameState.currentModifier = modifier;
+
+    // Show curse card details
+    if (dom.curseCardDisplay) dom.curseCardDisplay.style.display = '';
+    if (dom.curseCardIcon) dom.curseCardIcon.textContent = modifier.icon || '\u26A0\uFE0F';
+    if (dom.curseCardName) dom.curseCardName.textContent = escapeHtml(modifier.name);
+    if (dom.curseCardDesc) dom.curseCardDesc.textContent = escapeHtml(modifier.description);
+
+    // Hide draw button
+    if (dom.drawCurseBtn) dom.drawCurseBtn.style.display = 'none';
+
+    // Show actions (apply, hold, skip)
+    if (dom.curseActions) dom.curseActions.style.display = '';
+    if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = true; // Enabled after target selected
+
+    // Show target selection
+    showCurseTargetSelection(modifier);
+}
+
+function showCurseTargetSelection(modifier) {
+    if (!dom.curseTargetSelection) return;
+    dom.curseTargetSelection.innerHTML = '';
+    dom.curseTargetSelection.style.display = '';
+    if (dom.curseTargetHeading) dom.curseTargetHeading.style.display = '';
+
+    const curserIndex = pendingModifierData ? pendingModifierData.curserIndex : -1;
+    let selectedTargetIndex = null;
+
+    gameState.players.forEach((player, index) => {
+        // Cannot target judge or self (curser)
+        const isJudge = player.isJudge;
+        const isCurser = index === curserIndex;
+
+        if (isJudge || isCurser) return;
+
+        const targetBtn = document.createElement('button');
+        targetBtn.classList.add('curse-target-card');
+        targetBtn.innerHTML = `
+            <span class="curse-target-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+            <span class="curse-target-name">${escapeHtml(player.name)}</span>
+        `;
+
+        targetBtn.addEventListener('click', () => {
+            // Highlight selected target
+            dom.curseTargetSelection.querySelectorAll('.curse-target-card').forEach(c => c.classList.remove('selected'));
+            targetBtn.classList.add('selected');
+            selectedTargetIndex = index;
+            if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = false;
+        });
+
+        dom.curseTargetSelection.appendChild(targetBtn);
+    });
+
+    // Setup apply curse button
+    if (dom.applyCurseBtn) {
+        dom.applyCurseBtn.onclick = () => {
+            if (selectedTargetIndex !== null) {
+                applyCurse(selectedTargetIndex, modifier);
+            }
+        };
+    }
+}
+
+function applyCurse(targetIndex, modifier) {
+    // Disable buttons
+    if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = true;
+    if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = true;
+
+    socket.emit('host:applyCurse', { targetIndex, modifier }, (response) => {
+        if (response.success) {
+            // After applying, advance to next round
+            setTimeout(() => {
+                advanceAfterModifiers();
+            }, 2000);
+        } else {
+            showNotification(`Failed to apply curse: ${response.error}`, 'error');
+            if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = false;
+            if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = false;
+        }
+    });
+}
+
+function holdCurse() {
+    const modifier = gameState.currentModifier;
+    if (!modifier) return;
+
+    if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = true;
+
+    socket.emit('host:holdCurse', modifier, (response) => {
+        if (response.success) {
+            showNotification('Curse held for a future round!', 'info');
+            // Advance to next round
+            setTimeout(() => {
+                advanceAfterModifiers();
+            }, 1500);
+        } else {
+            showNotification(`Failed to hold curse: ${response.error}`, 'error');
+            if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = false;
+        }
+    });
+}
+
+function skipModifiers() {
+    advanceAfterModifiers();
+}
+
+function advanceAfterModifiers() {
+    socket.emit('host:nextRound', (response) => {
+        if (!response.success) {
+            showNotification(`Failed to advance round: ${response.error}`, 'error');
+        }
+        // Results handled by game:newRound or game:over listeners
+    });
+}
+
+// =============================================================================
+// SCOREBOARD
+// =============================================================================
 
 function updateScoreboard() {
-    elements.scoreboardList.innerHTML = '';
+    if (!dom.scoreboardList) return;
+    dom.scoreboardList.innerHTML = '';
 
-    // Sort by score descending
-    const sorted = [...gameState.players].sort((a, b) => b.score - a.score);
+    // Sort players by score (descending), then by total tokens (descending)
+    const sorted = [...gameState.players].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const aTokens = getTotalTokens(a);
+        const bTokens = getTotalTokens(b);
+        return bTokens - aTokens;
+    });
 
-    sorted.forEach(player => {
-        const li = document.createElement('li');
-        li.className = player.isJudge ? 'is-judge' : '';
-        if (!player.connected) li.classList.add('disconnected');
-
-        const totalTokens = Object.values(player.tokens || {}).reduce((a, b) => a + b, 0);
-
-        // Check for active modifiers
-        let modifierDisplay = '';
+    sorted.forEach((player, rank) => {
+        const entry = document.createElement('div');
+        entry.classList.add('scoreboard-entry');
+        if (player.isJudge) entry.classList.add('is-judge');
+        if (!player.connected) entry.classList.add('disconnected');
         if (player.activeModifiers && player.activeModifiers.length > 0) {
-            const modIcons = player.activeModifiers.map(m => m.icon).join(' ');
-            modifierDisplay = `<span class="curse-badge" title="Cursed!">${modIcons}</span>`;
+            entry.classList.add('cursed');
         }
 
-        // Check for held curse
-        let heldCurseDisplay = '';
-        if (player.heldCurse) {
-            heldCurseDisplay = `<span class="held-curse-badge" title="Held: ${player.heldCurse.name}">💾${player.heldCurse.icon}</span>`;
-        }
+        const totalTokens = getTotalTokens(player);
+        const tokenIcons = buildTokenIcons(player.tokens);
+        const canSteal = totalTokens >= 3 && !player.isJudge;
 
-        li.innerHTML = `
-            <div class="score-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span class="score-name">${player.name}</span>
-            <span class="score-value">${player.score}</span>
-            ${totalTokens > 0 ? `<span class="score-tokens" title="Total tokens: ${totalTokens}">${totalTokens}T</span>` : ''}
-            ${modifierDisplay}
-            ${heldCurseDisplay}
-            ${player.isJudge ? '<span class="judge-badge">JUDGE</span>' : ''}
+        entry.innerHTML = `
+            <div class="scoreboard-rank">${rank + 1}</div>
+            <div class="scoreboard-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
+            <div class="scoreboard-name">
+                ${escapeHtml(player.name)}
+                ${player.isJudge ? '<span class="judge-indicator">\uD83D\uDD28</span>' : ''}
+                ${!player.connected ? '<span class="dc-indicator">\u274C</span>' : ''}
+            </div>
+            <div class="scoreboard-score">${player.score}</div>
+            <div class="scoreboard-tokens">${tokenIcons}</div>
+            ${player.activeModifiers && player.activeModifiers.length > 0
+                ? `<div class="scoreboard-curses">${player.activeModifiers.map(m => `<span title="${escapeHtml(m.name)}">${m.icon || '\u26A0\uFE0F'}</span>`).join('')}</div>`
+                : ''}
+            ${canSteal
+                ? `<button class="steal-btn" data-player-id="${player.id}" title="Spend 3 tokens to steal a point">\uD83D\uDC80 Steal</button>`
+                : ''}
         `;
-        elements.scoreboardList.appendChild(li);
+
+        dom.scoreboardList.appendChild(entry);
+    });
+
+    // Attach steal button handlers
+    dom.scoreboardList.querySelectorAll('.steal-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            openStealModal(btn.dataset.playerId);
+        });
     });
 }
 
-// ==================== GAME OVER ====================
+function getTotalTokens(player) {
+    if (!player.tokens) return player.totalTokens || 0;
+    return Object.values(player.tokens).reduce((sum, count) => sum + count, 0);
+}
 
-function handleGameOver(data) {
+function buildTokenIcons(tokens) {
+    if (!tokens) return '';
+    let icons = '';
+    TOKEN_TYPE_KEYS.forEach(key => {
+        const count = tokens[key] || 0;
+        if (count > 0) {
+            icons += `<span class="token-icon" title="${TOKEN_TYPES[key].name}">${TOKEN_TYPES[key].icon}${count > 1 ? `x${count}` : ''}</span>`;
+        }
+    });
+    return icons || '<span class="no-tokens">-</span>';
+}
+
+// =============================================================================
+// STEAL MECHANIC
+// =============================================================================
+
+function openStealModal(stealerPlayerId) {
+    if (!dom.stealModal) return;
+
+    const stealer = gameState.players.find(p => p.id === stealerPlayerId);
+    if (!stealer) return;
+
+    // Build target list (players with score > 0 who are not the stealer)
+    if (!dom.stealTargetList) return;
+    dom.stealTargetList.innerHTML = '';
+
+    const targets = gameState.players.filter(
+        p => p.id !== stealerPlayerId && p.score > 0
+    );
+
+    if (targets.length === 0) {
+        dom.stealTargetList.innerHTML = '<div class="no-targets">No valid targets (no other players with points).</div>';
+    } else {
+        targets.forEach(target => {
+            const targetBtn = document.createElement('button');
+            targetBtn.classList.add('steal-target-option');
+            targetBtn.innerHTML = `
+                <span class="target-avatar">${target.avatar || '\uD83C\uDFA8'}</span>
+                <span class="target-name">${escapeHtml(target.name)}</span>
+                <span class="target-score">Score: ${target.score}</span>
+            `;
+            targetBtn.addEventListener('click', () => {
+                executeSteal(stealerPlayerId, target.id);
+                closeStealModal();
+            });
+            dom.stealTargetList.appendChild(targetBtn);
+        });
+    }
+
+    dom.stealModal.classList.add('visible');
+}
+
+function closeStealModal() {
+    if (dom.stealModal) {
+        dom.stealModal.classList.remove('visible');
+    }
+}
+
+function executeSteal(fromId, targetId) {
+    socket.emit('player:steal', targetId, (response) => {
+        if (!response.success) {
+            showNotification(`Steal failed: ${response.error}`, 'error');
+        }
+        // Result handled by game:stealExecuted listener
+    });
+}
+
+// =============================================================================
+// GAME OVER
+// =============================================================================
+
+function showGameOver(data) {
     playSound('win');
     showScreen('gameover');
 
-    elements.finalWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${data.winner.avatar}')`;
-    elements.finalWinnerName.textContent = data.winner.name;
+    // Display winner
+    if (dom.gameOverWinner && data.winner) {
+        dom.gameOverWinner.textContent = `${data.winner.avatar || '\uD83D\uDC51'} ${escapeHtml(data.winner.name)} Wins!`;
+    }
 
-    // Display final standings
-    elements.finalScores.innerHTML = '';
-    const sorted = data.finalScores.sort((a, b) => b.score - a.score);
-    sorted.forEach((player, index) => {
-        const div = document.createElement('div');
-        div.className = 'final-score-row';
-        div.innerHTML = `
-            <span class="rank">#${index + 1}</span>
-            <span class="name">${player.name}</span>
-            <span class="score">${player.score} pts</span>
-        `;
-        elements.finalScores.appendChild(div);
-    });
+    // Display final rankings with medals
+    if (dom.finalRankings && data.finalScores) {
+        dom.finalRankings.innerHTML = '';
+        const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+
+        const sorted = [...data.finalScores].sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const aTokens = a.tokens ? Object.values(a.tokens).reduce((s, c) => s + c, 0) : 0;
+            const bTokens = b.tokens ? Object.values(b.tokens).reduce((s, c) => s + c, 0) : 0;
+            return bTokens - aTokens;
+        });
+
+        sorted.forEach((player, index) => {
+            const row = document.createElement('div');
+            row.classList.add('final-score-row');
+            if (index === 0) row.classList.add('winner');
+
+            const medal = medals[index] || `#${index + 1}`;
+            const totalTokens = player.tokens
+                ? Object.values(player.tokens).reduce((s, c) => s + c, 0)
+                : 0;
+
+            row.innerHTML = `
+                <span class="final-rank">${medal}</span>
+                <span class="final-player-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+                <span class="final-player-name">${escapeHtml(player.name)}</span>
+                <span class="final-player-score">${player.score} pts</span>
+                <span class="final-player-tokens">${totalTokens} tokens</span>
+            `;
+
+            dom.finalRankings.appendChild(row);
+        });
+    }
+
+    if (dom.playAgainBtn) {
+        dom.playAgainBtn.disabled = false;
+    }
 }
 
-// ==================== UTILITIES ====================
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
 
-function showNotification(message) {
+function showNotification(message, type, duration) {
+    type = type || 'info';
+    duration = duration || 3000;
+
+    let container = dom.notificationContainer;
+    if (!container) {
+        container = document.getElementById('notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notification-container';
+            document.body.appendChild(container);
+        }
+        dom.notificationContainer = container;
+    }
+
     const notification = document.createElement('div');
-    notification.className = 'notification';
+    notification.classList.add('notification', `notification-${type}`);
     notification.textContent = message;
-    document.body.appendChild(notification);
 
+    container.appendChild(notification);
+
+    // Trigger entrance animation
+    requestAnimationFrame(() => {
+        notification.classList.add('visible');
+    });
+
+    // Auto-remove
     setTimeout(() => {
-        notification.classList.add('fade-out');
-        setTimeout(() => notification.remove(), 500);
-    }, 3000);
+        notification.classList.remove('visible');
+        notification.classList.add('exiting');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 400);
+    }, duration);
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', init);
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}

@@ -1,14 +1,29 @@
 /**
- * Perfectly Aligned - Jackbox-style Multiplayer Server
- * Main server file with Express and Socket.IO
+ * Perfectly Aligned - Main Server Entry Point
+ * =============================================
+ * Jackbox-style online multiplayer party drawing game.
+ * Express + Socket.IO server handling room management,
+ * real-time game events, and player connections.
+ *
+ * @module server/index
  */
 
-const express = require('express');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
-const path = require('path');
-const GameManager = require('./game/GameManager');
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import GameManager from './game/GameManager.js';
 
+// ---------------------------------------------------------------------------
+// ES Module __dirname equivalent
+// ---------------------------------------------------------------------------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ---------------------------------------------------------------------------
+// Server Initialization
+// ---------------------------------------------------------------------------
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -19,15 +34,17 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT || 3000;
-
-// Initialize game manager
 const gameManager = new GameManager();
 
-// Serve static files
+// ---------------------------------------------------------------------------
+// Static File Serving
+// ---------------------------------------------------------------------------
 app.use(express.static(path.join(__dirname, '../public')));
 app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
 
+// ---------------------------------------------------------------------------
 // Routes
+// ---------------------------------------------------------------------------
 app.get('/', (req, res) => {
     res.redirect('/host');
 });
@@ -44,7 +61,6 @@ app.get('/play/:roomCode', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/player/index.html'));
 });
 
-// API endpoint to check room status
 app.get('/api/room/:code', (req, res) => {
     const room = gameManager.getRoom(req.params.code.toUpperCase());
     if (room) {
@@ -60,34 +76,81 @@ app.get('/api/room/:code', (req, res) => {
     }
 });
 
-// Socket.IO connection handling
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Retrieve the room associated with a socket and verify host authorization.
+ * Returns the room on success or calls the callback with an error and returns null.
+ */
+function getHostRoom(socket, callback) {
+    const room = gameManager.getRoom(socket.roomCode);
+    if (!room) {
+        callback({ success: false, error: 'Room not found' });
+        return null;
+    }
+    if (!socket.isHost) {
+        callback({ success: false, error: 'Not authorized — host only' });
+        return null;
+    }
+    return room;
+}
+
+/**
+ * Retrieve the room associated with a socket (no host check).
+ * Returns the room on success or calls the callback with an error and returns null.
+ */
+function getRoom(socket, callback) {
+    const room = gameManager.getRoom(socket.roomCode);
+    if (!room) {
+        callback({ success: false, error: 'Room not found' });
+        return null;
+    }
+    return room;
+}
+
+// ---------------------------------------------------------------------------
+// Socket.IO Connection Handling
+// ---------------------------------------------------------------------------
 io.on('connection', (socket) => {
-    console.log(`[Socket] New connection: ${socket.id}`);
+    console.log(`[Socket] Connected: ${socket.id}`);
 
-    // ==================== HOST EVENTS ====================
+    // ======================================================================
+    // HOST EVENTS
+    // ======================================================================
 
-    // Host creates a new room
+    /**
+     * host:createRoom
+     * Creates a new game room and makes this socket the host.
+     */
     socket.on('host:createRoom', (callback) => {
-        const room = gameManager.createRoom(socket.id);
-        socket.join(room.code);
-        socket.roomCode = room.code;
-        socket.isHost = true;
+        try {
+            const room = gameManager.createRoom(socket.id);
+            socket.join(room.code);
+            socket.roomCode = room.code;
+            socket.isHost = true;
 
-        console.log(`[Room] Created: ${room.code} by host ${socket.id}`);
+            console.log(`[Room] Created: ${room.code} by host ${socket.id}`);
 
-        callback({
-            success: true,
-            roomCode: room.code,
-            gameState: room.getState()
-        });
+            callback({
+                success: true,
+                roomCode: room.code,
+                gameState: room.getState()
+            });
+        } catch (err) {
+            console.error('[host:createRoom] Error:', err.message);
+            callback({ success: false, error: err.message });
+        }
     });
 
-    // Host starts the game
+    /**
+     * host:startGame
+     * Starts the game with the provided settings.
+     */
     socket.on('host:startGame', (settings, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.startGame(settings);
         if (result.success) {
@@ -96,16 +159,38 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host rolls alignment
+    /**
+     * host:rollAlignment
+     * Rolls a random alignment for the current round.
+     * Includes an isJudgeChoice flag when the special "U" alignment is rolled.
+     */
     socket.on('host:rollAlignment', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.rollAlignment();
         if (result.success) {
+            const isJudgeChoice = result.alignment === 'U';
             io.to(room.code).emit('game:alignmentRolled', {
+                alignment: result.alignment,
+                fullName: result.fullName,
+                isJudgeChoice
+            });
+        }
+        callback(result);
+    });
+
+    /**
+     * host:selectJudgeAlignment
+     * When "Judge's Choice" is rolled, the judge manually selects an alignment.
+     */
+    socket.on('host:selectJudgeAlignment', (alignment, callback) => {
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
+
+        const result = room.selectJudgeAlignment(alignment);
+        if (result.success) {
+            io.to(room.code).emit('game:judgeAlignmentSelected', {
                 alignment: result.alignment,
                 fullName: result.fullName
             });
@@ -113,12 +198,13 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host draws prompts
+    /**
+     * host:drawPrompts
+     * Draws a hand of prompt cards for the judge to choose from.
+     */
     socket.on('host:drawPrompts', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.drawPrompts();
         if (result.success) {
@@ -129,14 +215,15 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host selects a prompt
-    socket.on('host:selectPrompt', (promptIndex, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    /**
+     * host:selectPrompt
+     * Judge selects one of the drawn prompts. Triggers the drawing phase.
+     */
+    socket.on('host:selectPrompt', (index, callback) => {
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
-        const result = room.selectPrompt(promptIndex);
+        const result = room.selectPrompt(index);
         if (result.success) {
             io.to(room.code).emit('game:promptSelected', {
                 prompt: result.prompt,
@@ -144,7 +231,6 @@ io.on('connection', (socket) => {
                 alignmentFullName: room.currentAlignmentFullName
             });
 
-            // Notify players to start drawing
             io.to(room.code).emit('game:startDrawing', {
                 prompt: result.prompt,
                 alignment: room.currentAlignment,
@@ -155,68 +241,130 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host starts the timer
+    /**
+     * host:startTimer
+     * Starts the drawing countdown timer. Emits ticks every second and
+     * a completion event when the timer runs out.
+     */
     socket.on('host:startTimer', (duration, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
-        room.startTimer(duration, (timeLeft) => {
-            io.to(room.code).emit('game:timerTick', { timeLeft });
-        }, () => {
-            io.to(room.code).emit('game:timerEnd');
-            room.collectSubmissions();
-            io.to(room.code).emit('game:submissionsCollected', {
-                submissions: room.getSubmissionsForJudging()
-            });
-        });
+        room.startTimer(
+            duration,
+            (timeLeft) => {
+                io.to(room.code).emit('game:timerTick', { timeLeft });
+            },
+            () => {
+                io.to(room.code).emit('game:timerEnd');
+            }
+        );
 
         io.to(room.code).emit('game:timerStarted', { duration });
         callback({ success: true });
     });
 
-    // Host selects winner
+    /**
+     * host:endDrawing
+     * Manually ends the drawing phase, collects all submissions.
+     */
+    socket.on('host:endDrawing', (callback) => {
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
+
+        room.collectSubmissions();
+        const submissions = room.getSubmissionsForJudging();
+
+        io.to(room.code).emit('game:submissionsCollected', { submissions });
+        callback({ success: true, submissions });
+    });
+
+    /**
+     * host:selectWinner
+     * Judge picks the winning drawing. Awards a point and checks for game over.
+     */
     socket.on('host:selectWinner', (playerId, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.selectWinner(playerId);
         if (result.success) {
+            const scores = room.getScores();
+            const winner = room.players.find(
+                (p) => p.score >= room.settings.targetScore
+            );
+            const gameOver = !!winner;
+
             io.to(room.code).emit('game:winnerSelected', {
                 winnerId: playerId,
                 winnerName: result.winnerName,
-                scores: room.getScores()
+                scores,
+                gameOver
             });
+
+            if (gameOver) {
+                io.to(room.code).emit('game:over', {
+                    winner,
+                    finalScores: scores
+                });
+            }
         }
         callback(result);
     });
 
-    // Host awards tokens
-    socket.on('host:awardTokens', (tokenAwards, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+    /**
+     * host:awardToken
+     * Awards a single bonus token to a player.
+     */
+    socket.on('host:awardToken', (data, callback) => {
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
-        const result = room.awardTokens(tokenAwards);
+        const { playerId, tokenType } = data;
+        const result = room.awardToken(playerId, tokenType);
         if (result.success) {
-            io.to(room.code).emit('game:tokensAwarded', {
-                awards: tokenAwards,
+            io.to(room.code).emit('game:tokenAwarded', {
+                playerId,
+                tokenType,
                 players: room.getPlayersPublicData()
             });
         }
         callback(result);
     });
 
-    // Host checks for modifier phase before advancing
-    socket.on('host:checkModifiers', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
+    /**
+     * host:nextRound
+     * Advances the game to the next round, or ends it if someone has won.
+     */
+    socket.on('host:nextRound', (callback) => {
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
+
+        const result = room.advanceRound();
+        if (result.success) {
+            if (result.gameOver) {
+                io.to(room.code).emit('game:over', {
+                    winner: result.winner,
+                    finalScores: room.getScores()
+                });
+            } else {
+                io.to(room.code).emit('game:newRound', {
+                    round: room.currentRound,
+                    judge: room.getCurrentJudge(),
+                    gameState: room.getState()
+                });
+            }
         }
+        callback(result);
+    });
+
+    /**
+     * host:checkModifiers
+     * Checks whether a modifier (curse) phase should occur this round.
+     */
+    socket.on('host:checkModifiers', (callback) => {
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.checkForModifierPhase();
         if (result.hasModifierPhase) {
@@ -231,12 +379,13 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host draws a curse card
+    /**
+     * host:drawCurseCard
+     * Draws a random curse card for the modifier phase.
+     */
     socket.on('host:drawCurseCard', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.drawCurseCard();
         if (result.success) {
@@ -247,12 +396,13 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host applies curse to target
+    /**
+     * host:applyCurse
+     * Applies a drawn curse card to a target player.
+     */
     socket.on('host:applyCurse', (data, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const { targetIndex, modifier } = data;
         const result = room.applyCurse(targetIndex, modifier);
@@ -266,12 +416,13 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host holds curse for later
+    /**
+     * host:holdCurse
+     * Holds a curse card to use in a future round instead of applying it now.
+     */
     socket.on('host:holdCurse', (modifier, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.holdCurse(modifier);
         if (result.success) {
@@ -282,93 +433,57 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Host skips modifier phase and advances to next round
-    socket.on('host:skipModifiers', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
-
-        const result = room.advanceRound();
-        if (result.success) {
-            if (result.gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner: result.winner,
-                    finalScores: room.getScores()
-                });
-            } else {
-                io.to(room.code).emit('game:newRound', {
-                    round: room.currentRound,
-                    judge: room.getCurrentJudge(),
-                    gameState: room.getState()
-                });
-            }
-        }
-        callback(result);
-    });
-
-    // Host advances to next round (after modifier phase or directly)
-    socket.on('host:nextRound', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
-
-        const result = room.advanceRound();
-        if (result.success) {
-            if (result.gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner: result.winner,
-                    finalScores: room.getScores()
-                });
-            } else {
-                io.to(room.code).emit('game:newRound', {
-                    round: room.currentRound,
-                    judge: room.getCurrentJudge(),
-                    gameState: room.getState()
-                });
-            }
-        }
-        callback(result);
-    });
-
-    // Host kicks player
+    /**
+     * host:kickPlayer
+     * Removes a player from the room and notifies them.
+     */
     socket.on('host:kickPlayer', (playerId, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room || !socket.isHost) {
-            return callback({ success: false, error: 'Not authorized' });
-        }
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
 
         const result = room.removePlayer(playerId);
         if (result.success) {
-            // Find and disconnect the player's socket
             const playerSocket = io.sockets.sockets.get(playerId);
             if (playerSocket) {
-                playerSocket.emit('player:kicked');
+                playerSocket.emit('player:kicked', {
+                    reason: 'You have been removed from the game by the host.'
+                });
                 playerSocket.leave(room.code);
+                playerSocket.roomCode = null;
             }
 
             io.to(room.code).emit('room:playerLeft', {
                 playerId,
                 players: room.getPlayersPublicData()
             });
+
+            console.log(`[Room ${room.code}] Player kicked: ${playerId}`);
         }
         callback(result);
     });
 
-    // ==================== PLAYER EVENTS ====================
+    // ======================================================================
+    // PLAYER EVENTS
+    // ======================================================================
 
-    // Player joins a room
+    /**
+     * player:joinRoom
+     * A player joins an existing room by code and name.
+     */
     socket.on('player:joinRoom', (data, callback) => {
         const { roomCode, playerName, avatar } = data;
-        const room = gameManager.getRoom(roomCode.toUpperCase());
 
+        if (!roomCode || !playerName) {
+            return callback({ success: false, error: 'Room code and player name are required' });
+        }
+
+        const room = gameManager.getRoom(roomCode.toUpperCase());
         if (!room) {
             return callback({ success: false, error: 'Room not found' });
         }
 
         if (!room.canJoin()) {
-            return callback({ success: false, error: 'Room is full or game has started' });
+            return callback({ success: false, error: 'Room is full or game has already started' });
         }
 
         const result = room.addPlayer(socket.id, playerName, avatar);
@@ -380,7 +495,6 @@ io.on('connection', (socket) => {
 
             console.log(`[Room ${room.code}] Player joined: ${playerName} (${socket.id})`);
 
-            // Notify everyone in the room
             io.to(room.code).emit('room:playerJoined', {
                 player: result.player,
                 players: room.getPlayersPublicData()
@@ -396,16 +510,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Player submits drawing
+    /**
+     * player:submitDrawing
+     * A player submits their drawing for the current round.
+     */
     socket.on('player:submitDrawing', (drawingData, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room) {
-            return callback({ success: false, error: 'Room not found' });
-        }
+        const room = getRoom(socket, callback);
+        if (!room) return;
 
         const result = room.submitDrawing(socket.id, drawingData);
         if (result.success) {
-            // Notify host that a submission was received
             io.to(room.code).emit('game:submissionReceived', {
                 playerId: socket.id,
                 submissionCount: room.getSubmissionCount()
@@ -414,12 +528,13 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Player uses steal ability
+    /**
+     * player:steal
+     * A player spends tokens to steal a point from another player.
+     */
     socket.on('player:steal', (targetPlayerId, callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room) {
-            return callback({ success: false, error: 'Room not found' });
-        }
+        const room = getRoom(socket, callback);
+        if (!room) return;
 
         const result = room.executeSteal(socket.id, targetPlayerId);
         if (result.success) {
@@ -431,7 +546,6 @@ io.on('connection', (socket) => {
                 scores: room.getScores()
             });
 
-            // Check if steal caused a win
             if (result.gameOver) {
                 io.to(room.code).emit('game:over', {
                     winner: result.winner,
@@ -442,23 +556,30 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    // Player reconnects
+    /**
+     * player:reconnect
+     * A disconnected player reconnects to their existing room.
+     */
     socket.on('player:reconnect', (data, callback) => {
-        const { roomCode, playerId, playerName } = data;
-        const room = gameManager.getRoom(roomCode.toUpperCase());
+        const { roomCode, playerName } = data;
 
+        if (!roomCode || !playerName) {
+            return callback({ success: false, error: 'Room code and player name are required' });
+        }
+
+        const room = gameManager.getRoom(roomCode.toUpperCase());
         if (!room) {
             return callback({ success: false, error: 'Room not found' });
         }
 
-        const result = room.reconnectPlayer(playerId, socket.id, playerName);
+        const result = room.reconnectPlayer(null, socket.id, playerName);
         if (result.success) {
             socket.join(room.code);
             socket.roomCode = room.code;
             socket.playerId = socket.id;
             socket.isHost = false;
 
-            console.log(`[Room ${room.code}] Player reconnected: ${playerName}`);
+            console.log(`[Room ${room.code}] Player reconnected: ${playerName} (${socket.id})`);
 
             io.to(room.code).emit('room:playerReconnected', {
                 playerId: socket.id,
@@ -474,66 +595,77 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ==================== COMMON EVENTS ====================
+    // ======================================================================
+    // COMMON EVENTS
+    // ======================================================================
 
-    // Get current game state
+    /**
+     * game:getState
+     * Returns the current game state for the socket's room.
+     */
     socket.on('game:getState', (callback) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (!room) {
-            return callback({ success: false, error: 'Room not found' });
-        }
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
         callback({ success: true, gameState: room.getState() });
     });
 
-    // Chat message (optional)
-    socket.on('chat:message', (message) => {
-        const room = gameManager.getRoom(socket.roomCode);
-        if (room) {
-            io.to(room.code).emit('chat:message', {
-                playerId: socket.id,
-                message,
-                timestamp: Date.now()
-            });
-        }
-    });
-
-    // Handle disconnection
+    /**
+     * disconnect
+     * Handles cleanup when a socket disconnects.
+     * If the host disconnects, the room is closed.
+     * If a player disconnects, they are marked as disconnected.
+     */
     socket.on('disconnect', () => {
         console.log(`[Socket] Disconnected: ${socket.id}`);
 
-        if (socket.roomCode) {
-            const room = gameManager.getRoom(socket.roomCode);
-            if (room) {
-                if (socket.isHost) {
-                    // Host disconnected - end the room
-                    console.log(`[Room ${room.code}] Host disconnected, closing room`);
-                    io.to(room.code).emit('room:closed', { reason: 'Host disconnected' });
-                    gameManager.removeRoom(socket.roomCode);
-                } else {
-                    // Player disconnected
-                    room.setPlayerDisconnected(socket.id);
-                    io.to(room.code).emit('room:playerDisconnected', {
-                        playerId: socket.id,
-                        players: room.getPlayersPublicData()
-                    });
-                }
-            }
+        if (!socket.roomCode) return;
+
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room) return;
+
+        if (socket.isHost) {
+            console.log(`[Room ${room.code}] Host disconnected — closing room`);
+            io.to(room.code).emit('room:closed', {
+                reason: 'Host disconnected'
+            });
+            gameManager.removeRoom(socket.roomCode);
+        } else {
+            room.setPlayerDisconnected(socket.id);
+            io.to(room.code).emit('room:playerDisconnected', {
+                playerId: socket.id,
+                players: room.getPlayersPublicData()
+            });
         }
     });
 });
 
-// Start server
+// ---------------------------------------------------------------------------
+// Start Server
+// ---------------------------------------------------------------------------
 httpServer.listen(PORT, () => {
     console.log(`
-    ╔═══════════════════════════════════════════════════════════╗
-    ║                                                           ║
-    ║   Perfectly Aligned - Multiplayer Server                  ║
-    ║                                                           ║
-    ║   Host a game:   http://localhost:${PORT}/host              ║
-    ║   Join a game:   http://localhost:${PORT}/play              ║
-    ║                                                           ║
-    ╚═══════════════════════════════════════════════════════════╝
+  ┌─────────────────────────────────────────────────────────────┐
+  │                                                             │
+  │   ____           __          _   _                          │
+  │  |  _ \\ ___ _ __|  _| ___  |_|_| |_ _  _                  │
+  │  | |_) / _ \\ '__| |_ / _ \\/ __| __| | | |                 │
+  │  |  __/  __/ |  |  _|  __/ (__| |_| |_| |                  │
+  │  |_|   \\___|_|  |_|  \\___|\\___|\\___|\\__, |                 │
+  │     _    _ _                      _ |___/                   │
+  │    / \\  | (_) __ _ _ __   ___  __| |                        │
+  │   / _ \\ | | |/ _\` | '_ \\ / _ \\/ _\` |                      │
+  │  / ___ \\| | | (_| | | | |  __/ (_| |                        │
+  │ /_/   \\_\\_|_|\\__, |_| |_|\\___|\\__,_|                       │
+  │              |___/                                          │
+  │                                                             │
+  │  The creative party game for the morally dubious!           │
+  │                                                             │
+  │  Host a game:   http://localhost:${String(PORT).padEnd(5)}/host                 │
+  │  Join a game:   http://localhost:${String(PORT).padEnd(5)}/play                 │
+  │                                                             │
+  └─────────────────────────────────────────────────────────────┘
     `);
 });
 
-module.exports = { app, io };
+export { app, io };

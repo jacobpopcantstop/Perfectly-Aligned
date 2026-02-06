@@ -1,7 +1,8 @@
 {
   "name": "perfectly-aligned",
-  "version": "2.0.0",
-  "description": "Jackbox-style online multiplayer party game - The creative drawing game for ethically dubious people!",
+  "version": "3.0.0",
+  "type": "module",
+  "description": "Jackbox-style online multiplayer party drawing game - The creative game for the morally dubious!",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
@@ -12,13 +13,13 @@
     "multiplayer",
     "jackbox",
     "drawing",
-    "alignment"
+    "alignment",
+    "socket.io"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "uuid": "^9.0.0"
+    "socket.io": "^4.7.2"
   }
 }
