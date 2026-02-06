@@ -1,12 +1,29 @@
 /**
  * Perfectly Aligned - Player Controller
- * Manages the player's mobile device interface
+ * =======================================
+ * Client-side JavaScript for the player interface.
+ * Handles joining rooms, drawing on canvas, submitting artwork,
+ * and all real-time game interaction via Socket.IO.
+ *
+ * Designed for mobile-first touch input with desktop mouse fallback.
  */
 
-// Socket connection
-const socket = io();
+/* global io */
 
-// Player state
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
+const AVATARS = ['🎨','🎭','🎪','🎯','🎲','🎸','🌟','⚡','🔥','💎','🎩','👑'];
+
+const RECONNECT_DELAY_MS = 3000;
+const NOTIFICATION_DURATION_MS = 3000;
+const TOKENS_REQUIRED_TO_STEAL = 3;
+
+// =============================================================================
+// PLAYER STATE
+// =============================================================================
+
 let playerState = {
     playerId: null,
     playerName: null,
@@ -22,509 +39,1030 @@ let playerState = {
     heldCurse: null
 };
 
-// Available avatars (matches server constants)
-const PLAYER_AVATARS = [
-    'alienlady_avatar.png',
-    'dadskeletonts_avatar.png',
-    'chessqueen_avatar.png'
-];
-
 let currentAvatarIndex = 0;
 
-// Drawing state
+// =============================================================================
+// DRAWING STATE
+// =============================================================================
+
 let canvas, ctx;
 let isDrawing = false;
-let lastX = 0;
-let lastY = 0;
+let lastX = 0, lastY = 0;
 let currentColor = '#000000';
 let currentSize = 8;
 let drawingHistory = [];
 let currentPath = [];
 
-// DOM Elements
-const elements = {
-    // Screens
-    joinScreen: document.getElementById('join-screen'),
-    lobbyScreen: document.getElementById('lobby-screen'),
-    waitingScreen: document.getElementById('waiting-screen'),
-    drawingScreen: document.getElementById('drawing-screen'),
-    submittedScreen: document.getElementById('submitted-screen'),
-    judgingScreen: document.getElementById('judging-screen'),
-    resultsScreen: document.getElementById('results-screen'),
-    gameoverScreen: document.getElementById('gameover-screen'),
-    disconnectedScreen: document.getElementById('disconnected-screen'),
+// =============================================================================
+// SOCKET
+// =============================================================================
 
-    // Join form
-    joinForm: document.getElementById('join-form'),
-    roomCodeInput: document.getElementById('room-code-input'),
-    playerNameInput: document.getElementById('player-name-input'),
-    avatarPreview: document.getElementById('avatar-preview'),
-    avatarPrev: document.getElementById('avatar-prev'),
-    avatarNext: document.getElementById('avatar-next'),
-    joinError: document.getElementById('join-error'),
+let socket = null;
+let disconnectTimer = null;
 
-    // Lobby
-    myAvatar: document.getElementById('my-avatar'),
-    myName: document.getElementById('my-name'),
-    lobbyPlayerList: document.getElementById('lobby-player-list'),
+// =============================================================================
+// CACHED DOM ELEMENTS
+// =============================================================================
 
-    // Waiting
-    judgeAvatarWaiting: document.getElementById('judge-avatar-waiting'),
-    judgeNameWaiting: document.getElementById('judge-name-waiting'),
+let elements = {};
 
-    // Drawing
-    drawAlignment: document.getElementById('draw-alignment'),
-    drawPrompt: document.getElementById('draw-prompt'),
-    timerProgress: document.getElementById('timer-progress'),
-    timerText: document.getElementById('timer-text'),
-    drawingCanvas: document.getElementById('drawing-canvas'),
-    clearCanvasBtn: document.getElementById('clear-canvas'),
-    undoBtn: document.getElementById('undo-btn'),
-    submitDrawingBtn: document.getElementById('submit-drawing-btn'),
-    submissionStatus: document.getElementById('submission-status'),
+function cacheElements() {
+    elements = {
+        // Screens
+        joinScreen: document.getElementById('join-screen'),
+        lobbyScreen: document.getElementById('lobby-screen'),
+        waitingScreen: document.getElementById('waiting-screen'),
+        drawingScreen: document.getElementById('drawing-screen'),
+        submittedScreen: document.getElementById('submitted-screen'),
+        judgingScreen: document.getElementById('judging-screen'),
+        resultsScreen: document.getElementById('results-screen'),
+        gameoverScreen: document.getElementById('gameover-screen'),
+        disconnectedScreen: document.getElementById('disconnected-screen'),
 
-    // Submitted
-    submittedPreviewImg: document.getElementById('submitted-preview-img'),
+        // Join form
+        roomCodeInput: document.getElementById('room-code-input'),
+        playerNameInput: document.getElementById('player-name-input'),
+        joinButton: document.getElementById('join-btn'),
+        joinError: document.getElementById('join-error'),
+        avatarPreview: document.getElementById('avatar-display'),
+        avatarPrevBtn: document.getElementById('avatar-prev'),
+        avatarNextBtn: document.getElementById('avatar-next'),
 
-    // Judging
-    judgePhaseAlignment: document.getElementById('judge-phase-alignment'),
-    judgePhasePrompt: document.getElementById('judge-phase-prompt'),
+        // Lobby
+        lobbyRoomCode: document.getElementById('lobby-room-code'),
+        lobbyPlayerList: document.getElementById('lobby-player-list'),
 
-    // Results
-    resultTitle: document.getElementById('result-title'),
-    resultWinnerAvatar: document.getElementById('result-winner-avatar'),
-    resultWinnerName: document.getElementById('result-winner-name'),
-    myScore: document.getElementById('my-score'),
-    targetScore: document.getElementById('target-score'),
-    myTokens: document.getElementById('my-tokens'),
-    stealBtn: document.getElementById('steal-btn'),
+        // Waiting
+        waitingMessage: document.getElementById('waiting-message'),
 
-    // Steal modal
-    stealModal: document.getElementById('steal-modal'),
-    stealTargets: document.getElementById('steal-targets'),
-    cancelSteal: document.getElementById('cancel-steal'),
+        // Drawing
+        drawingCanvas: document.getElementById('drawing-canvas'),
+        canvasContainer: document.querySelector('.canvas-container'),
+        drawingPrompt: document.getElementById('draw-prompt'),
+        drawingAlignment: document.getElementById('draw-alignment'),
+        drawingModifiers: document.getElementById('draw-modifiers'),
+        drawingTimer: document.getElementById('draw-timer-text'),
+        drawingTimerBar: document.getElementById('draw-timer-bar'),
+        colorButtons: document.getElementById('color-palette'),
+        sizeButtons: document.getElementById('size-palette'),
+        clearButton: document.getElementById('clear-btn'),
+        undoButton: document.getElementById('undo-btn'),
+        submitDrawingButton: document.getElementById('submit-btn'),
 
-    // Game over
-    finalWinnerAvatar: document.getElementById('final-winner-avatar'),
-    finalWinnerName: document.getElementById('final-winner-name'),
-    myRank: document.getElementById('my-rank'),
+        // Submitted
+        submittedPreview: document.getElementById('submitted-preview'),
 
-    // Disconnected
-    disconnectReason: document.getElementById('disconnect-reason'),
-    rejoinBtn: document.getElementById('rejoin-btn'),
-    newGameBtn: document.getElementById('new-game-btn')
-};
+        // Results
+        resultsWinner: document.getElementById('result-title'),
+        resultsScore: document.getElementById('result-score'),
+        resultsTokens: document.getElementById('result-tokens'),
+        stealButton: document.getElementById('steal-btn'),
+        stealBtnContainer: document.getElementById('steal-btn-container'),
 
-// ==================== INITIALIZATION ====================
+        // Steal modal
+        stealModal: document.getElementById('steal-modal'),
+        stealTargetList: document.getElementById('steal-target-list'),
+        stealCloseButton: document.getElementById('steal-cancel-btn'),
 
-function init() {
-    // Check for room code in URL
+        // Game over
+        gameoverWinner: document.getElementById('gameover-winner'),
+        gameoverRank: document.getElementById('gameover-rank'),
+
+        // Disconnected
+        disconnectedReason: document.getElementById('disconnect-reason'),
+        rejoinButton: document.getElementById('rejoin-btn'),
+
+        // New game buttons
+        newGameBtn: document.getElementById('new-game-btn'),
+        disconnectNewGameBtn: document.getElementById('disconnect-new-game-btn'),
+
+        // Notification container
+        notificationContainer: document.getElementById('notification-container')
+    };
+}
+
+// =============================================================================
+// INITIALIZATION
+// =============================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    cacheElements();
+
+    // Check URL for room code: /play/XXXX
     const pathParts = window.location.pathname.split('/');
-    if (pathParts.length > 2 && pathParts[1] === 'play') {
-        elements.roomCodeInput.value = pathParts[2].toUpperCase();
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && lastPart.length === 4 && /^[A-Za-z]{4}$/.test(lastPart)) {
+        if (elements.roomCodeInput) {
+            elements.roomCodeInput.value = lastPart.toUpperCase();
+        }
     }
 
+    buildColorPalette();
+    buildSizePalette();
     setupEventListeners();
+    setupSocketConnection();
     setupSocketListeners();
     updateAvatarPreview();
     setupCanvas();
+});
+
+// =============================================================================
+// COLOR & SIZE PALETTES
+// =============================================================================
+
+const COLORS = [
+    { color: '#000000', name: 'Black' },
+    { color: '#FF0000', name: 'Red' },
+    { color: '#FF69B4', name: 'Pink' },
+    { color: '#FF8C00', name: 'Orange' },
+    { color: '#FFD700', name: 'Gold' },
+    { color: '#00FF00', name: 'Green' },
+    { color: '#0000FF', name: 'Blue' },
+    { color: '#8B00FF', name: 'Purple' },
+    { color: '#8B4513', name: 'Brown' },
+    { color: '#FFFFFF', name: 'Eraser' }
+];
+
+const SIZES = [
+    { size: 3, label: 'S', dotSize: 4 },
+    { size: 8, label: 'M', dotSize: 8 },
+    { size: 16, label: 'L', dotSize: 14 },
+    { size: 28, label: 'XL', dotSize: 20 }
+];
+
+function buildColorPalette() {
+    const container = elements.colorButtons;
+    if (!container) return;
+    container.innerHTML = '';
+
+    COLORS.forEach((c, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn' + (c.name === 'Eraser' ? ' eraser' : '');
+        btn.dataset.color = c.color;
+        btn.style.background = c.color;
+        btn.title = c.name;
+        if (i === 0) btn.classList.add('active');
+        container.appendChild(btn);
+    });
 }
+
+function buildSizePalette() {
+    const container = elements.sizeButtons;
+    if (!container) return;
+    container.innerHTML = '';
+
+    SIZES.forEach(s => {
+        const btn = document.createElement('button');
+        btn.className = 'size-btn';
+        btn.dataset.size = s.size;
+        if (s.size === currentSize) btn.classList.add('active');
+        const dot = document.createElement('div');
+        dot.className = 'size-dot';
+        dot.style.width = s.dotSize + 'px';
+        dot.style.height = s.dotSize + 'px';
+        btn.appendChild(dot);
+        btn.appendChild(document.createTextNode(s.label));
+        container.appendChild(btn);
+    });
+}
+
+// =============================================================================
+// EVENT LISTENERS
+// =============================================================================
 
 function setupEventListeners() {
-    // Join form
-    elements.joinForm.addEventListener('submit', handleJoinSubmit);
-    elements.avatarPrev.addEventListener('click', () => cycleAvatar(-1));
-    elements.avatarNext.addEventListener('click', () => cycleAvatar(1));
-    elements.roomCodeInput.addEventListener('input', (e) => {
-        e.target.value = e.target.value.toUpperCase();
-    });
+    // Join button (no form element in HTML)
+    if (elements.joinButton) {
+        elements.joinButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleJoinSubmit(e);
+        });
+    }
+
+    // Room code auto-uppercase
+    if (elements.roomCodeInput) {
+        elements.roomCodeInput.addEventListener('input', () => {
+            elements.roomCodeInput.value = elements.roomCodeInput.value.toUpperCase();
+        });
+    }
+
+    // Avatar cycling
+    if (elements.avatarPrevBtn) {
+        elements.avatarPrevBtn.addEventListener('click', () => cycleAvatar(-1));
+    }
+    if (elements.avatarNextBtn) {
+        elements.avatarNextBtn.addEventListener('click', () => cycleAvatar(1));
+    }
 
     // Drawing tools
-    document.querySelectorAll('.color-btn').forEach(btn => {
-        btn.addEventListener('click', () => selectColor(btn));
-    });
-    document.querySelectorAll('.size-btn').forEach(btn => {
-        btn.addEventListener('click', () => selectSize(btn));
-    });
-    elements.clearCanvasBtn.addEventListener('click', clearCanvas);
-    elements.undoBtn.addEventListener('click', undoStroke);
-    elements.submitDrawingBtn.addEventListener('click', submitDrawing);
+    if (elements.clearButton) {
+        elements.clearButton.addEventListener('click', clearCanvas);
+    }
+    if (elements.undoButton) {
+        elements.undoButton.addEventListener('click', undoStroke);
+    }
+    if (elements.submitDrawingButton) {
+        elements.submitDrawingButton.addEventListener('click', submitDrawing);
+    }
+
+    // Color buttons
+    if (elements.colorButtons) {
+        elements.colorButtons.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-color]');
+            if (btn) selectColor(btn);
+        });
+    }
+
+    // Size buttons
+    if (elements.sizeButtons) {
+        elements.sizeButtons.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-size]');
+            if (btn) selectSize(btn);
+        });
+    }
 
     // Steal
-    elements.stealBtn.addEventListener('click', showStealModal);
-    elements.cancelSteal.addEventListener('click', hideStealModal);
-
-    // Disconnect/reconnect
-    elements.rejoinBtn.addEventListener('click', attemptRejoin);
-    elements.newGameBtn.addEventListener('click', () => {
-        showScreen('join');
-        elements.roomCodeInput.value = '';
-    });
-}
-
-function setupSocketListeners() {
-    // Connection events
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-
-    // Room events
-    socket.on('room:playerJoined', handlePlayerJoined);
-    socket.on('room:playerLeft', handlePlayerLeft);
-    socket.on('room:closed', handleRoomClosed);
-    socket.on('player:kicked', handleKicked);
-
-    // Game events
-    socket.on('game:started', handleGameStarted);
-    socket.on('game:alignmentRolled', handleAlignmentRolled);
-    socket.on('game:promptSelected', handlePromptSelected);
-    socket.on('game:startDrawing', handleStartDrawing);
-    socket.on('game:timerTick', handleTimerTick);
-    socket.on('game:timerEnd', handleTimerEnd);
-    socket.on('game:submissionsCollected', handleSubmissionsCollected);
-    socket.on('game:winnerSelected', handleWinnerSelected);
-    socket.on('game:newRound', handleNewRound);
-    socket.on('game:stealExecuted', handleStealExecuted);
-    socket.on('game:over', handleGameOver);
-
-    // Modifier events
-    socket.on('game:modifierPhase', handleModifierPhase);
-    socket.on('game:curseCardDrawn', handleCurseCardDrawn);
-    socket.on('game:curseApplied', handleCurseApplied);
-}
-
-// ==================== SCREENS ====================
-
-function showScreen(screenName) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    const screen = document.getElementById(`${screenName}-screen`);
-    if (screen) {
-        screen.classList.add('active');
+    if (elements.stealButton) {
+        elements.stealButton.addEventListener('click', () => {
+            socket.emit('game:getState', (response) => {
+                if (response.success) {
+                    showStealModal(response.gameState.players);
+                }
+            });
+        });
     }
-    playerState.currentPhase = screenName;
-}
-
-// ==================== JOIN ====================
-
-function cycleAvatar(direction) {
-    currentAvatarIndex = (currentAvatarIndex + direction + PLAYER_AVATARS.length) % PLAYER_AVATARS.length;
-    updateAvatarPreview();
-}
-
-function updateAvatarPreview() {
-    playerState.playerAvatar = PLAYER_AVATARS[currentAvatarIndex];
-    elements.avatarPreview.style.backgroundImage = `url('/assets/images/avatars/${playerState.playerAvatar}')`;
-}
-
-function handleJoinSubmit(e) {
-    e.preventDefault();
-    elements.joinError.textContent = '';
-
-    const roomCode = elements.roomCodeInput.value.trim().toUpperCase();
-    const playerName = elements.playerNameInput.value.trim();
-
-    if (roomCode.length !== 4) {
-        elements.joinError.textContent = 'Room code must be 4 characters';
-        return;
+    if (elements.stealCloseButton) {
+        elements.stealCloseButton.addEventListener('click', hideStealModal);
     }
 
-    if (playerName.length < 1) {
-        elements.joinError.textContent = 'Please enter a name';
-        return;
+    // Rejoin
+    if (elements.rejoinButton) {
+        elements.rejoinButton.addEventListener('click', attemptRejoin);
     }
 
-    playerState.playerName = playerName;
-    playerState.roomCode = roomCode;
+    // New game buttons
+    if (elements.newGameBtn) {
+        elements.newGameBtn.addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
+    if (elements.disconnectNewGameBtn) {
+        elements.disconnectNewGameBtn.addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
 
-    socket.emit('player:joinRoom', {
-        roomCode,
-        playerName,
-        avatar: playerState.playerAvatar
-    }, (response) => {
-        if (response.success) {
-            playerState.playerId = response.playerId;
-            playerState.connected = true;
-
-            // Save to localStorage for reconnection
-            localStorage.setItem('pa_playerId', playerState.playerId);
-            localStorage.setItem('pa_playerName', playerState.playerName);
-            localStorage.setItem('pa_roomCode', playerState.roomCode);
-
-            elements.myAvatar.style.backgroundImage = `url('/assets/images/avatars/${playerState.playerAvatar}')`;
-            elements.myName.textContent = playerState.playerName;
-
-            if (response.gameState.gameStarted) {
-                // Game already started, go to appropriate screen
-                handleGameState(response.gameState);
-            } else {
-                showScreen('lobby');
-                updateLobbyPlayers(response.gameState.players);
-            }
-        } else {
-            elements.joinError.textContent = response.error || 'Failed to join room';
+    // Handle window resize for canvas
+    window.addEventListener('resize', () => {
+        if (canvas && playerState.currentPhase === 'drawing') {
+            resizeCanvas();
         }
     });
 }
 
-function handleGameState(state) {
-    // Determine which screen to show based on game phase
-    const me = state.players.find(p => p.id === playerState.playerId);
-    if (me) {
-        playerState.isJudge = me.isJudge;
-        playerState.score = me.score;
-        playerState.tokens = me.tokens;
-        playerState.activeModifiers = me.activeModifiers || [];
-        playerState.heldCurse = me.heldCurse || null;
-    }
+// =============================================================================
+// SOCKET CONNECTION
+// =============================================================================
 
-    switch (state.gamePhase) {
-        case 'lobby':
-            showScreen('lobby');
-            break;
-        case 'alignment':
-        case 'prompts':
-            showScreen(playerState.isJudge ? 'waiting' : 'waiting');
-            break;
-        case 'drawing':
-            if (playerState.isJudge) {
-                showScreen('waiting');
-            } else {
-                handleStartDrawing({
-                    prompt: state.selectedPrompt,
-                    alignment: state.currentAlignment,
-                    alignmentFullName: state.currentAlignmentFullName
-                });
-            }
-            break;
-        case 'judging':
-            showScreen('judging');
-            break;
-        case 'scoring':
-            showScreen('results');
-            break;
-        case 'modifiers':
-            showScreen('waiting');
-            if (state.currentCurser) {
-                elements.judgeNameWaiting.textContent = state.currentCurser.playerName + ' (Cursing)';
-            }
-            break;
-        case 'gameOver':
-            showScreen('gameover');
-            break;
-    }
-}
-
-// ==================== LOBBY ====================
-
-function handlePlayerJoined(data) {
-    updateLobbyPlayers(data.players);
-}
-
-function handlePlayerLeft(data) {
-    updateLobbyPlayers(data.players);
-}
-
-function updateLobbyPlayers(players) {
-    elements.lobbyPlayerList.innerHTML = '';
-    players.forEach(player => {
-        if (player.id === playerState.playerId) return; // Skip self
-
-        const div = document.createElement('div');
-        div.className = `lobby-player ${player.connected ? '' : 'disconnected'}`;
-        div.innerHTML = `
-            <div class="player-avatar" style="background-image: url('/assets/images/avatars/${player.avatar}')"></div>
-            <span class="player-name">${player.name}</span>
-        `;
-        elements.lobbyPlayerList.appendChild(div);
+function setupSocketConnection() {
+    socket = io({
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
     });
 }
 
-// ==================== GAME EVENTS ====================
+function setupSocketListeners() {
+    // ---- Connection events ----
 
-function handleGameStarted(state) {
-    const me = state.players.find(p => p.id === playerState.playerId);
-    if (me) {
-        playerState.isJudge = me.isJudge;
-    }
+    socket.on('connect', () => {
+        playerState.connected = true;
+        if (disconnectTimer) {
+            clearTimeout(disconnectTimer);
+            disconnectTimer = null;
+        }
 
-    elements.targetScore.textContent = state.targetScore;
+        // If we were in a game, attempt rejoin
+        if (playerState.roomCode && playerState.playerName && playerState.currentPhase !== 'join') {
+            attemptRejoin();
+        }
+    });
 
-    if (playerState.isJudge) {
+    socket.on('disconnect', () => {
+        playerState.connected = false;
+
+        disconnectTimer = setTimeout(() => {
+            if (!playerState.connected && playerState.currentPhase !== 'join') {
+                showScreen('disconnected');
+                if (elements.disconnectedReason) {
+                    elements.disconnectedReason.textContent = 'Lost connection to the server. Attempting to reconnect...';
+                }
+            }
+        }, RECONNECT_DELAY_MS);
+    });
+
+    socket.on('connect_error', () => {
+        playerState.connected = false;
+    });
+
+    // ---- Room events ----
+
+    socket.on('room:playerJoined', (data) => {
+        updateLobbyPlayerList(data.players);
+        if (data.player && data.player.id !== playerState.playerId) {
+            showNotification(`${data.player.avatar || ''} ${data.player.name} joined!`);
+        }
+    });
+
+    socket.on('room:playerLeft', (data) => {
+        updateLobbyPlayerList(data.players);
+    });
+
+    socket.on('room:playerDisconnected', (data) => {
+        updateLobbyPlayerList(data.players);
+    });
+
+    socket.on('room:playerReconnected', (data) => {
+        showNotification(`${data.playerName} reconnected!`);
+    });
+
+    socket.on('room:closed', (data) => {
+        showScreen('disconnected');
+        if (elements.disconnectedReason) {
+            elements.disconnectedReason.textContent = data.reason || 'The room has been closed.';
+        }
+        clearLocalStorage();
+    });
+
+    socket.on('player:kicked', (data) => {
+        showScreen('disconnected');
+        if (elements.disconnectedReason) {
+            elements.disconnectedReason.textContent = data.reason || 'You have been removed from the game.';
+        }
+        clearLocalStorage();
+    });
+
+    // ---- Game events ----
+
+    socket.on('game:started', (gameState) => {
+        handleGameState(gameState);
+        showNotification('Game started!');
+    });
+
+    socket.on('game:alignmentRolled', (data) => {
+        // Store alignment info
+        playerState.currentAlignment = data.alignment;
+        playerState.currentAlignmentFullName = data.fullName;
+
+        if (playerState.isJudge) {
+            updateWaitingMessage(`Alignment rolled: ${data.fullName}`);
+        } else {
+            updateWaitingMessage(`Alignment: ${data.fullName}`);
+        }
+    });
+
+    socket.on('game:judgeAlignmentSelected', (data) => {
+        playerState.currentAlignment = data.alignment;
+        playerState.currentAlignmentFullName = data.fullName;
+        updateWaitingMessage(`Judge chose: ${data.fullName}`);
+    });
+
+    socket.on('game:promptsDrawn', () => {
+        if (!playerState.isJudge) {
+            updateWaitingMessage('The judge is choosing a prompt...');
+        }
+    });
+
+    socket.on('game:promptSelected', (data) => {
+        playerState.currentPrompt = data.prompt;
+        playerState.currentAlignment = data.alignment;
+        playerState.currentAlignmentFullName = data.alignmentFullName;
+    });
+
+    socket.on('game:startDrawing', (data) => {
+        if (playerState.isJudge) {
+            showScreen('waiting');
+            updateWaitingMessage('Players are drawing... Sit tight, Judge!');
+            return;
+        }
+
+        // Set up drawing screen
+        playerState.hasSubmitted = false;
+        playerState.currentPrompt = data.prompt;
+        playerState.currentAlignment = data.alignment;
+        playerState.currentAlignmentFullName = data.alignmentFullName;
+        playerState.timerDuration = data.timeLimit;
+
+        showScreen('drawing');
+
+        if (elements.drawingPrompt) {
+            elements.drawingPrompt.textContent = data.prompt;
+        }
+        if (elements.drawingAlignment) {
+            elements.drawingAlignment.textContent = data.alignmentFullName || data.alignment;
+        }
+
+        // Show active modifiers
+        displayActiveModifiers();
+
+        // Reset canvas for new round
+        clearCanvas();
+        resizeCanvas();
+
+        // Enable submit button
+        if (elements.submitDrawingButton) {
+            elements.submitDrawingButton.disabled = false;
+            elements.submitDrawingButton.textContent = 'Submit Drawing';
+        }
+
+        // Reset timer display
+        if (elements.drawingTimer) {
+            elements.drawingTimer.textContent = data.timeLimit > 0 ? formatTime(data.timeLimit) : '';
+        }
+        if (elements.drawingTimerBar) {
+            elements.drawingTimerBar.style.width = '100%';
+            elements.drawingTimerBar.classList.remove('warning');
+        }
+    });
+
+    socket.on('game:timerStarted', (data) => {
+        playerState.timerDuration = data.duration;
+        if (elements.drawingTimer) {
+            elements.drawingTimer.textContent = formatTime(data.duration);
+        }
+        if (elements.drawingTimerBar) {
+            elements.drawingTimerBar.style.width = '100%';
+            elements.drawingTimerBar.classList.remove('warning');
+        }
+    });
+
+    socket.on('game:timerTick', (data) => {
+        const timeLeft = data.timeLeft;
+        const duration = playerState.timerDuration || 90;
+        const percentage = (timeLeft / duration) * 100;
+
+        if (elements.drawingTimer) {
+            elements.drawingTimer.textContent = formatTime(timeLeft);
+        }
+        if (elements.drawingTimerBar) {
+            elements.drawingTimerBar.style.width = percentage + '%';
+            if (timeLeft <= 10) {
+                elements.drawingTimerBar.classList.add('warning');
+            }
+        }
+    });
+
+    socket.on('game:timerEnd', () => {
+        if (elements.drawingTimer) {
+            elements.drawingTimer.textContent = "TIME'S UP!";
+        }
+        if (elements.drawingTimerBar) {
+            elements.drawingTimerBar.style.width = '0%';
+        }
+
+        // Auto-submit if player hasn't submitted yet
+        if (!playerState.hasSubmitted && !playerState.isJudge && playerState.currentPhase === 'drawing') {
+            submitDrawing();
+        }
+    });
+
+    socket.on('game:submissionReceived', (data) => {
+        // Optional: show submission count progress
+        if (playerState.isJudge) {
+            updateWaitingMessage(`Received ${data.submissionCount} drawing(s)...`);
+        }
+    });
+
+    socket.on('game:submissionsCollected', () => {
+        showScreen('judging');
+        if (elements.judgingMessage) {
+            if (playerState.isJudge) {
+                elements.judgingMessage.textContent = 'Review the drawings on the main screen and pick a winner!';
+            } else {
+                elements.judgingMessage.textContent = 'The judge is reviewing all drawings...';
+            }
+        }
+    });
+
+    socket.on('game:winnerSelected', (data) => {
+        showScreen('results');
+
+        const isWinner = data.winnerId === playerState.playerId;
+
+        // Update local score from scores array
+        const myScore = data.scores.find(s => s.id === playerState.playerId);
+        if (myScore) {
+            playerState.score = myScore.score;
+            playerState.tokens = { ...myScore.tokens };
+        }
+
+        if (elements.resultsWinner) {
+            if (isWinner) {
+                elements.resultsWinner.textContent = 'You won this round!';
+                elements.resultsWinner.classList.add('winner');
+            } else {
+                elements.resultsWinner.textContent = `${data.winnerName} won this round!`;
+                elements.resultsWinner.classList.remove('winner');
+            }
+        }
+
+        if (elements.resultsScore) {
+            elements.resultsScore.textContent = `Your Score: ${playerState.score}`;
+        }
+
+        updateTokenDisplay();
+
+        // Show steal button if enough tokens
+        const totalTokens = getTotalTokens();
+        if (elements.stealBtnContainer) {
+            elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
+        }
+
+        if (data.gameOver) {
+            showNotification('Game Over!');
+        }
+    });
+
+    socket.on('game:tokenAwarded', (data) => {
+        // Update local token count from the players data
+        const me = data.players.find(p => p.id === playerState.playerId);
+        if (me) {
+            playerState.tokens = { ...me.tokens };
+            updateTokenDisplay();
+        }
+
+        if (data.playerId === playerState.playerId) {
+            const tokenNames = {
+                mindReader: 'Mind Reader',
+                technicalMerit: 'Technical Merit',
+                perfectAlignment: 'Perfect Alignment',
+                plotTwist: 'Plot Twist'
+            };
+            showNotification(`You earned a ${tokenNames[data.tokenType] || data.tokenType} token!`);
+        }
+    });
+
+    socket.on('game:newRound', (data) => {
+        const gameState = data.gameState;
+
+        // Reset round state
+        playerState.hasSubmitted = false;
+        playerState.currentPrompt = null;
+        playerState.currentAlignment = null;
+        playerState.currentAlignmentFullName = null;
+
+        // Update judge status
+        const me = gameState.players.find(p => p.id === playerState.playerId);
+        if (me) {
+            playerState.isJudge = me.isJudge;
+            playerState.score = me.score;
+            playerState.tokens = { ...me.tokens };
+            playerState.activeModifiers = me.activeModifiers || [];
+        }
+
         showScreen('waiting');
-        updateJudgeDisplay(state.judge);
-    } else {
+
+        if (playerState.isJudge) {
+            updateWaitingMessage(`Round ${data.round} - You are the Judge!`);
+            updateWaitingRole('judge');
+        } else {
+            const judgeName = data.judge ? data.judge.name : 'Someone';
+            updateWaitingMessage(`Round ${data.round} - ${judgeName} is judging`);
+            updateWaitingRole('player');
+        }
+    });
+
+    socket.on('game:stealExecuted', (data) => {
+        // Update scores
+        const myScore = data.scores.find(s => s.id === playerState.playerId);
+        if (myScore) {
+            playerState.score = myScore.score;
+            playerState.tokens = { ...myScore.tokens };
+            updateTokenDisplay();
+        }
+
+        if (data.stealerId === playerState.playerId) {
+            showNotification(`You stole a point from ${data.targetName}!`);
+        } else if (data.targetId === playerState.playerId) {
+            showNotification(`${data.stealerName} stole a point from you!`);
+        } else {
+            showNotification(`${data.stealerName} stole a point from ${data.targetName}!`);
+        }
+
+        // Update steal button visibility
+        if (elements.stealBtnContainer) {
+            const totalTokens = getTotalTokens();
+            elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
+        }
+    });
+
+    socket.on('game:over', (data) => {
+        showScreen('gameover');
+
+        const winner = data.winner;
+        const finalScores = data.finalScores;
+
+        if (elements.gameoverWinner) {
+            if (winner.id === playerState.playerId) {
+                elements.gameoverWinner.textContent = 'You win the game!';
+                elements.gameoverWinner.classList.add('winner');
+            } else {
+                elements.gameoverWinner.textContent = `${winner.avatar || ''} ${winner.name} wins the game!`;
+                elements.gameoverWinner.classList.remove('winner');
+            }
+        }
+
+        // Calculate rank
+        if (elements.gameoverRank && finalScores) {
+            const sorted = [...finalScores].sort((a, b) => b.score - a.score);
+            const myRank = sorted.findIndex(s => s.id === playerState.playerId) + 1;
+            const totalPlayers = sorted.length;
+            const ordinal = getOrdinal(myRank);
+            elements.gameoverRank.textContent = `You finished ${ordinal} out of ${totalPlayers} players`;
+        }
+
+        // Show final scores
+        if (elements.gameoverScores && finalScores) {
+            const sorted = [...finalScores].sort((a, b) => b.score - a.score);
+            elements.gameoverScores.innerHTML = sorted.map((s, i) => {
+                const isMe = s.id === playerState.playerId;
+                const rankClass = i === 0 ? 'first' : '';
+                const meClass = isMe ? 'is-me' : '';
+                return `<div class="score-row ${rankClass} ${meClass}">
+                    <span class="score-rank">${getOrdinal(i + 1)}</span>
+                    <span class="score-avatar">${s.avatar || ''}</span>
+                    <span class="score-name">${escapeHtml(s.name)}</span>
+                    <span class="score-value">${s.score}</span>
+                </div>`;
+            }).join('');
+        }
+
+        clearLocalStorage();
+    });
+
+    // ---- Modifier events ----
+
+    socket.on('game:modifierPhase', (data) => {
+        const gameState = data.gameState;
+
+        // Update active modifiers from game state
+        const me = gameState.players.find(p => p.id === playerState.playerId);
+        if (me) {
+            playerState.activeModifiers = me.activeModifiers || [];
+            playerState.heldCurse = me.heldCurse || null;
+        }
+
         showScreen('waiting');
-        updateJudgeDisplay(state.judge);
+
+        if (data.curser && data.curser.id === playerState.playerId) {
+            updateWaitingMessage('You get to curse another player! Watch the main screen.');
+        } else {
+            const curserName = data.curser ? data.curser.name : 'Someone';
+            updateWaitingMessage(`${curserName} is choosing a curse...`);
+        }
+
+        showNotification(`Curse phase! ${data.curser ? data.curser.name : 'A player'} is cursing someone!`);
+    });
+
+    socket.on('game:curseCardDrawn', (data) => {
+        if (data.modifier) {
+            showNotification(`Curse drawn: ${data.modifier.icon || ''} ${data.modifier.name}`);
+        }
+    });
+
+    socket.on('game:curseApplied', (data) => {
+        const gameState = data.gameState;
+
+        // Update active modifiers from game state
+        const me = gameState.players.find(p => p.id === playerState.playerId);
+        if (me) {
+            playerState.activeModifiers = me.activeModifiers || [];
+            playerState.heldCurse = me.heldCurse || null;
+        }
+
+        if (me && me.activeModifiers && me.activeModifiers.length > 0) {
+            const latestMod = me.activeModifiers[me.activeModifiers.length - 1];
+            showNotification(`You were cursed! ${latestMod.icon || ''} ${latestMod.name}: ${latestMod.description}`);
+        } else {
+            showNotification(`${data.targetName} was cursed with ${data.modifier.icon || ''} ${data.modifier.name}!`);
+        }
+    });
+
+    socket.on('game:curseHeld', (data) => {
+        const gameState = data.gameState;
+        const me = gameState.players.find(p => p.id === playerState.playerId);
+        if (me) {
+            playerState.heldCurse = me.heldCurse || null;
+        }
+    });
+}
+
+// =============================================================================
+// AVATAR SELECTION
+// =============================================================================
+
+function cycleAvatar(direction) {
+    currentAvatarIndex = (currentAvatarIndex + direction + AVATARS.length) % AVATARS.length;
+    updateAvatarPreview();
+}
+
+function updateAvatarPreview() {
+    if (elements.avatarPreview) {
+        elements.avatarPreview.textContent = AVATARS[currentAvatarIndex];
     }
 }
 
-function handleAlignmentRolled(data) {
-    // Just update displays, stay on waiting screen
-    elements.drawAlignment.textContent = data.alignment;
-    elements.judgePhaseAlignment.textContent = data.alignment;
-}
+// =============================================================================
+// JOIN FLOW
+// =============================================================================
 
-function handlePromptSelected(data) {
-    elements.drawPrompt.textContent = data.prompt;
-    elements.judgePhasePrompt.textContent = data.prompt;
-}
+function handleJoinSubmit(e) {
+    if (e) e.preventDefault();
 
-function updateJudgeDisplay(judge) {
-    if (judge) {
-        elements.judgeAvatarWaiting.style.backgroundImage = `url('/assets/images/avatars/${judge.avatar}')`;
-        elements.judgeNameWaiting.textContent = judge.name;
-    }
-}
+    const roomCode = (elements.roomCodeInput ? elements.roomCodeInput.value.trim().toUpperCase() : '');
+    const playerName = (elements.playerNameInput ? elements.playerNameInput.value.trim() : '');
+    const avatar = AVATARS[currentAvatarIndex];
 
-function handleStartDrawing(data) {
-    if (playerState.isJudge) {
-        showScreen('waiting');
+    // Validation
+    if (!roomCode || roomCode.length !== 4) {
+        showJoinError('Please enter a 4-character room code.');
         return;
     }
 
-    playerState.hasSubmitted = false;
-    elements.drawAlignment.textContent = data.alignment;
-    elements.drawPrompt.textContent = data.prompt;
-    elements.submissionStatus.textContent = '';
-    elements.submitDrawingBtn.disabled = false;
+    if (!playerName || playerName.length < 1) {
+        showJoinError('Please enter your name.');
+        return;
+    }
 
-    // Update active modifiers display
-    updateModifiersDisplay();
+    if (playerName.length > 20) {
+        showJoinError('Name must be 20 characters or less.');
+        return;
+    }
 
-    // Reset canvas
-    clearCanvas();
-    resizeCanvas();
+    // Clear previous error
+    showJoinError('');
 
-    showScreen('drawing');
+    // Disable join button
+    if (elements.joinButton) {
+        elements.joinButton.disabled = true;
+        elements.joinButton.textContent = 'Joining...';
+    }
+
+    socket.emit('player:joinRoom', { roomCode, playerName, avatar }, (response) => {
+        if (response.success) {
+            // Save state
+            playerState.playerId = response.playerId;
+            playerState.playerName = playerName;
+            playerState.playerAvatar = avatar;
+            playerState.roomCode = roomCode;
+
+            // Save to localStorage for reconnection
+            saveToLocalStorage();
+
+            // Check if game is already in progress (late join after reconnect scenario)
+            if (response.gameState && response.gameState.gameStarted) {
+                handleGameState(response.gameState);
+            } else {
+                // Show lobby
+                showScreen('lobby');
+                if (elements.lobbyRoomCode) {
+                    elements.lobbyRoomCode.textContent = roomCode;
+                }
+                if (response.gameState && response.gameState.players) {
+                    updateLobbyPlayerList(response.gameState.players);
+                }
+            }
+        } else {
+            showJoinError(response.error || 'Failed to join room.');
+        }
+
+        // Re-enable join button
+        if (elements.joinButton) {
+            elements.joinButton.disabled = false;
+            elements.joinButton.textContent = 'Join Game';
+        }
+    });
 }
 
-function updateModifiersDisplay() {
-    const modifiersContainer = document.getElementById('active-modifiers');
-    if (!modifiersContainer) return;
-
-    if (playerState.activeModifiers && playerState.activeModifiers.length > 0) {
-        modifiersContainer.style.display = 'block';
-        modifiersContainer.innerHTML = playerState.activeModifiers.map(mod =>
-            `<div class="modifier-badge">
-                <span class="mod-icon">${mod.icon}</span>
-                <span class="mod-name">${mod.name}</span>
-                <span class="mod-desc">${mod.description}</span>
-            </div>`
-        ).join('');
-    } else {
-        modifiersContainer.style.display = 'none';
-        modifiersContainer.innerHTML = '';
+function showJoinError(message) {
+    if (elements.joinError) {
+        elements.joinError.textContent = message;
+        elements.joinError.style.display = message ? 'block' : 'none';
     }
 }
 
-// ==================== DRAWING ====================
+// =============================================================================
+// LOBBY
+// =============================================================================
+
+function updateLobbyPlayerList(players) {
+    if (!elements.lobbyPlayerList) return;
+
+    elements.lobbyPlayerList.innerHTML = players.map(p => {
+        const isMe = p.id === playerState.playerId;
+        const disconnectedClass = p.connected === false ? 'disconnected' : '';
+        const meClass = isMe ? 'is-me' : '';
+        return `<div class="lobby-player ${disconnectedClass} ${meClass}">
+            <span class="lobby-player-avatar">${p.avatar || ''}</span>
+            <span class="lobby-player-name">${escapeHtml(p.name)}${isMe ? ' (you)' : ''}</span>
+            ${p.connected === false ? '<span class="lobby-player-status">disconnected</span>' : ''}
+        </div>`;
+    }).join('');
+
+    if (elements.lobbyWaiting) {
+        elements.lobbyWaiting.textContent = `${players.length} player(s) in lobby - Waiting for host to start...`;
+    }
+}
+
+// =============================================================================
+// CANVAS SETUP AND DRAWING
+// =============================================================================
 
 function setupCanvas() {
-    canvas = elements.drawingCanvas;
+    canvas = elements.drawingCanvas || document.getElementById('drawing-canvas');
+    if (!canvas) return;
+
     ctx = canvas.getContext('2d');
 
-    // Touch events
+    // Touch events (passive: false to prevent scrolling while drawing)
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd);
-    canvas.addEventListener('touchcancel', handleTouchEnd);
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
-    // Mouse events (for testing on desktop)
+    // Mouse events (for desktop testing)
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('mouseout', handleMouseUp);
 
-    // Prevent default touch behaviors
-    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-
-    // Resize handler
-    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
 }
 
 function resizeCanvas() {
-    const container = canvas.parentElement;
+    if (!canvas || !ctx) return;
+
+    const container = elements.canvasContainer || canvas.parentElement;
+    if (!container) return;
+
     const rect = container.getBoundingClientRect();
+    const width = rect.width || 300;
+    const height = rect.height || 300;
 
-    // Save current drawing
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // Preserve existing drawing by saving it
+    const imageData = canvas.width > 0 && canvas.height > 0
+        ? ctx.getImageData(0, 0, canvas.width, canvas.height)
+        : null;
 
-    // Resize
-    canvas.width = rect.width;
-    canvas.height = rect.height;
+    canvas.width = width;
+    canvas.height = height;
 
-    // Fill white background
-    ctx.fillStyle = '#ffffff';
+    // Fill with white background
+    ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Restore drawing (scaled)
-    ctx.putImageData(imageData, 0, 0);
+    // Redraw all strokes from history
+    redrawFromHistory();
 }
 
 function getCanvasCoordinates(e) {
     const rect = canvas.getBoundingClientRect();
-    if (e.touches) {
-        return {
-            x: e.touches[0].clientX - rect.left,
-            y: e.touches[0].clientY - rect.top
-        };
+    let clientX, clientY;
+
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
     }
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
     };
 }
 
+// ---- Touch Handlers ----
+
 function handleTouchStart(e) {
+    e.preventDefault();
+    if (playerState.hasSubmitted) return;
+
     isDrawing = true;
     const coords = getCanvasCoordinates(e);
     lastX = coords.x;
     lastY = coords.y;
-    currentPath = [{ x: lastX, y: lastY, color: currentColor, size: currentSize }];
+
+    currentPath = [{
+        fromX: coords.x,
+        fromY: coords.y,
+        toX: coords.x,
+        toY: coords.y,
+        color: currentColor,
+        size: currentSize
+    }];
+
+    // Draw a dot for single tap
+    draw(coords.x, coords.y, coords.x, coords.y);
 }
 
 function handleTouchMove(e) {
-    if (!isDrawing) return;
+    e.preventDefault();
+    if (!isDrawing || playerState.hasSubmitted) return;
+
     const coords = getCanvasCoordinates(e);
     draw(lastX, lastY, coords.x, coords.y);
+
+    currentPath.push({
+        fromX: lastX,
+        fromY: lastY,
+        toX: coords.x,
+        toY: coords.y,
+        color: currentColor,
+        size: currentSize
+    });
+
     lastX = coords.x;
     lastY = coords.y;
-    currentPath.push({ x: lastX, y: lastY });
 }
 
-function handleTouchEnd() {
-    if (isDrawing && currentPath.length > 0) {
-        drawingHistory.push([...currentPath]);
-    }
+function handleTouchEnd(e) {
+    e.preventDefault();
+    if (!isDrawing) return;
+
     isDrawing = false;
-    currentPath = [];
+
+    if (currentPath.length > 0) {
+        drawingHistory.push([...currentPath]);
+        currentPath = [];
+    }
 }
+
+// ---- Mouse Handlers ----
 
 function handleMouseDown(e) {
+    if (playerState.hasSubmitted) return;
+
     isDrawing = true;
     const coords = getCanvasCoordinates(e);
     lastX = coords.x;
     lastY = coords.y;
-    currentPath = [{ x: lastX, y: lastY, color: currentColor, size: currentSize }];
+
+    currentPath = [{
+        fromX: coords.x,
+        fromY: coords.y,
+        toX: coords.x,
+        toY: coords.y,
+        color: currentColor,
+        size: currentSize
+    }];
+
+    draw(coords.x, coords.y, coords.x, coords.y);
 }
 
 function handleMouseMove(e) {
-    if (!isDrawing) return;
+    if (!isDrawing || playerState.hasSubmitted) return;
+
     const coords = getCanvasCoordinates(e);
     draw(lastX, lastY, coords.x, coords.y);
+
+    currentPath.push({
+        fromX: lastX,
+        fromY: lastY,
+        toX: coords.x,
+        toY: coords.y,
+        color: currentColor,
+        size: currentSize
+    });
+
     lastX = coords.x;
     lastY = coords.y;
-    currentPath.push({ x: lastX, y: lastY });
 }
 
 function handleMouseUp() {
-    if (isDrawing && currentPath.length > 0) {
-        drawingHistory.push([...currentPath]);
-    }
+    if (!isDrawing) return;
+
     isDrawing = false;
-    currentPath = [];
+
+    if (currentPath.length > 0) {
+        drawingHistory.push([...currentPath]);
+        currentPath = [];
+    }
 }
 
+// ---- Drawing Functions ----
+
 function draw(fromX, fromY, toX, toY) {
+    if (!ctx) return;
+
     ctx.beginPath();
     ctx.moveTo(fromX, fromY);
     ctx.lineTo(toX, toY);
@@ -535,348 +1073,538 @@ function draw(fromX, fromY, toX, toY) {
     ctx.stroke();
 }
 
+function redrawFromHistory() {
+    if (!ctx || !canvas) return;
+
+    // Fill white background
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Replay every stroke
+    for (const path of drawingHistory) {
+        for (const segment of path) {
+            ctx.beginPath();
+            ctx.moveTo(segment.fromX, segment.fromY);
+            ctx.lineTo(segment.toX, segment.toY);
+            ctx.strokeStyle = segment.color;
+            ctx.lineWidth = segment.size;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+        }
+    }
+}
+
+// ---- Tool Selection ----
+
 function selectColor(btn) {
-    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+    const color = btn.dataset.color;
+    if (!color) return;
+
+    currentColor = color;
+
+    // Toggle active class
+    if (elements.colorButtons) {
+        const buttons = elements.colorButtons.querySelectorAll('[data-color]');
+        buttons.forEach(b => b.classList.remove('active'));
+    }
     btn.classList.add('active');
-    currentColor = btn.dataset.color;
 }
 
 function selectSize(btn) {
-    document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+    const size = parseInt(btn.dataset.size, 10);
+    if (isNaN(size)) return;
+
+    currentSize = size;
+
+    // Toggle active class
+    if (elements.sizeButtons) {
+        const buttons = elements.sizeButtons.querySelectorAll('[data-size]');
+        buttons.forEach(b => b.classList.remove('active'));
+    }
     btn.classList.add('active');
-    currentSize = parseInt(btn.dataset.size);
 }
 
 function clearCanvas() {
-    ctx.fillStyle = '#ffffff';
+    if (!ctx || !canvas) return;
+
+    ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawingHistory = [];
+    currentPath = [];
 }
 
 function undoStroke() {
     if (drawingHistory.length === 0) return;
 
     drawingHistory.pop();
-
-    // Redraw everything
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    drawingHistory.forEach(path => {
-        if (path.length < 2) return;
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        ctx.strokeStyle = path[0].color;
-        ctx.lineWidth = path[0].size;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        for (let i = 1; i < path.length; i++) {
-            ctx.lineTo(path[i].x, path[i].y);
-        }
-        ctx.stroke();
-    });
+    redrawFromHistory();
 }
+
+// =============================================================================
+// SUBMIT DRAWING
+// =============================================================================
 
 function submitDrawing() {
     if (playerState.hasSubmitted) return;
+    if (!canvas) return;
 
-    const dataUrl = canvas.toDataURL('image/png');
+    playerState.hasSubmitted = true;
 
-    elements.submitDrawingBtn.disabled = true;
-    elements.submissionStatus.textContent = 'Submitting...';
+    // Disable submit button
+    if (elements.submitDrawingButton) {
+        elements.submitDrawingButton.disabled = true;
+        elements.submitDrawingButton.textContent = 'Submitting...';
+    }
 
-    socket.emit('player:submitDrawing', dataUrl, (response) => {
+    const drawingDataURL = canvas.toDataURL('image/png');
+
+    socket.emit('player:submitDrawing', drawingDataURL, (response) => {
         if (response.success) {
-            playerState.hasSubmitted = true;
-            elements.submittedPreviewImg.src = dataUrl;
             showScreen('submitted');
+
+            // Show preview of submitted drawing
+            if (elements.submittedPreview) {
+                elements.submittedPreview.src = drawingDataURL;
+            }
+            if (elements.submittedMessage) {
+                elements.submittedMessage.textContent = 'Drawing submitted! Waiting for others...';
+            }
         } else {
-            elements.submissionStatus.textContent = 'Failed: ' + response.error;
-            elements.submitDrawingBtn.disabled = false;
+            // Re-enable submission on failure
+            playerState.hasSubmitted = false;
+            if (elements.submitDrawingButton) {
+                elements.submitDrawingButton.disabled = false;
+                elements.submitDrawingButton.textContent = 'Submit Drawing';
+            }
+            showNotification(response.error || 'Failed to submit drawing.');
         }
     });
 }
 
-// ==================== TIMER ====================
+// =============================================================================
+// STEAL
+// =============================================================================
 
-let timerDuration = 0;
-let timerStarted = false;
+function showStealModal(players) {
+    if (!elements.stealModal || !elements.stealTargetList) return;
 
-function handleTimerTick(data) {
-    const remaining = data.timeLeft;
-    const mins = Math.floor(remaining / 60);
-    const secs = remaining % 60;
-    elements.timerText.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    // Filter: exclude self, exclude players with 0 score
+    const targets = players.filter(p =>
+        p.id !== playerState.playerId && p.score > 0
+    );
 
-    // Update progress bar
-    if (timerDuration > 0) {
-        const progress = (remaining / timerDuration) * 100;
-        elements.timerProgress.style.width = `${progress}%`;
-    }
-}
-
-function handleTimerEnd() {
-    elements.timerText.textContent = "TIME'S UP!";
-    elements.timerProgress.style.width = '0%';
-
-    // Auto-submit if not submitted
-    if (!playerState.hasSubmitted && !playerState.isJudge) {
-        submitDrawing();
-    }
-}
-
-// ==================== JUDGING & RESULTS ====================
-
-function handleSubmissionsCollected(data) {
-    showScreen('judging');
-    elements.judgePhaseAlignment.textContent = elements.drawAlignment.textContent;
-    elements.judgePhasePrompt.textContent = elements.drawPrompt.textContent;
-}
-
-function handleWinnerSelected(data) {
-    showScreen('results');
-
-    // Update winner display
-    elements.resultWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${getAvatarForPlayer(data.winnerId, data.scores)}')`;
-    elements.resultWinnerName.textContent = data.winnerName;
-
-    // Check if I won
-    if (data.winnerId === playerState.playerId) {
-        elements.resultTitle.textContent = 'You Won!';
-        elements.resultTitle.classList.add('winner');
-    } else {
-        elements.resultTitle.textContent = 'Round Complete!';
-        elements.resultTitle.classList.remove('winner');
+    if (targets.length === 0) {
+        showNotification('No valid targets to steal from.');
+        return;
     }
 
-    // Update my score
-    const myData = data.scores.find(s => s.id === playerState.playerId);
-    if (myData) {
-        playerState.score = myData.score;
-        playerState.tokens = myData.tokens;
-        elements.myScore.textContent = myData.score;
+    elements.stealTargetList.innerHTML = targets.map(t =>
+        `<button class="steal-target-btn" data-target-id="${t.id}">
+            <span class="steal-target-avatar">${t.avatar || ''}</span>
+            <span class="steal-target-name">${escapeHtml(t.name)}</span>
+            <span class="steal-target-score">Score: ${t.score}</span>
+        </button>`
+    ).join('');
 
-        const totalTokens = Object.values(myData.tokens).reduce((a, b) => a + b, 0);
-        elements.myTokens.textContent = totalTokens;
-
-        // Show steal button if I have 3+ tokens
-        if (totalTokens >= 3) {
-            elements.stealBtn.style.display = 'block';
-            elements.stealBtn.onclick = () => showStealModal(data.scores);
-        } else {
-            elements.stealBtn.style.display = 'none';
-        }
-    }
-}
-
-function getAvatarForPlayer(playerId, scores) {
-    // We need to get avatar info - for now use a placeholder
-    return 'alienlady_avatar.png'; // This should be improved
-}
-
-function handleNewRound(data) {
-    const me = data.gameState.players.find(p => p.id === playerState.playerId);
-    if (me) {
-        playerState.isJudge = me.isJudge;
-        playerState.score = me.score;
-        playerState.tokens = me.tokens;
-        playerState.activeModifiers = me.activeModifiers || [];
-        playerState.heldCurse = me.heldCurse || null;
-    }
-
-    playerState.hasSubmitted = false;
-
-    showScreen('waiting');
-    updateJudgeDisplay(data.judge);
-}
-
-// ==================== STEAL ====================
-
-function showStealModal(scores) {
-    elements.stealTargets.innerHTML = '';
-
-    scores.forEach(player => {
-        if (player.id === playerState.playerId) return; // Can't steal from self
-        if (player.score < 1) return; // Can't steal if no points
-
-        const btn = document.createElement('button');
-        btn.className = 'steal-target-btn';
-        btn.innerHTML = `
-            <span class="target-name">${player.name}</span>
-            <span class="target-score">${player.score} pts</span>
-        `;
-        btn.addEventListener('click', () => executeSteal(player.id));
-        elements.stealTargets.appendChild(btn);
+    // Attach click listeners to target buttons
+    const targetButtons = elements.stealTargetList.querySelectorAll('.steal-target-btn');
+    targetButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.targetId;
+            executeSteal(targetId);
+        });
     });
 
+    elements.stealModal.classList.add('active');
     elements.stealModal.style.display = 'flex';
 }
 
 function hideStealModal() {
-    elements.stealModal.style.display = 'none';
+    if (elements.stealModal) {
+        elements.stealModal.classList.remove('active');
+        elements.stealModal.style.display = 'none';
+    }
 }
 
 function executeSteal(targetId) {
     socket.emit('player:steal', targetId, (response) => {
         hideStealModal();
-        if (!response.success) {
-            alert('Failed to steal: ' + response.error);
+
+        if (response.success) {
+            showNotification('Point stolen!');
+        } else {
+            showNotification(response.error || 'Steal failed.');
         }
     });
 }
 
-function handleStealExecuted(data) {
-    // Update scores
-    const myData = data.scores.find(s => s.id === playerState.playerId);
-    if (myData) {
-        playerState.score = myData.score;
-        playerState.tokens = myData.tokens;
-        elements.myScore.textContent = myData.score;
+// =============================================================================
+// RECONNECTION
+// =============================================================================
 
-        const totalTokens = Object.values(myData.tokens).reduce((a, b) => a + b, 0);
-        elements.myTokens.textContent = totalTokens;
-
-        // Update steal button visibility
-        elements.stealBtn.style.display = totalTokens >= 3 ? 'block' : 'none';
-    }
-
-    // Show notification
-    if (data.stealerId === playerState.playerId) {
-        showNotification(`You stole a point from ${data.targetName}!`);
-    } else if (data.targetId === playerState.playerId) {
-        showNotification(`${data.stealerName} stole a point from you!`);
+function saveToLocalStorage() {
+    try {
+        localStorage.setItem('pa_playerId', playerState.playerId);
+        localStorage.setItem('pa_playerName', playerState.playerName);
+        localStorage.setItem('pa_roomCode', playerState.roomCode);
+        localStorage.setItem('pa_playerAvatar', playerState.playerAvatar);
+    } catch (e) {
+        // localStorage may not be available
     }
 }
 
-// ==================== MODIFIER PHASE ====================
-
-function handleModifierPhase(data) {
-    // Update player state from game state
-    if (data.gameState) {
-        const me = data.gameState.players.find(p => p.id === playerState.playerId);
-        if (me) {
-            playerState.activeModifiers = me.activeModifiers || [];
-            playerState.heldCurse = me.heldCurse || null;
-        }
-    }
-
-    // Show notification about curse phase
-    showNotification(`${data.curser.name} is choosing a curse!`);
-
-    // Show waiting screen during modifier phase
-    showScreen('waiting');
-    updateJudgeDisplay(data.curser);
-    elements.judgeNameWaiting.textContent = data.curser.name + ' (Cursing)';
-}
-
-function handleCurseCardDrawn(data) {
-    showNotification(`Curse drawn: ${data.modifier.icon} ${data.modifier.name}`);
-}
-
-function handleCurseApplied(data) {
-    // Check if curse was applied to me
-    const me = data.gameState.players.find(p => p.id === playerState.playerId);
-    if (me) {
-        playerState.activeModifiers = me.activeModifiers || [];
-    }
-
-    if (me && me.activeModifiers && me.activeModifiers.length > 0) {
-        const latestCurse = me.activeModifiers[me.activeModifiers.length - 1];
-        showNotification(`You've been cursed! ${latestCurse.icon} ${latestCurse.name}`);
-    } else if (data.targetName) {
-        showNotification(`${data.targetName} has been cursed!`);
+function clearLocalStorage() {
+    try {
+        localStorage.removeItem('pa_playerId');
+        localStorage.removeItem('pa_playerName');
+        localStorage.removeItem('pa_roomCode');
+        localStorage.removeItem('pa_playerAvatar');
+    } catch (e) {
+        // localStorage may not be available
     }
 }
 
-// ==================== GAME OVER ====================
-
-function handleGameOver(data) {
-    showScreen('gameover');
-
-    elements.finalWinnerAvatar.style.backgroundImage = `url('/assets/images/avatars/${data.winner.avatar}')`;
-    elements.finalWinnerName.textContent = data.winner.name;
-
-    // Calculate my rank
-    const sorted = data.finalScores.sort((a, b) => b.score - a.score);
-    const myRank = sorted.findIndex(p => p.id === playerState.playerId) + 1;
-    elements.myRank.textContent = `#${myRank}`;
-}
-
-// ==================== CONNECTION ====================
-
-function handleConnect() {
-    console.log('Connected to server');
-    playerState.connected = true;
-}
-
-function handleDisconnect() {
-    console.log('Disconnected from server');
-    playerState.connected = false;
-
-    // Don't immediately show disconnected screen - socket.io will try to reconnect
-    setTimeout(() => {
-        if (!playerState.connected && playerState.currentPhase !== 'join') {
-            showScreen('disconnected');
-            elements.disconnectReason.textContent = 'Lost connection to the server.';
-        }
-    }, 3000);
-}
-
-function handleRoomClosed(data) {
-    showScreen('disconnected');
-    elements.disconnectReason.textContent = data.reason || 'The room has been closed.';
-}
-
-function handleKicked() {
-    showScreen('disconnected');
-    elements.disconnectReason.textContent = 'You have been removed from the game.';
-    localStorage.removeItem('pa_playerId');
-    localStorage.removeItem('pa_playerName');
-    localStorage.removeItem('pa_roomCode');
+function getStoredSession() {
+    try {
+        return {
+            playerId: localStorage.getItem('pa_playerId'),
+            playerName: localStorage.getItem('pa_playerName'),
+            roomCode: localStorage.getItem('pa_roomCode'),
+            playerAvatar: localStorage.getItem('pa_playerAvatar')
+        };
+    } catch (e) {
+        return null;
+    }
 }
 
 function attemptRejoin() {
-    const savedName = localStorage.getItem('pa_playerName');
-    const savedRoom = localStorage.getItem('pa_roomCode');
+    const stored = getStoredSession();
+    if (!stored || !stored.roomCode || !stored.playerName) {
+        showScreen('join');
+        return;
+    }
 
-    if (savedName && savedRoom) {
-        socket.emit('player:reconnect', {
-            roomCode: savedRoom,
-            playerId: playerState.playerId,
-            playerName: savedName
-        }, (response) => {
-            if (response.success) {
-                playerState.connected = true;
+    socket.emit('player:reconnect', {
+        roomCode: stored.roomCode,
+        playerName: stored.playerName
+    }, (response) => {
+        if (response.success) {
+            playerState.playerId = socket.id;
+            playerState.playerName = stored.playerName;
+            playerState.playerAvatar = stored.playerAvatar;
+            playerState.roomCode = stored.roomCode;
+
+            // Update localStorage with new socket ID
+            saveToLocalStorage();
+
+            if (response.gameState) {
                 handleGameState(response.gameState);
             } else {
-                showScreen('join');
-                elements.roomCodeInput.value = savedRoom;
-                elements.playerNameInput.value = savedName;
+                showScreen('lobby');
             }
-        });
-    } else {
-        showScreen('join');
+
+            showNotification('Reconnected!');
+        } else {
+            clearLocalStorage();
+            showScreen('join');
+            showJoinError('Could not rejoin. The room may no longer exist.');
+        }
+    });
+}
+
+function handleGameState(state) {
+    if (!state) {
+        showScreen('lobby');
+        return;
+    }
+
+    // Find ourselves in the player list
+    const me = state.players.find(p => p.id === playerState.playerId) ||
+               state.players.find(p => p.name === playerState.playerName);
+
+    if (me) {
+        playerState.playerId = me.id;
+        playerState.isJudge = me.isJudge;
+        playerState.score = me.score;
+        playerState.tokens = { ...me.tokens };
+        playerState.activeModifiers = me.activeModifiers || [];
+        playerState.heldCurse = me.heldCurse || null;
+    }
+
+    playerState.currentAlignment = state.currentAlignment;
+    playerState.currentAlignmentFullName = state.currentAlignmentFullName;
+    playerState.currentPrompt = state.selectedPrompt;
+
+    const phase = state.gamePhase;
+
+    if (!state.gameStarted) {
+        showScreen('lobby');
+        if (elements.lobbyRoomCode) {
+            elements.lobbyRoomCode.textContent = state.code;
+        }
+        updateLobbyPlayerList(state.players);
+        return;
+    }
+
+    // Determine correct screen based on game phase and role
+    switch (phase) {
+        case 'lobby':
+            showScreen('lobby');
+            if (elements.lobbyRoomCode) {
+                elements.lobbyRoomCode.textContent = state.code;
+            }
+            updateLobbyPlayerList(state.players);
+            break;
+
+        case 'alignment':
+        case 'judge_choice':
+        case 'prompts':
+            showScreen('waiting');
+            if (playerState.isJudge) {
+                updateWaitingMessage('You are the Judge! Watch the main screen.');
+                updateWaitingRole('judge');
+            } else {
+                const judge = state.judge;
+                const judgeName = judge ? judge.name : 'The judge';
+                updateWaitingMessage(`${judgeName} is setting up the round...`);
+                updateWaitingRole('player');
+            }
+            break;
+
+        case 'drawing':
+            if (playerState.isJudge) {
+                showScreen('waiting');
+                updateWaitingMessage('Players are drawing... Sit tight, Judge!');
+                updateWaitingRole('judge');
+            } else if (playerState.hasSubmitted) {
+                showScreen('submitted');
+                if (elements.submittedMessage) {
+                    elements.submittedMessage.textContent = 'Drawing submitted! Waiting for others...';
+                }
+            } else {
+                showScreen('drawing');
+                if (elements.drawingPrompt) {
+                    elements.drawingPrompt.textContent = state.selectedPrompt || '';
+                }
+                if (elements.drawingAlignment) {
+                    elements.drawingAlignment.textContent = state.currentAlignmentFullName || state.currentAlignment || '';
+                }
+                displayActiveModifiers();
+                clearCanvas();
+                resizeCanvas();
+                if (elements.submitDrawingButton) {
+                    elements.submitDrawingButton.disabled = false;
+                    elements.submitDrawingButton.textContent = 'Submit Drawing';
+                }
+            }
+            break;
+
+        case 'judging':
+            showScreen('judging');
+            if (elements.judgingMessage) {
+                if (playerState.isJudge) {
+                    elements.judgingMessage.textContent = 'Review the drawings on the main screen and pick a winner!';
+                } else {
+                    elements.judgingMessage.textContent = 'The judge is reviewing all drawings...';
+                }
+            }
+            break;
+
+        case 'scoring':
+            showScreen('results');
+            if (elements.resultsScore) {
+                elements.resultsScore.textContent = `Your Score: ${playerState.score}`;
+            }
+            updateTokenDisplay();
+            if (elements.stealBtnContainer) {
+                const totalTokens = getTotalTokens();
+                elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
+            }
+            break;
+
+        case 'modifiers':
+            showScreen('waiting');
+            updateWaitingMessage('Modifier phase in progress...');
+            break;
+
+        case 'gameOver':
+            showScreen('gameover');
+            break;
+
+        default:
+            showScreen('waiting');
+            updateWaitingMessage('Waiting...');
+            break;
     }
 }
 
-// ==================== UTILITIES ====================
+// =============================================================================
+// ACTIVE MODIFIERS DISPLAY
+// =============================================================================
+
+function displayActiveModifiers() {
+    if (!elements.drawingModifiers) return;
+
+    if (playerState.activeModifiers && playerState.activeModifiers.length > 0) {
+        elements.drawingModifiers.innerHTML = playerState.activeModifiers.map(mod =>
+            `<div class="modifier-badge">
+                <span class="modifier-icon">${mod.icon || ''}</span>
+                <span class="modifier-name">${escapeHtml(mod.name)}</span>
+                <span class="modifier-desc">${escapeHtml(mod.description)}</span>
+            </div>`
+        ).join('');
+        elements.drawingModifiers.style.display = 'block';
+    } else {
+        elements.drawingModifiers.innerHTML = '';
+        elements.drawingModifiers.style.display = 'none';
+    }
+}
+
+// =============================================================================
+// TOKEN DISPLAY
+// =============================================================================
+
+function updateTokenDisplay() {
+    if (!elements.resultsTokens) return;
+
+    const tokenInfo = {
+        mindReader:       { icon: '🧠', name: 'Mind Reader' },
+        technicalMerit:   { icon: '🎨', name: 'Technical Merit' },
+        perfectAlignment: { icon: '⚖️',  name: 'Perfect Alignment' },
+        plotTwist:        { icon: '🌀', name: 'Plot Twist' }
+    };
+
+    const total = getTotalTokens();
+
+    let html = `<div class="token-total">Tokens: ${total}</div>`;
+    html += '<div class="token-list">';
+    for (const [key, info] of Object.entries(tokenInfo)) {
+        const count = playerState.tokens[key] || 0;
+        if (count > 0) {
+            html += `<div class="token-item">
+                <span class="token-icon">${info.icon}</span>
+                <span class="token-name">${info.name}</span>
+                <span class="token-count">x${count}</span>
+            </div>`;
+        }
+    }
+    html += '</div>';
+
+    elements.resultsTokens.innerHTML = html;
+}
+
+// =============================================================================
+// UTILITY
+// =============================================================================
+
+function showScreen(screenName) {
+    playerState.currentPhase = screenName;
+
+    const allScreens = [
+        elements.joinScreen,
+        elements.lobbyScreen,
+        elements.waitingScreen,
+        elements.drawingScreen,
+        elements.submittedScreen,
+        elements.judgingScreen,
+        elements.resultsScreen,
+        elements.gameoverScreen,
+        elements.disconnectedScreen
+    ];
+
+    const screenMap = {
+        join: elements.joinScreen,
+        lobby: elements.lobbyScreen,
+        waiting: elements.waitingScreen,
+        drawing: elements.drawingScreen,
+        submitted: elements.submittedScreen,
+        judging: elements.judgingScreen,
+        results: elements.resultsScreen,
+        gameover: elements.gameoverScreen,
+        disconnected: elements.disconnectedScreen
+    };
+
+    allScreens.forEach(screen => {
+        if (screen) {
+            screen.classList.remove('active');
+            screen.style.display = 'none';
+        }
+    });
+
+    const target = screenMap[screenName];
+    if (target) {
+        target.classList.add('active');
+        target.style.display = 'flex';
+    }
+}
 
 function showNotification(message) {
+    let container = elements.notificationContainer;
+
+    // Create container if it does not exist
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'notification-container';
+        document.body.appendChild(container);
+        elements.notificationContainer = container;
+    }
+
     const notification = document.createElement('div');
     notification.className = 'notification';
     notification.textContent = message;
-    document.body.appendChild(notification);
+    container.appendChild(notification);
 
+    // Trigger entrance animation
+    requestAnimationFrame(() => {
+        notification.classList.add('show');
+    });
+
+    // Auto-remove after duration
     setTimeout(() => {
-        notification.classList.add('fade-out');
-        setTimeout(() => notification.remove(), 500);
-    }, 3000);
+        notification.classList.remove('show');
+        notification.classList.add('hide');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, NOTIFICATION_DURATION_MS);
+}
+
+function updateWaitingMessage(message) {
+    if (elements.waitingMessage) {
+        elements.waitingMessage.textContent = message;
+    }
+}
+
+function updateWaitingRole(role) {
+    if (elements.waitingRole) {
+        elements.waitingRole.textContent = role === 'judge' ? 'You are the Judge' : 'Player';
+        elements.waitingRole.className = 'waiting-role ' + role;
+    }
 }
 
 function getTotalTokens() {
-    return Object.values(playerState.tokens).reduce((a, b) => a + b, 0);
+    return Object.values(playerState.tokens).reduce((sum, count) => sum + count, 0);
 }
 
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', init);
+function formatTime(seconds) {
+    if (seconds <= 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function getOrdinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}

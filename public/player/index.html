@@ -3,202 +3,1439 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Perfectly Aligned - Player</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/shared/style.css">
-    <link rel="stylesheet" href="player.css">
+    <style>
+        /* ================================================================
+           RESET & BASE
+           ================================================================ */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            color: #FFB6C1;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-text-size-adjust: 100%;
+            touch-action: manipulation;
+        }
+
+        body {
+            background:
+                linear-gradient(0deg, rgba(255,182,193,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,182,193,0.1) 1px, transparent 1px),
+                linear-gradient(135deg, #FF69B4 0%, #FF1493 50%, #C71585 100%);
+            background-size: 20px 20px, 20px 20px, 100% 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+        }
+
+        /* ================================================================
+           KEYFRAME ANIMATIONS
+           ================================================================ */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-40px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to   { opacity: 0; transform: translateY(-40px); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%      { opacity: 0.4; }
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 10px rgba(255,105,180,0.3); }
+            50%      { box-shadow: 0 0 25px rgba(255,105,180,0.6); }
+        }
+
+        @keyframes dotPulse {
+            0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+            40%           { opacity: 1;   transform: scale(1.2); }
+        }
+
+        @keyframes shimmer {
+            0%   { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+
+        /* ================================================================
+           SCREEN CONTAINER
+           ================================================================ */
+        .screen {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 16px;
+            z-index: 1;
+        }
+
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .screen-inner {
+            background: rgba(0,0,0,0.85);
+            border: 2px solid #FF69B4;
+            border-radius: 16px;
+            padding: 24px 20px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow:
+                0 0 20px rgba(255,105,180,0.3),
+                0 0 60px rgba(255,20,147,0.1),
+                inset 0 1px 0 rgba(255,182,193,0.1);
+        }
+
+        /* ================================================================
+           TYPOGRAPHY
+           ================================================================ */
+        .title {
+            font-size: 1.4rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            text-align: center;
+            color: #FFB6C1;
+            text-shadow: 0 0 10px rgba(255,105,180,0.5);
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF69B4;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .section-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF69B4;
+            margin-bottom: 8px;
+        }
+
+        /* ================================================================
+           FORM ELEMENTS
+           ================================================================ */
+        input[type="text"] {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(0,0,0,0.6);
+            border: 2px solid #FF69B4;
+            border-radius: 10px;
+            color: #FFB6C1;
+            font-family: 'Courier New', monospace;
+            font-size: 1rem;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input[type="text"]::placeholder {
+            color: rgba(255,182,193,0.35);
+        }
+
+        input[type="text"]:focus {
+            border-color: #FF1493;
+            box-shadow: 0 0 15px rgba(255,20,147,0.3);
+        }
+
+        input.room-code-input {
+            font-size: 1.8rem;
+            font-weight: bold;
+            letter-spacing: 12px;
+            text-transform: uppercase;
+            padding: 16px;
+        }
+
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF69B4;
+            margin-bottom: 6px;
+        }
+
+        /* ================================================================
+           BUTTONS
+           ================================================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 48px;
+            min-width: 48px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #FF69B4, #FF1493);
+            color: #fff;
+            width: 100%;
+            font-size: 1rem;
+            padding: 16px;
+            box-shadow: 0 4px 15px rgba(255,20,147,0.4);
+        }
+
+        .btn-primary:active {
+            box-shadow: 0 2px 8px rgba(255,20,147,0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #00c853, #00e676);
+            color: #fff;
+            width: 100%;
+            font-size: 1rem;
+            padding: 16px;
+            box-shadow: 0 4px 15px rgba(0,200,83,0.4);
+        }
+
+        .btn-success:active {
+            box-shadow: 0 2px 8px rgba(0,200,83,0.3);
+        }
+
+        .btn-gold {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: #000;
+            width: 100%;
+            font-size: 0.9rem;
+            padding: 14px;
+            box-shadow: 0 4px 15px rgba(255,215,0,0.4);
+        }
+
+        .btn-gold:active {
+            box-shadow: 0 2px 8px rgba(255,215,0,0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255,105,180,0.15);
+            border: 2px solid #FF69B4;
+            color: #FFB6C1;
+            width: 100%;
+        }
+
+        .btn-secondary:active {
+            background: rgba(255,105,180,0.25);
+        }
+
+        .btn-small {
+            padding: 10px 16px;
+            font-size: 0.75rem;
+            min-height: 44px;
+        }
+
+        /* ================================================================
+           AVATAR SELECTOR
+           ================================================================ */
+        .avatar-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .avatar-selector .avatar-display {
+            font-size: 3rem;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid #FF69B4;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .avatar-selector .avatar-arrow {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: rgba(255,105,180,0.15);
+            border: 2px solid #FF69B4;
+            color: #FFB6C1;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .avatar-selector .avatar-arrow:active {
+            background: rgba(255,105,180,0.3);
+            transform: scale(0.92);
+        }
+
+        /* ================================================================
+           PLAYER LIST
+           ================================================================ */
+        .player-list {
+            list-style: none;
+            margin: 12px 0;
+        }
+
+        .player-list li {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: rgba(255,105,180,0.06);
+            border: 1px solid rgba(255,105,180,0.15);
+            border-radius: 8px;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+        }
+
+        .player-list .player-avatar {
+            font-size: 1.4rem;
+        }
+
+        .player-list .player-name {
+            flex: 1;
+            color: #FFB6C1;
+        }
+
+        .player-list .player-status {
+            font-size: 0.7rem;
+            color: #FF69B4;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .player-list .player-status.disconnected {
+            color: #ff5252;
+        }
+
+        /* ================================================================
+           INFO BOX / ALERT BOX
+           ================================================================ */
+        .info-box {
+            background: rgba(255,105,180,0.08);
+            border: 1px solid rgba(255,105,180,0.25);
+            border-radius: 10px;
+            padding: 14px 16px;
+            text-align: center;
+            margin: 12px 0;
+        }
+
+        .info-box .info-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF69B4;
+            margin-bottom: 4px;
+        }
+
+        .info-box .info-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #FFB6C1;
+        }
+
+        .alert-box {
+            background: rgba(255,20,147,0.12);
+            border: 2px solid #FF1493;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin: 10px 0;
+        }
+
+        .alert-box .alert-icon {
+            font-size: 1.4rem;
+            margin-right: 6px;
+        }
+
+        .alert-box .alert-title {
+            font-weight: bold;
+            color: #FF1493;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+        }
+
+        .alert-box .alert-desc {
+            font-size: 0.75rem;
+            color: #FFB6C1;
+            opacity: 0.85;
+        }
+
+        /* ================================================================
+           SCORE / TOKEN DISPLAY
+           ================================================================ */
+        .stats-row {
+            display: flex;
+            gap: 10px;
+            margin: 12px 0;
+        }
+
+        .stat-box {
+            flex: 1;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,105,180,0.2);
+            border-radius: 10px;
+            padding: 12px 10px;
+            text-align: center;
+        }
+
+        .stat-box .stat-label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF69B4;
+            margin-bottom: 4px;
+        }
+
+        .stat-box .stat-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #FFB6C1;
+        }
+
+        .stat-box .stat-value.gold {
+            color: #FFD700;
+        }
+
+        .stat-box .stat-value.green {
+            color: #00FF00;
+        }
+
+        /* ================================================================
+           JUDGE / ROUND INFO
+           ================================================================ */
+        .judge-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px;
+            background: rgba(255,215,0,0.08);
+            border: 1px solid rgba(255,215,0,0.25);
+            border-radius: 10px;
+            margin: 12px 0;
+        }
+
+        .judge-display .judge-avatar {
+            font-size: 2rem;
+        }
+
+        .judge-display .judge-info {
+            text-align: left;
+        }
+
+        .judge-display .judge-label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FFD700;
+        }
+
+        .judge-display .judge-name {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        .room-code-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            background: rgba(255,105,180,0.1);
+            border: 1px solid #FF69B4;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            letter-spacing: 6px;
+            color: #FFB6C1;
+            margin: 8px 0;
+        }
+
+        /* ================================================================
+           WAITING DOTS ANIMATION
+           ================================================================ */
+        .waiting-dots {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 16px 0;
+        }
+
+        .waiting-dots span {
+            width: 10px;
+            height: 10px;
+            background: #FF69B4;
+            border-radius: 50%;
+            animation: dotPulse 1.4s ease-in-out infinite;
+        }
+
+        .waiting-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .waiting-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        .waiting-text {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #FF69B4;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* ================================================================
+           PROMPT / ALIGNMENT DISPLAY
+           ================================================================ */
+        .prompt-display {
+            background: rgba(255,105,180,0.1);
+            border: 2px solid #FF69B4;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .prompt-display .alignment-text {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF1493;
+            margin-bottom: 6px;
+        }
+
+        .prompt-display .prompt-text {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #fff;
+            line-height: 1.4;
+        }
+
+        /* ================================================================
+           TIMER
+           ================================================================ */
+        .timer-container {
+            margin-bottom: 10px;
+        }
+
+        .timer-bar-wrapper {
+            width: 100%;
+            height: 8px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+
+        .timer-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #FF69B4, #FF1493);
+            border-radius: 4px;
+            transition: width 1s linear;
+            width: 100%;
+        }
+
+        .timer-bar.warning {
+            background: linear-gradient(90deg, #ff5252, #ff1744);
+        }
+
+        .timer-text {
+            text-align: center;
+            font-size: 0.75rem;
+            color: #FF69B4;
+            letter-spacing: 1px;
+        }
+
+        .timer-text.warning {
+            color: #ff5252;
+            font-weight: bold;
+        }
+
+        /* ================================================================
+           DRAWING SCREEN LAYOUT
+           ================================================================ */
+        #drawing-screen.active {
+            padding: 8px;
+            gap: 0;
+        }
+
+        #drawing-screen .screen-inner {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+            margin: 8px 0;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid rgba(255,105,180,0.3);
+        }
+
+        #drawing-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        /* ================================================================
+           DRAWING TOOLS
+           ================================================================ */
+        .drawing-tools {
+            flex-shrink: 0;
+        }
+
+        .tool-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .color-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s;
+            -webkit-user-select: none;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .color-btn:active {
+            transform: scale(0.9);
+        }
+
+        .color-btn.active {
+            border-color: #FFD700;
+            box-shadow: 0 0 10px rgba(255,215,0,0.5);
+        }
+
+        .color-btn.eraser {
+            background: #fff !important;
+            position: relative;
+        }
+
+        .color-btn.eraser::after {
+            content: 'E';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.65rem;
+            font-weight: bold;
+            color: #999;
+            font-family: 'Courier New', monospace;
+        }
+
+        .size-btn {
+            width: 48px;
+            height: 44px;
+            border-radius: 8px;
+            background: rgba(255,105,180,0.1);
+            border: 2px solid rgba(255,105,180,0.25);
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            color: #FFB6C1;
+            font-family: 'Courier New', monospace;
+            font-size: 0.6rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.15s;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .size-btn .size-dot {
+            border-radius: 50%;
+            background: #FFB6C1;
+        }
+
+        .size-btn:active {
+            transform: scale(0.94);
+        }
+
+        .size-btn.active {
+            border-color: #FF1493;
+            background: rgba(255,20,147,0.2);
+        }
+
+        .action-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px 8px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.15s;
+            min-height: 44px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .action-btn:active {
+            transform: scale(0.96);
+        }
+
+        .action-btn.undo-btn {
+            background: rgba(255,105,180,0.15);
+            border: 1px solid rgba(255,105,180,0.3);
+            color: #FFB6C1;
+        }
+
+        .action-btn.clear-btn {
+            background: rgba(255,82,82,0.15);
+            border: 1px solid rgba(255,82,82,0.3);
+            color: #ff8a80;
+        }
+
+        .action-btn.submit-btn {
+            flex: 2;
+            background: linear-gradient(135deg, #00c853, #00e676);
+            color: #fff;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            box-shadow: 0 3px 12px rgba(0,200,83,0.3);
+        }
+
+        .action-btn.submit-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .submission-status {
+            text-align: center;
+            font-size: 0.7rem;
+            color: #FF69B4;
+            margin-top: 6px;
+            min-height: 16px;
+        }
+
+        /* ================================================================
+           SUBMITTED SCREEN
+           ================================================================ */
+        .submitted-preview {
+            width: 100%;
+            max-width: 280px;
+            margin: 12px auto;
+            border-radius: 8px;
+            border: 2px solid rgba(255,105,180,0.3);
+            background: #fff;
+            display: block;
+        }
+
+        /* ================================================================
+           RESULTS SCREEN
+           ================================================================ */
+        .result-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            color: #FFB6C1;
+            margin-bottom: 12px;
+        }
+
+        .result-title.winner {
+            color: #FFD700;
+            text-shadow: 0 0 15px rgba(255,215,0,0.4);
+        }
+
+        .winner-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 16px;
+            background: rgba(255,215,0,0.06);
+            border: 1px solid rgba(255,215,0,0.2);
+            border-radius: 12px;
+            margin: 12px 0;
+        }
+
+        .winner-display .winner-avatar {
+            font-size: 3rem;
+        }
+
+        .winner-display .winner-name {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #FFD700;
+        }
+
+        .winner-display .winner-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #FF69B4;
+        }
+
+        /* ================================================================
+           GAME OVER SCREEN
+           ================================================================ */
+        .trophy {
+            font-size: 4rem;
+            text-align: center;
+            margin: 12px 0;
+        }
+
+        .final-winner {
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-align: center;
+            color: #FFD700;
+            text-shadow: 0 0 15px rgba(255,215,0,0.3);
+            margin-bottom: 8px;
+        }
+
+        .final-rank {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #FFB6C1;
+            margin: 8px 0 20px;
+        }
+
+        .final-rank span {
+            font-weight: bold;
+            color: #FF1493;
+        }
+
+        /* ================================================================
+           STEAL MODAL
+           ================================================================ */
+        #steal-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        #steal-modal.active {
+            display: flex;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal-content {
+            background: rgba(0,0,0,0.95);
+            border: 2px solid #FFD700;
+            border-radius: 16px;
+            padding: 24px 20px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 0 30px rgba(255,215,0,0.2);
+        }
+
+        .modal-title {
+            font-size: 1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            color: #FFD700;
+            margin-bottom: 6px;
+        }
+
+        .modal-subtitle {
+            text-align: center;
+            font-size: 0.75rem;
+            color: #FFB6C1;
+            margin-bottom: 16px;
+            opacity: 0.8;
+        }
+
+        .steal-target-list {
+            list-style: none;
+            margin-bottom: 16px;
+        }
+
+        .steal-target-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: rgba(255,215,0,0.06);
+            border: 1px solid rgba(255,215,0,0.2);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Courier New', monospace;
+            color: #FFB6C1;
+            font-size: 0.85rem;
+            min-height: 48px;
+        }
+
+        .steal-target-btn:active {
+            background: rgba(255,215,0,0.15);
+            border-color: #FFD700;
+            transform: scale(0.97);
+        }
+
+        .steal-target-btn .target-avatar {
+            font-size: 1.5rem;
+        }
+
+        .steal-target-btn .target-name {
+            flex: 1;
+            text-align: left;
+        }
+
+        .steal-target-btn .target-score {
+            color: #FFD700;
+            font-weight: bold;
+        }
+
+        .modal-cancel {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            border: 1px solid rgba(255,105,180,0.3);
+            border-radius: 8px;
+            color: #FF69B4;
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            min-height: 44px;
+        }
+
+        .modal-cancel:active {
+            background: rgba(255,105,180,0.1);
+        }
+
+        /* ================================================================
+           NOTIFICATION CONTAINER
+           ================================================================ */
+        #notification-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px 12px;
+            pointer-events: none;
+        }
+
+        .notification {
+            background: rgba(0,0,0,0.92);
+            border: 1px solid #FF69B4;
+            border-radius: 10px;
+            padding: 12px 20px;
+            margin-bottom: 6px;
+            font-size: 0.8rem;
+            color: #FFB6C1;
+            text-align: center;
+            max-width: 360px;
+            width: 100%;
+            animation: slideIn 0.3s ease-out;
+            pointer-events: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .notification.success {
+            border-color: #00FF00;
+            color: #00FF00;
+        }
+
+        .notification.error {
+            border-color: #ff5252;
+            color: #ff5252;
+        }
+
+        .notification.gold {
+            border-color: #FFD700;
+            color: #FFD700;
+        }
+
+        .notification.removing {
+            animation: fadeOut 0.3s ease-in forwards;
+        }
+
+        /* ================================================================
+           ERROR MESSAGE
+           ================================================================ */
+        .error-message {
+            color: #ff5252;
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 10px;
+            min-height: 20px;
+        }
+
+        /* ================================================================
+           DIVIDER
+           ================================================================ */
+        .divider {
+            width: 100%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,105,180,0.3), transparent);
+            margin: 16px 0;
+        }
+
+        /* ================================================================
+           CENTERING HELPERS
+           ================================================================ */
+        .text-center { text-align: center; }
+        .mt-8  { margin-top: 8px; }
+        .mt-12 { margin-top: 12px; }
+        .mt-16 { margin-top: 16px; }
+        .mt-20 { margin-top: 20px; }
+        .mb-8  { margin-bottom: 8px; }
+        .mb-12 { margin-bottom: 12px; }
+        .mb-16 { margin-bottom: 16px; }
+        .gap-8  { gap: 8px; }
+        .flex-col { display: flex; flex-direction: column; }
+
+        /* ================================================================
+           DISCONNECTED SCREEN
+           ================================================================ */
+        .disconnect-icon {
+            font-size: 3rem;
+            text-align: center;
+            margin: 12px 0;
+        }
+
+        .disconnect-reason {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #ff8a80;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* ================================================================
+           RESPONSIVE - Smaller phones
+           ================================================================ */
+        @media (max-height: 640px) {
+            .screen-inner {
+                padding: 16px 14px;
+            }
+
+            .title {
+                font-size: 1.2rem;
+                letter-spacing: 2px;
+            }
+
+            .avatar-selector .avatar-display {
+                font-size: 2.4rem;
+                width: 64px;
+                height: 64px;
+            }
+
+            .prompt-display {
+                padding: 10px;
+            }
+
+            .color-btn {
+                width: 34px;
+                height: 34px;
+            }
+
+            .size-btn {
+                width: 42px;
+                height: 38px;
+            }
+        }
+
+        @media (max-width: 340px) {
+            .screen-inner {
+                padding: 14px 10px;
+            }
+
+            .color-btn {
+                width: 32px;
+                height: 32px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <!-- ==================== JOIN SCREEN ==================== -->
+
+    <!-- ================================================================
+         NOTIFICATION CONTAINER
+         ================================================================ -->
+    <div id="notification-container"></div>
+
+    <!-- ================================================================
+         1. JOIN SCREEN
+         ================================================================ -->
     <div id="join-screen" class="screen active">
-        <h1>Perfectly Aligned</h1>
-        <p class="subtitle">Join the game!</p>
+        <div class="screen-inner">
+            <div class="title">Perfectly Aligned</div>
+            <div class="subtitle">Join the Game!</div>
 
-        <form id="join-form">
-            <div class="form-group">
-                <label for="room-code-input">Room Code</label>
-                <input type="text" id="room-code-input" maxlength="4" placeholder="ABCD" autocomplete="off" autocapitalize="characters" required>
+            <div class="input-group">
+                <label>Room Code</label>
+                <input type="text"
+                       id="room-code-input"
+                       class="room-code-input"
+                       placeholder="ABCD"
+                       maxlength="4"
+                       autocomplete="off"
+                       autocapitalize="characters"
+                       spellcheck="false">
             </div>
 
-            <div class="form-group">
-                <label for="player-name-input">Your Name</label>
-                <input type="text" id="player-name-input" maxlength="10" placeholder="Enter name" autocomplete="off" required>
+            <div class="input-group">
+                <label>Your Name</label>
+                <input type="text"
+                       id="player-name-input"
+                       placeholder="Enter your name"
+                       maxlength="20"
+                       autocomplete="off"
+                       spellcheck="false">
             </div>
 
-            <div class="form-group">
-                <label>Choose Avatar</label>
-                <div class="avatar-selector">
-                    <button type="button" class="avatar-nav prev" id="avatar-prev">&lt;</button>
-                    <div class="avatar-preview" id="avatar-preview"></div>
-                    <button type="button" class="avatar-nav next" id="avatar-next">&gt;</button>
+            <div class="section-label text-center">Choose Your Avatar</div>
+            <div class="avatar-selector">
+                <div class="avatar-arrow" id="avatar-prev">&larr;</div>
+                <div class="avatar-display" id="avatar-display"></div>
+                <div class="avatar-arrow" id="avatar-next">&rarr;</div>
+            </div>
+
+            <button class="btn btn-primary" id="join-btn">Join Game</button>
+            <div class="error-message" id="join-error"></div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         2. LOBBY SCREEN
+         ================================================================ -->
+    <div id="lobby-screen" class="screen">
+        <div class="screen-inner">
+            <div class="title">You're In!</div>
+
+            <div class="info-box">
+                <div style="font-size:2rem;" id="lobby-player-avatar"></div>
+                <div class="info-value" id="lobby-player-name"></div>
+            </div>
+
+            <div class="text-center mb-8">
+                <div class="section-label">Room Code</div>
+                <div class="room-code-badge" id="lobby-room-code"></div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="section-label">Players</div>
+            <ul class="player-list" id="lobby-player-list"></ul>
+
+            <div class="divider"></div>
+
+            <div class="waiting-text">Waiting for host to start...</div>
+            <div class="waiting-dots">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         3. WAITING SCREEN
+         ================================================================ -->
+    <div id="waiting-screen" class="screen">
+        <div class="screen-inner">
+            <div class="title">Round <span id="waiting-round">1</span></div>
+            <div class="subtitle">Preparing...</div>
+
+            <div class="judge-display">
+                <div class="judge-avatar" id="waiting-judge-avatar"></div>
+                <div class="judge-info">
+                    <div class="judge-label">Current Judge</div>
+                    <div class="judge-name" id="waiting-judge-name"></div>
                 </div>
             </div>
 
-            <button type="submit" class="join-button">Join Game</button>
-            <p id="join-error" class="error-message"></p>
-        </form>
-    </div>
-
-    <!-- ==================== LOBBY SCREEN ==================== -->
-    <div id="lobby-screen" class="screen">
-        <h2>You're In!</h2>
-        <div id="player-info">
-            <div id="my-avatar" class="avatar-large"></div>
-            <span id="my-name">---</span>
-        </div>
-        <p class="waiting-message">Waiting for host to start the game...</p>
-        <div id="lobby-player-list">
-            <!-- Other players will be shown here -->
-        </div>
-    </div>
-
-    <!-- ==================== WAITING SCREEN (Judge turn) ==================== -->
-    <div id="waiting-screen" class="screen">
-        <div class="waiting-content">
-            <h2>The Judge is Deciding...</h2>
-            <div id="current-judge-display">
-                <div id="judge-avatar-waiting" class="avatar-medium"></div>
-                <span id="judge-name-waiting">---</span>
-                <span class="judge-label">is the Judge</span>
+            <div class="waiting-text" id="waiting-message">The judge is choosing...</div>
+            <div class="waiting-dots">
+                <span></span><span></span><span></span>
             </div>
-            <div class="waiting-animation">
-                <div class="dot"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
+
+            <div class="divider"></div>
+
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div class="stat-label">Score</div>
+                    <div class="stat-value" id="waiting-score">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Tokens</div>
+                    <div class="stat-value gold" id="waiting-tokens">0</div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- ==================== DRAWING SCREEN ==================== -->
+    <!-- ================================================================
+         4. DRAWING SCREEN
+         ================================================================ -->
     <div id="drawing-screen" class="screen">
-        <div class="challenge-header">
-            <div class="alignment-badge" id="draw-alignment">?</div>
-            <div class="prompt-text" id="draw-prompt">---</div>
-        </div>
-
-        <!-- Active Modifiers/Curses Display -->
-        <div id="active-modifiers" class="active-modifiers" style="display: none;">
-            <!-- Modifier badges will be added here -->
-        </div>
-
-        <div class="timer-bar">
-            <div id="timer-progress" class="timer-progress"></div>
-            <span id="timer-text">--:--</span>
-        </div>
-
-        <div class="canvas-container">
-            <canvas id="drawing-canvas"></canvas>
-        </div>
-
-        <div class="drawing-tools">
-            <div class="tool-group colors">
-                <button class="color-btn active" data-color="#000000" style="background: #000000;"></button>
-                <button class="color-btn" data-color="#ff0000" style="background: #ff0000;"></button>
-                <button class="color-btn" data-color="#00ff00" style="background: #00ff00;"></button>
-                <button class="color-btn" data-color="#0000ff" style="background: #0000ff;"></button>
-                <button class="color-btn" data-color="#ffff00" style="background: #ffff00;"></button>
-                <button class="color-btn" data-color="#ff00ff" style="background: #ff00ff;"></button>
-                <button class="color-btn" data-color="#ffffff" style="background: #ffffff;"></button>
+        <div class="screen-inner">
+            <!-- Prompt & alignment -->
+            <div class="prompt-display">
+                <div class="alignment-text" id="draw-alignment"></div>
+                <div class="prompt-text" id="draw-prompt"></div>
             </div>
-            <div class="tool-group sizes">
-                <button class="size-btn" data-size="3">S</button>
-                <button class="size-btn active" data-size="8">M</button>
-                <button class="size-btn" data-size="15">L</button>
+
+            <!-- Active modifiers alert -->
+            <div id="draw-modifiers"></div>
+
+            <!-- Timer -->
+            <div class="timer-container" id="draw-timer-container">
+                <div class="timer-bar-wrapper">
+                    <div class="timer-bar" id="draw-timer-bar"></div>
+                </div>
+                <div class="timer-text" id="draw-timer-text">--:--</div>
             </div>
-            <div class="tool-group actions">
-                <button class="action-btn" id="clear-canvas">Clear</button>
-                <button class="action-btn" id="undo-btn">Undo</button>
+
+            <!-- Canvas -->
+            <div class="canvas-container">
+                <canvas id="drawing-canvas"></canvas>
+            </div>
+
+            <!-- Drawing tools -->
+            <div class="drawing-tools">
+                <!-- Color palette -->
+                <div class="tool-row" id="color-palette"></div>
+
+                <!-- Brush sizes -->
+                <div class="tool-row" id="size-palette"></div>
+
+                <!-- Actions -->
+                <div class="action-row">
+                    <button class="action-btn undo-btn" id="undo-btn">Undo</button>
+                    <button class="action-btn clear-btn" id="clear-btn">Clear</button>
+                    <button class="action-btn submit-btn" id="submit-btn">Submit</button>
+                </div>
+
+                <div class="submission-status" id="submission-status"></div>
             </div>
         </div>
-
-        <button id="submit-drawing-btn" class="submit-button">Submit Drawing!</button>
-        <p id="submission-status" class="status-message"></p>
     </div>
 
-    <!-- ==================== SUBMITTED SCREEN ==================== -->
+    <!-- ================================================================
+         5. SUBMITTED SCREEN
+         ================================================================ -->
     <div id="submitted-screen" class="screen">
-        <h2>Drawing Submitted!</h2>
-        <div class="submitted-preview">
-            <img id="submitted-preview-img" src="" alt="Your submission">
+        <div class="screen-inner text-center">
+            <div class="title" style="color:#00FF00;">Drawing Submitted!</div>
+            <div class="subtitle">Nice work</div>
+
+            <img id="submitted-preview" class="submitted-preview" alt="Your drawing">
+
+            <div class="divider"></div>
+
+            <div class="waiting-text">Waiting for other players...</div>
+            <div class="waiting-dots">
+                <span></span><span></span><span></span>
+            </div>
         </div>
-        <p class="waiting-message">Waiting for other players...</p>
     </div>
 
-    <!-- ==================== JUDGING SCREEN ==================== -->
+    <!-- ================================================================
+         6. JUDGING SCREEN
+         ================================================================ -->
     <div id="judging-screen" class="screen">
-        <h2>Time to Judge!</h2>
-        <p class="judging-instructions">Watch the main screen as the judge reviews submissions.</p>
-        <div id="judging-info">
-            <div class="alignment-badge" id="judge-phase-alignment">?</div>
-            <div class="prompt-text" id="judge-phase-prompt">---</div>
+        <div class="screen-inner text-center">
+            <div class="title">The Judge is Deciding...</div>
+
+            <div class="prompt-display mt-16">
+                <div class="alignment-text" id="judging-alignment"></div>
+                <div class="prompt-text" id="judging-prompt"></div>
+            </div>
+
+            <div class="waiting-dots" style="margin: 24px 0;">
+                <span></span><span></span><span></span>
+            </div>
+
+            <div class="waiting-text">Sit tight while the judge reviews all submissions</div>
         </div>
     </div>
 
-    <!-- ==================== RESULTS SCREEN ==================== -->
+    <!-- ================================================================
+         7. RESULTS SCREEN
+         ================================================================ -->
     <div id="results-screen" class="screen">
-        <div id="round-result">
-            <h2 id="result-title">Round Complete!</h2>
-            <div id="winner-display">
-                <div id="result-winner-avatar" class="avatar-large"></div>
-                <span id="result-winner-name">---</span>
-                <span class="winner-text">won this round!</span>
+        <div class="screen-inner">
+            <div class="result-title" id="result-title">Round Results</div>
+
+            <div class="winner-display">
+                <div class="winner-label">Winner</div>
+                <div class="winner-avatar" id="result-winner-avatar"></div>
+                <div class="winner-name" id="result-winner-name"></div>
+            </div>
+
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div class="stat-label">Your Score</div>
+                    <div class="stat-value" id="result-score">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Target</div>
+                    <div class="stat-value" id="result-target">5</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Tokens</div>
+                    <div class="stat-value gold" id="result-tokens">0</div>
+                </div>
+            </div>
+
+            <div id="steal-btn-container" class="mt-16" style="display:none;">
+                <button class="btn btn-gold" id="steal-btn">
+                    Steal a Point (3 Tokens)
+                </button>
             </div>
         </div>
-
-        <div id="my-score-display">
-            <span class="score-label">Your Score:</span>
-            <span id="my-score" class="score-value">0</span>
-            <span class="score-target">/ <span id="target-score">5</span></span>
-        </div>
-
-        <div id="token-display">
-            <span class="tokens-label">Your Tokens:</span>
-            <span id="my-tokens" class="tokens-value">0</span>
-        </div>
-
-        <button id="steal-btn" class="steal-button" style="display: none;">
-            Steal a Point (3 Tokens)
-        </button>
     </div>
 
-    <!-- ==================== GAME OVER SCREEN ==================== -->
+    <!-- ================================================================
+         8. GAME OVER SCREEN
+         ================================================================ -->
     <div id="gameover-screen" class="screen">
-        <h1>Game Over!</h1>
-        <div id="final-result">
-            <div id="final-winner-avatar" class="avatar-huge"></div>
-            <span id="final-winner-name">---</span>
-            <span class="winner-text">is Perfectly Aligned!</span>
-        </div>
-        <div id="my-final-rank">
-            <span>You finished</span>
-            <span id="my-rank" class="rank-value">#?</span>
+        <div class="screen-inner text-center">
+            <div class="trophy">🏆</div>
+            <div class="title">Game Over!</div>
+
+            <div class="final-winner" id="gameover-winner"></div>
+            <div class="final-rank" id="gameover-rank"></div>
+
+            <div class="divider"></div>
+
+            <button class="btn btn-primary" id="new-game-btn">New Game</button>
         </div>
     </div>
 
-    <!-- ==================== STEAL MODAL ==================== -->
-    <div id="steal-modal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <h3>Steal a Point</h3>
-            <p>Choose a player to steal from:</p>
-            <div id="steal-targets">
-                <!-- Target buttons will be added here -->
-            </div>
-            <button class="cancel-btn" id="cancel-steal">Cancel</button>
-        </div>
-    </div>
-
-    <!-- ==================== KICKED/DISCONNECTED SCREEN ==================== -->
+    <!-- ================================================================
+         9. DISCONNECTED SCREEN
+         ================================================================ -->
     <div id="disconnected-screen" class="screen">
-        <h2>Disconnected</h2>
-        <p id="disconnect-reason">You've been disconnected from the game.</p>
-        <button id="rejoin-btn" class="action-button">Try to Rejoin</button>
-        <button id="new-game-btn" class="action-button secondary">Join New Game</button>
+        <div class="screen-inner text-center">
+            <div class="disconnect-icon">📡</div>
+            <div class="title">Disconnected</div>
+            <div class="disconnect-reason" id="disconnect-reason">Connection lost.</div>
+
+            <div class="btn-group">
+                <button class="btn btn-primary" id="rejoin-btn">Rejoin</button>
+                <button class="btn btn-secondary" id="disconnect-new-game-btn">New Game</button>
+            </div>
+        </div>
     </div>
 
+    <!-- ================================================================
+         10. STEAL MODAL
+         ================================================================ -->
+    <div id="steal-modal">
+        <div class="modal-content">
+            <div class="modal-title">Steal a Point</div>
+            <div class="modal-subtitle">Choose a player to steal from (costs 3 tokens)</div>
+
+            <ul class="steal-target-list" id="steal-target-list"></ul>
+
+            <button class="modal-cancel" id="steal-cancel-btn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         SCRIPTS
+         ================================================================ -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/shared/constants.js"></script>
     <script src="player.js"></script>
 </body>
 </html>
