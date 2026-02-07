@@ -157,13 +157,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Initialize UI elements first (no socket dependency)
     buildColorPalette();
     buildSizePalette();
+    updateAvatarPreview();
+    setupCanvas();
+
+    // Then set up events and socket connection
     setupEventListeners();
     setupSocketConnection();
     setupSocketListeners();
-    updateAvatarPreview();
-    setupCanvas();
 });
 
 // =============================================================================
@@ -246,6 +249,20 @@ function setupEventListeners() {
         });
     }
 
+    // Enter key submits join form
+    const handleEnterKey = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleJoinSubmit(e);
+        }
+    };
+    if (elements.roomCodeInput) {
+        elements.roomCodeInput.addEventListener('keydown', handleEnterKey);
+    }
+    if (elements.playerNameInput) {
+        elements.playerNameInput.addEventListener('keydown', handleEnterKey);
+    }
+
     // Avatar cycling
     if (elements.avatarPrevBtn) {
         elements.avatarPrevBtn.addEventListener('click', () => cycleAvatar(-1));
@@ -325,12 +342,17 @@ function setupEventListeners() {
 // =============================================================================
 
 function setupSocketConnection() {
-    socket = io({
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000
-    });
+    try {
+        socket = io({
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000
+        });
+    } catch (err) {
+        console.error('Failed to initialize Socket.IO:', err);
+        showJoinError('Failed to connect to server. Please refresh the page.');
+    }
 }
 
 function setupSocketListeners() {
@@ -797,6 +819,12 @@ function handleJoinSubmit(e) {
 
     if (playerName.length > 20) {
         showJoinError('Name must be 20 characters or less.');
+        return;
+    }
+
+    // Check socket connection
+    if (!socket || !socket.connected) {
+        showJoinError('Connecting to server... Please try again in a moment.');
         return;
     }
 
