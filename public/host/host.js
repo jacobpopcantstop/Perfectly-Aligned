@@ -525,11 +525,56 @@ function setupSocketListeners() {
     });
 
     socket.on('connect', () => {
-        // If we had a room, try to rejoin host status
+        // If we had a room, try to reclaim host status
         if (gameState.roomCode) {
-            showNotification('Reconnected to server.', 'success');
+            socket.emit('host:reconnect', gameState.roomCode, (response) => {
+                if (response.success) {
+                    showNotification('Reconnected to room!', 'success');
+                    syncFromServerState(response.gameState);
+                } else {
+                    // Room is gone — reset to create a new one
+                    showNotification('Room expired. Please create a new room.', 'error', 5000);
+                    resetToCreateRoom();
+                }
+            });
         }
     });
+
+    socket.on('room:closed', () => {
+        showNotification('Room has been closed.', 'error', 5000);
+        resetToCreateRoom();
+    });
+}
+
+/**
+ * Reset the host UI back to the initial "Create Room" state.
+ */
+function resetToCreateRoom() {
+    gameState.roomCode = null;
+    gameState.players = [];
+    gameState.gameStarted = false;
+
+    if (dom.createRoomBtn) {
+        dom.createRoomBtn.style.display = '';
+        dom.createRoomBtn.disabled = false;
+    }
+    if (dom.roomCodeDisplay) {
+        dom.roomCodeDisplay.classList.remove('visible');
+    }
+    if (dom.roomCode) {
+        dom.roomCode.textContent = '----';
+    }
+    if (dom.joinUrl) {
+        dom.joinUrl.textContent = 'Join at: /play';
+    }
+    if (dom.lobbyPlayerGrid) {
+        dom.lobbyPlayerGrid.innerHTML = '';
+    }
+    if (dom.playerCount) {
+        dom.playerCount.textContent = '0 / 8 players';
+    }
+
+    showScreen('lobby');
 }
 
 // =============================================================================

@@ -145,6 +145,43 @@ io.on('connection', (socket) => {
     });
 
     /**
+     * host:reconnect
+     * Allows a host to reclaim their room after a disconnect/reconnect.
+     */
+    socket.on('host:reconnect', (roomCode, callback) => {
+        if (!roomCode) {
+            return callback({ success: false, error: 'Room code is required' });
+        }
+
+        const room = gameManager.getRoom(roomCode.toUpperCase());
+        if (!room) {
+            console.log(`[Room] Reconnect failed — room ${roomCode} not found`);
+            return callback({ success: false, error: 'Room no longer exists' });
+        }
+
+        // Clear the disconnect grace timer
+        if (room._hostDisconnectTimer) {
+            clearTimeout(room._hostDisconnectTimer);
+            room._hostDisconnectTimer = null;
+        }
+        room._hostReconnected = true;
+
+        // Update the room's host ID to the new socket
+        room.hostId = socket.id;
+        socket.join(room.code);
+        socket.roomCode = room.code;
+        socket.isHost = true;
+
+        console.log(`[Room ${room.code}] Host reconnected with new socket ${socket.id}`);
+
+        callback({
+            success: true,
+            roomCode: room.code,
+            gameState: room.getState()
+        });
+    });
+
+    /**
      * host:startGame
      * Starts the game with the provided settings.
      */
@@ -479,7 +516,9 @@ io.on('connection', (socket) => {
 
         const room = gameManager.getRoom(roomCode.toUpperCase());
         if (!room) {
-            return callback({ success: false, error: 'Room not found' });
+            const activeRooms = [...gameManager.rooms.keys()];
+            console.log(`[player:joinRoom] Room "${roomCode.toUpperCase()}" not found. Active rooms: [${activeRooms.join(', ')}]`);
+            return callback({ success: false, error: 'Room not found. Make sure the host has created a room and the code is correct.' });
         }
 
         if (!room.canJoin()) {
@@ -613,7 +652,7 @@ io.on('connection', (socket) => {
     /**
      * disconnect
      * Handles cleanup when a socket disconnects.
-     * If the host disconnects, the room is closed.
+     * If the host disconnects, the room is given a grace period before closing.
      * If a player disconnects, they are marked as disconnected.
      */
     socket.on('disconnect', () => {
@@ -625,11 +664,18 @@ io.on('connection', (socket) => {
         if (!room) return;
 
         if (socket.isHost) {
-            console.log(`[Room ${room.code}] Host disconnected — closing room`);
-            io.to(room.code).emit('room:closed', {
-                reason: 'Host disconnected'
-            });
-            gameManager.removeRoom(socket.roomCode);
+            console.log(`[Room ${room.code}] Host disconnected — waiting 60s before closing`);
+            // Give the host a grace period to reconnect
+            room._hostDisconnectTimer = setTimeout(() => {
+                const currentRoom = gameManager.getRoom(socket.roomCode);
+                if (currentRoom && !currentRoom._hostReconnected) {
+                    console.log(`[Room ${room.code}] Host did not reconnect — closing room`);
+                    io.to(room.code).emit('room:closed', {
+                        reason: 'Host disconnected'
+                    });
+                    gameManager.removeRoom(socket.roomCode);
+                }
+            }, 60_000);
         } else {
             room.setPlayerDisconnected(socket.id);
             io.to(room.code).emit('room:playerDisconnected', {
