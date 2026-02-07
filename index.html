@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfectly Aligned - The Creative Drawing Party Game</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .hero {
+            text-align: center;
+            padding: 80px 20px 60px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            position: relative;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #e94560, #f5a623, #7b2ff7, #00d2ff, #e94560);
+            background-size: 200% 100%;
+            animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #fff 0%, #c0c0ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            font-size: 1.3rem;
+            color: #a0a0c0;
+            font-style: italic;
+            margin-bottom: 32px;
+        }
+
+        .badges {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 36px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge-players { background: #2d1b69; color: #b794f6; }
+        .badge-drawing { background: #1b3a2d; color: #68d391; }
+        .badge-realtime { background: #3a1b1b; color: #fc8181; }
+
+        .cta-group {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 14px 32px;
+            border-radius: 10px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+
+        .btn:hover { transform: translateY(-2px); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #7b2ff7, #e94560);
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(123, 47, 247, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.08);
+            color: #c0c0e0;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .section {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 24px;
+        }
+
+        .section h2 {
+            font-size: 2rem;
+            margin-bottom: 32px;
+            text-align: center;
+            color: #fff;
+        }
+
+        /* How it works */
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 24px;
+        }
+
+        .step {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 28px 20px;
+            text-align: center;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #7b2ff7, #e94560);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 14px;
+        }
+
+        .step h3 {
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .step p {
+            font-size: 0.9rem;
+            color: #a0a0b8;
+            line-height: 1.5;
+        }
+
+        /* Alignment grid */
+        .alignment-grid {
+            display: grid;
+            grid-template-columns: auto repeat(3, 1fr);
+            gap: 6px;
+            max-width: 600px;
+            margin: 0 auto;
+            font-size: 0.9rem;
+        }
+
+        .alignment-grid .header {
+            font-weight: 700;
+            text-align: center;
+            color: #b794f6;
+            padding: 10px 8px;
+        }
+
+        .alignment-grid .row-label {
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            color: #b794f6;
+        }
+
+        .alignment-cell {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 12px 10px;
+            text-align: center;
+        }
+
+        .alignment-cell .code {
+            font-weight: 700;
+            color: #fff;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .alignment-cell .example {
+            font-size: 0.8rem;
+            color: #808098;
+        }
+
+        /* Self-host section */
+        .install-box {
+            background: #161625;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 32px;
+        }
+
+        .install-box ol {
+            list-style: none;
+            counter-reset: steps;
+        }
+
+        .install-box li {
+            counter-increment: steps;
+            margin-bottom: 20px;
+            padding-left: 36px;
+            position: relative;
+        }
+
+        .install-box li::before {
+            content: counter(steps);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: rgba(123, 47, 247, 0.2);
+            color: #b794f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .install-box li strong {
+            display: block;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        code {
+            background: rgba(255,255,255,0.06);
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.88rem;
+            color: #68d391;
+        }
+
+        pre {
+            background: #0d0d18;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-top: 8px;
+            overflow-x: auto;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            font-size: 0.85rem;
+        }
+
+        /* Features */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+        }
+
+        .feature {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .feature h3 {
+            color: #fff;
+            margin-bottom: 8px;
+            font-size: 1.05rem;
+        }
+
+        .feature p {
+            color: #a0a0b8;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: #606078;
+            font-size: 0.85rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        footer a { color: #7b2ff7; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 2.2rem; }
+            .tagline { font-size: 1.05rem; }
+            .section { padding: 40px 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>Perfectly Aligned</h1>
+    <p class="tagline">The creative drawing game for ethically dubious people!</p>
+
+    <div class="badges">
+        <span class="badge badge-players">2-8 Players</span>
+        <span class="badge badge-drawing">Drawing + Judging</span>
+        <span class="badge badge-realtime">Real-Time Multiplayer</span>
+    </div>
+
+    <div class="cta-group">
+        <a class="btn btn-primary" href="https://github.com/jacobpopcantstop/Perfectly-Aligned">View on GitHub</a>
+        <a class="btn btn-secondary" href="#self-host">Host Your Own</a>
+    </div>
+</div>
+
+<div class="section">
+    <h2>How It Works</h2>
+    <div class="steps">
+        <div class="step">
+            <div class="step-number">1</div>
+            <h3>Host a Room</h3>
+            <p>One player opens the host screen on a TV or projector and creates a room with a 4-letter code.</p>
+        </div>
+        <div class="step">
+            <div class="step-number">2</div>
+            <h3>Players Join</h3>
+            <p>Everyone else joins on their phones or tablets by entering the room code.</p>
+        </div>
+        <div class="step">
+            <div class="step-number">3</div>
+            <h3>Roll an Alignment</h3>
+            <p>The rotating Judge rolls a D&amp;D alignment and picks a prompt card for the round.</p>
+        </div>
+        <div class="step">
+            <div class="step-number">4</div>
+            <h3>Draw &amp; Judge</h3>
+            <p>Everyone draws their interpretation. The Judge picks a winner and awards points!</p>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>The Alignment Grid</h2>
+    <div class="alignment-grid">
+        <div class="header"></div>
+        <div class="header">Lawful</div>
+        <div class="header">Neutral</div>
+        <div class="header">Chaotic</div>
+
+        <div class="row-label">Good</div>
+        <div class="alignment-cell"><span class="code">LG</span><span class="example">Superman</span></div>
+        <div class="alignment-cell"><span class="code">NG</span><span class="example">Spider-Man</span></div>
+        <div class="alignment-cell"><span class="code">CG</span><span class="example">Robin Hood</span></div>
+
+        <div class="row-label">Neutral</div>
+        <div class="alignment-cell"><span class="code">LN</span><span class="example">Judge Dredd</span></div>
+        <div class="alignment-cell"><span class="code">TN</span><span class="example">The Watcher</span></div>
+        <div class="alignment-cell"><span class="code">CN</span><span class="example">Jack Sparrow</span></div>
+
+        <div class="row-label">Evil</div>
+        <div class="alignment-cell"><span class="code">LE</span><span class="example">Darth Vader</span></div>
+        <div class="alignment-cell"><span class="code">NE</span><span class="example">Voldemort</span></div>
+        <div class="alignment-cell"><span class="code">CE</span><span class="example">The Joker</span></div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Features</h2>
+    <div class="features">
+        <div class="feature">
+            <h3>Jackbox-Style Play</h3>
+            <p>One screen hosts the game while everyone joins on their own device. No app install needed.</p>
+        </div>
+        <div class="feature">
+            <h3>Multiple Card Decks</h3>
+            <p>Core Mix, Creative &amp; Pop Culture, and Hypothetical &amp; Taboo (17+) decks to choose from.</p>
+        </div>
+        <div class="feature">
+            <h3>Token System</h3>
+            <p>Earn tokens for special achievements. Spend them to re-roll prompts or steal points.</p>
+        </div>
+        <div class="feature">
+            <h3>Real-Time Drawing</h3>
+            <p>HTML5 Canvas drawing on any device with instant submission via WebSockets.</p>
+        </div>
+    </div>
+</div>
+
+<div class="section" id="self-host">
+    <h2>Host Your Own Game</h2>
+    <div class="install-box">
+        <p style="color:#a0a0b8; margin-bottom: 20px;">
+            Perfectly Aligned is a real-time multiplayer game that requires a Node.js server.
+            Follow these steps to run it:
+        </p>
+        <ol>
+            <li>
+                <strong>Clone the repository</strong>
+                <pre><code>git clone https://github.com/jacobpopcantstop/Perfectly-Aligned.git
+cd Perfectly-Aligned</code></pre>
+            </li>
+            <li>
+                <strong>Install dependencies</strong>
+                <pre><code>npm install</code></pre>
+            </li>
+            <li>
+                <strong>Start the server</strong>
+                <pre><code>npm start</code></pre>
+            </li>
+            <li>
+                <strong>Play!</strong>
+                Open <code>http://localhost:3000</code> on your main screen and share the room code with players.
+            </li>
+        </ol>
+        <p style="color:#808098; margin-top: 16px; font-size: 0.88rem;">
+            For online play, deploy to any Node.js hosting platform such as
+            <a href="https://render.com" style="color:#7b2ff7;">Render</a>,
+            <a href="https://railway.app" style="color:#7b2ff7;">Railway</a>, or
+            <a href="https://glitch.com" style="color:#7b2ff7;">Glitch</a>.
+        </p>
+    </div>
+</div>
+
+<footer>
+    <p>
+        <a href="https://github.com/jacobpopcantstop/Perfectly-Aligned">GitHub</a>
+        &nbsp;&middot;&nbsp; MIT License
+    </p>
+</footer>
+
+</body>
+</html>
