@@ -74,7 +74,12 @@ let pendingModifierData = null;
 // SOCKET CONNECTION
 // =============================================================================
 
-const socket = io();
+let socket;
+try {
+    socket = io();
+} catch (err) {
+    console.error('Failed to initialize Socket.IO:', err);
+}
 
 // =============================================================================
 // DOM ELEMENT CACHE
@@ -314,7 +319,11 @@ function setupEventListeners() {
     if (dom.scoreboardToggle) {
         dom.scoreboardToggle.addEventListener('click', () => {
             if (dom.scoreboard) {
-                dom.scoreboard.classList.toggle('collapsed');
+                dom.scoreboard.classList.toggle('open');
+            }
+            const arrow = document.getElementById('scoreboard-arrow');
+            if (arrow) {
+                arrow.classList.toggle('open');
             }
         });
     }
@@ -596,14 +605,14 @@ function updateLobbyPlayers() {
 
     gameState.players.forEach(player => {
         const card = document.createElement('div');
-        card.classList.add('player-card');
+        card.classList.add('player-lobby-card');
         if (!player.connected) {
             card.classList.add('disconnected');
         }
 
         card.innerHTML = `
-            <div class="player-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
-            <div class="player-name">${escapeHtml(player.name)}</div>
+            <div class="player-lobby-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
+            <div class="player-lobby-name">${escapeHtml(player.name)}</div>
             ${!player.connected ? '<div class="player-status">Disconnected</div>' : ''}
         `;
 
@@ -911,7 +920,7 @@ function handlePromptsDrawn(data) {
 
         // Staggered dealing animation
         card.style.animationDelay = `${index * 200}ms`;
-        card.classList.add('dealing');
+        card.classList.add('dealt');
 
         card.innerHTML = `
             <div class="prompt-card-content">
@@ -1759,7 +1768,7 @@ function showNotification(message, type, duration) {
     }
 
     const notification = document.createElement('div');
-    notification.classList.add('notification', `notification-${type}`);
+    notification.classList.add('notification', type);
     notification.textContent = message;
 
     container.appendChild(notification);
