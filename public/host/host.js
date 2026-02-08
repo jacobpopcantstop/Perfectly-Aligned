@@ -69,6 +69,7 @@ let timerInterval = null;
 let timerRemaining = 0;
 let currentSubmissions = [];
 let pendingModifierData = null;
+let scoreboardDebounceTimer = null;
 
 // =============================================================================
 // SOCKET CONNECTION
@@ -450,7 +451,11 @@ function setupSocketListeners() {
         updateTimerDisplay(0, gameState.settings.timerDuration);
         playSound('timer-end');
         showNotification("Time's up!", 'warning');
-        if (dom.endDrawingBtn) dom.endDrawingBtn.disabled = false;
+        if (dom.endDrawingBtn) {
+            dom.endDrawingBtn.style.display = '';
+            dom.endDrawingBtn.disabled = false;
+            dom.endDrawingBtn.textContent = "Time's Up - Start Judging";
+        }
     });
 
     socket.on('game:submissionReceived', (data) => {
@@ -507,9 +512,9 @@ function setupSocketListeners() {
 
     socket.on('game:curseApplied', (data) => {
         showNotification(
-            `${data.modifier.icon} ${data.modifier.name} applied to ${data.targetName}!`,
+            `${data.modifier.icon} ${data.modifier.name} applied to ${data.targetName}! — ${data.modifier.description}`,
             'warning',
-            3000
+            5000
         );
         syncFromServerState(data.gameState);
     });
@@ -1043,12 +1048,19 @@ function startDrawingPhase(data) {
     const duration = data.timeLimit || gameState.settings.timerDuration;
     if (duration && duration > 0) {
         updateTimerDisplay(duration, duration);
+        // Hide end-drawing button until timer expires
+        if (dom.endDrawingBtn) {
+            dom.endDrawingBtn.style.display = 'none';
+            dom.endDrawingBtn.disabled = true;
+        }
     } else {
         if (dom.timerText) dom.timerText.textContent = 'No Timer';
-    }
-
-    if (dom.endDrawingBtn) {
-        dom.endDrawingBtn.disabled = false;
+        // No timer - show the button immediately
+        if (dom.endDrawingBtn) {
+            dom.endDrawingBtn.style.display = '';
+            dom.endDrawingBtn.disabled = false;
+            dom.endDrawingBtn.textContent = "End Drawing - Start Judging";
+        }
     }
 
     // Auto-start timer
@@ -1637,6 +1649,11 @@ function advanceAfterModifiers() {
 // =============================================================================
 
 function updateScoreboard() {
+    if (scoreboardDebounceTimer) clearTimeout(scoreboardDebounceTimer);
+    scoreboardDebounceTimer = setTimeout(_renderScoreboard, 100);
+}
+
+function _renderScoreboard() {
     if (!dom.scoreboardList) return;
     dom.scoreboardList.innerHTML = '';
 
@@ -1793,15 +1810,18 @@ function showGameOver(data) {
         sorted.forEach((player, index) => {
             const row = document.createElement('div');
             row.classList.add('final-score-row');
-            if (index === 0) row.classList.add('winner');
+            if (index === 0) row.classList.add('rank-1');
+            else if (index === 1) row.classList.add('rank-2');
+            else if (index === 2) row.classList.add('rank-3');
 
             const medal = medals[index] || `#${index + 1}`;
+            const rankClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : 'other';
             const totalTokens = player.tokens
                 ? Object.values(player.tokens).reduce((s, c) => s + c, 0)
                 : 0;
 
             row.innerHTML = `
-                <span class="final-rank">${medal}</span>
+                <span class="final-rank ${rankClass}">${medal}</span>
                 <span class="final-player-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
                 <span class="final-player-name">${escapeHtml(player.name)}</span>
                 <span class="final-player-score">${player.score} pts</span>

@@ -883,6 +883,49 @@
             color: #FF1493;
         }
 
+        .score-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: rgba(255,105,180,0.06);
+            border: 1px solid rgba(255,105,180,0.15);
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .score-row.first {
+            border-color: rgba(255,215,0,0.4);
+            background: rgba(255,215,0,0.08);
+        }
+
+        .score-row.is-me {
+            border-color: #FF1493;
+            background: rgba(255,20,147,0.1);
+        }
+
+        .score-row .score-rank {
+            font-weight: bold;
+            color: #FF69B4;
+            min-width: 28px;
+        }
+
+        .score-row .score-avatar {
+            font-size: 1.2rem;
+        }
+
+        .score-row .score-name {
+            flex: 1;
+            color: #FFB6C1;
+            text-align: left;
+        }
+
+        .score-row .score-value {
+            font-weight: bold;
+            color: #FFD700;
+        }
+
         /* ================================================================
            STEAL MODAL
            ================================================================ */
@@ -1079,6 +1122,54 @@
         .flex-col { display: flex; flex-direction: column; }
 
         /* ================================================================
+           JUDGE SUBMISSION CARDS (Judging Phase)
+           ================================================================ */
+        .judge-sub-card {
+            background: rgba(255,105,180,0.06);
+            border: 2px solid rgba(255,105,180,0.3);
+            border-radius: 12px;
+            padding: 10px;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            text-align: center;
+        }
+
+        .judge-sub-card:active {
+            transform: scale(0.98);
+        }
+
+        .judge-sub-card.selected {
+            border-color: #00FF00;
+            box-shadow: 0 0 15px rgba(0,255,0,0.3);
+        }
+
+        .judge-sub-card img {
+            width: 100%;
+            max-height: 220px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #fff;
+            display: block;
+        }
+
+        .judge-sub-card .sub-player-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: #FFB6C1;
+        }
+
+        .judge-sub-card .sub-caption {
+            font-size: 0.8rem;
+            color: #FFD700;
+            font-style: italic;
+            margin-top: 4px;
+        }
+
+        /* ================================================================
            JUDGE CONTROLS
            ================================================================ */
         .judge-choice-btn {
@@ -1156,6 +1247,150 @@
             flex-direction: column;
             gap: 10px;
         }
+
+        /* ================================================================
+           FULLSCREEN CANVAS MODE
+           ================================================================ */
+        .fullscreen-canvas-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 500;
+            background: #fff;
+        }
+
+        .fullscreen-canvas-overlay.active {
+            display: block;
+        }
+
+        .fullscreen-canvas-overlay canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        .floating-toolbar {
+            position: fixed;
+            z-index: 600;
+            background: rgba(0,0,0,0.92);
+            border: 2px solid #FF69B4;
+            border-radius: 14px;
+            padding: 10px;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.6);
+            touch-action: none;
+            max-width: 320px;
+            width: auto;
+        }
+
+        .floating-toolbar .toolbar-handle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 0 8px;
+            cursor: grab;
+            color: #FF69B4;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .floating-toolbar .toolbar-handle:active {
+            cursor: grabbing;
+        }
+
+        .floating-toolbar .toolbar-handle .drag-indicator {
+            width: 40px;
+            height: 4px;
+            background: #FF69B4;
+            border-radius: 2px;
+            opacity: 0.5;
+        }
+
+        .floating-toolbar .ft-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+
+        .floating-toolbar .ft-color-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .floating-toolbar .ft-color-btn.active {
+            border-color: #FFD700;
+            box-shadow: 0 0 8px rgba(255,215,0,0.5);
+        }
+
+        .floating-toolbar .ft-color-btn.eraser {
+            background: #fff !important;
+            position: relative;
+        }
+
+        .floating-toolbar .ft-color-btn.eraser::after {
+            content: 'E';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.5rem;
+            font-weight: bold;
+            color: #999;
+        }
+
+        .floating-toolbar .ft-size-btn {
+            width: 36px;
+            height: 32px;
+            border-radius: 6px;
+            background: rgba(255,105,180,0.1);
+            border: 2px solid rgba(255,105,180,0.25);
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #FFB6C1;
+            font-family: 'Courier New', monospace;
+            font-size: 0.55rem;
+            font-weight: bold;
+        }
+
+        .floating-toolbar .ft-size-btn .ft-size-dot {
+            border-radius: 50%;
+            background: #FFB6C1;
+        }
+
+        .floating-toolbar .ft-size-btn.active {
+            border-color: #FF1493;
+            background: rgba(255,20,147,0.2);
+        }
+
+        .floating-toolbar .ft-action-btn {
+            padding: 6px 10px;
+            border: none;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.65rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            min-height: 32px;
+        }
+
+        .floating-toolbar .ft-undo { background: rgba(255,105,180,0.15); border: 1px solid rgba(255,105,180,0.3); color: #FFB6C1; }
+        .floating-toolbar .ft-clear { background: rgba(255,82,82,0.15); border: 1px solid rgba(255,82,82,0.3); color: #ff8a80; }
+        .floating-toolbar .ft-submit { background: linear-gradient(135deg,#00c853,#00e676); color: #fff; }
+        .floating-toolbar .ft-exit { background: rgba(255,215,0,0.15); border: 1px solid rgba(255,215,0,0.3); color: #FFD700; }
 
         /* ================================================================
            RESPONSIVE - Smaller phones
@@ -1382,6 +1617,9 @@
                     <button class="action-btn clear-btn" id="clear-btn">Clear</button>
                     <button class="action-btn submit-btn" id="submit-btn">Submit</button>
                 </div>
+                <div class="action-row" style="margin-top:6px;">
+                    <button class="action-btn" id="fullscreen-btn" style="flex:1; background:rgba(255,215,0,0.15); border:1px solid rgba(255,215,0,0.3); color:#FFD700;">Fullscreen</button>
+                </div>
 
                 <div class="submission-status" id="submission-status"></div>
             </div>
@@ -1412,18 +1650,27 @@
          ================================================================ -->
     <div id="judging-screen" class="screen">
         <div class="screen-inner text-center">
-            <div class="title">The Judge is Deciding...</div>
+            <div class="title" id="judging-title">The Judge is Deciding...</div>
 
             <div class="prompt-display mt-16">
                 <div class="alignment-text" id="judging-alignment"></div>
                 <div class="prompt-text" id="judging-prompt"></div>
             </div>
 
-            <div class="waiting-dots" style="margin: 24px 0;">
-                <span></span><span></span><span></span>
+            <!-- Judge submission gallery (only visible for judge) -->
+            <div id="judge-submissions-gallery" style="display:none; margin-top:16px;">
+                <div class="section-label" style="margin-bottom:12px;">Tap a drawing to pick the winner</div>
+                <div id="judge-submissions-list" style="display:flex; flex-direction:column; gap:12px;"></div>
+                <button class="btn btn-success mt-16" id="judge-confirm-winner-btn" disabled style="display:none;">Confirm Winner</button>
             </div>
 
-            <div class="waiting-text">Sit tight while the judge reviews all submissions</div>
+            <!-- Non-judge waiting state -->
+            <div id="judging-wait-state">
+                <div class="waiting-dots" style="margin: 24px 0;">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="waiting-text">Sit tight while the judge reviews all submissions</div>
+            </div>
         </div>
     </div>
 
@@ -1476,6 +1723,8 @@
 
             <div class="divider"></div>
 
+            <div id="gameover-scores" style="margin-bottom:16px;"></div>
+
             <button class="btn btn-primary" id="new-game-btn">New Game</button>
         </div>
     </div>
@@ -1507,6 +1756,27 @@
             <ul class="steal-target-list" id="steal-target-list"></ul>
 
             <button class="modal-cancel" id="steal-cancel-btn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- ================================================================
+         FULLSCREEN CANVAS OVERLAY
+         ================================================================ -->
+    <div id="fullscreen-canvas-overlay" class="fullscreen-canvas-overlay">
+        <canvas id="fullscreen-canvas"></canvas>
+    </div>
+
+    <div id="floating-toolbar" class="floating-toolbar" style="display:none; bottom:20px; left:50%; transform:translateX(-50%);">
+        <div class="toolbar-handle" id="toolbar-handle">
+            <div class="drag-indicator"></div>
+        </div>
+        <div class="ft-row" id="ft-color-row"></div>
+        <div class="ft-row" id="ft-size-row"></div>
+        <div class="ft-row">
+            <button class="ft-action-btn ft-undo" id="ft-undo-btn">Undo</button>
+            <button class="ft-action-btn ft-clear" id="ft-clear-btn">Clear</button>
+            <button class="ft-action-btn ft-submit" id="ft-submit-btn">Submit</button>
+            <button class="ft-action-btn ft-exit" id="ft-exit-btn">Exit</button>
         </div>
     </div>
 

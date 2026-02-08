@@ -573,6 +573,45 @@ io.on('connection', (socket) => {
     });
 
     /**
+     * judge:selectWinner
+     * The judge selects a winner from their player device.
+     */
+    socket.on('judge:selectWinner', (playerId, callback) => {
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
+        // Verify this player is the judge
+        const judge = room.players.find(p => p.id === socket.id);
+        if (!judge || !judge.isJudge) {
+            return callback({ success: false, error: 'Only the judge can select a winner' });
+        }
+
+        const result = room.selectWinner(playerId);
+        if (result.success) {
+            const scores = room.getScores();
+            const winner = room.players.find(
+                (p) => p.score >= room.settings.targetScore
+            );
+            const gameOver = !!winner;
+
+            io.to(room.code).emit('game:winnerSelected', {
+                winnerId: playerId,
+                winnerName: result.winnerName,
+                scores,
+                gameOver
+            });
+
+            if (gameOver) {
+                io.to(room.code).emit('game:over', {
+                    winner,
+                    finalScores: scores
+                });
+            }
+        }
+        callback(result);
+    });
+
+    /**
      * player:steal
      * A player spends tokens to steal a point from another player.
      */
