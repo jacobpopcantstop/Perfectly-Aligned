@@ -624,9 +624,11 @@ io.on('connection', (socket) => {
 
         const result = room.submitDrawing(socket.id, drawing, caption);
         if (result.success) {
+            const nonJudgePlayers = room.players.filter(p => !p.isJudge).length;
             io.to(room.code).emit('game:submissionReceived', {
                 playerId: socket.id,
-                submissionCount: room.getSubmissionCount()
+                submissionCount: room.getSubmissionCount(),
+                totalExpected: nonJudgePlayers
             });
         }
         callback(result);
@@ -827,6 +829,19 @@ io.on('connection', (socket) => {
             });
         }
         callback(result);
+    });
+
+    socket.on('judge:endDrawing', (callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getJudgeRoom(socket, callback);
+        if (!room) return;
+
+        room.clearTimer();
+        room.collectSubmissions();
+        const submissions = room.getSubmissionsForJudging();
+
+        io.to(room.code).emit('game:submissionsCollected', { submissions });
+        callback({ success: true, submissions });
     });
 
     // ======================================================================

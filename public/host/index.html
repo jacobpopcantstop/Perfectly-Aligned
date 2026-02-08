@@ -825,7 +825,7 @@
             padding: 25px 18px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease, color 0.3s ease;
             font-size: 1.05em;
             color: #FFB6C1;
             min-height: 120px;
@@ -833,18 +833,19 @@
             align-items: center;
             justify-content: center;
             opacity: 0;
-            transform: translateX(-120vw);
+            transform: translate3d(-100%, 0, 0);
+            will-change: transform, opacity;
         }
 
         .prompt-card.dealt {
             opacity: 1;
-            transform: translateX(0);
-            animation: deal-card 0.7s cubic-bezier(0.17, 0.67, 0.29, 1.2) forwards;
+            transform: translate3d(0, 0, 0);
+            animation: deal-card 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
         }
 
-        .prompt-card.dealt:nth-child(1) { animation-delay: 0.1s; }
-        .prompt-card.dealt:nth-child(2) { animation-delay: 0.35s; }
-        .prompt-card.dealt:nth-child(3) { animation-delay: 0.6s; }
+        .prompt-card.dealt:nth-child(1) { animation-delay: 0.05s; }
+        .prompt-card.dealt:nth-child(2) { animation-delay: 0.25s; }
+        .prompt-card.dealt:nth-child(3) { animation-delay: 0.45s; }
 
         .prompt-card:hover {
             transform: translateY(-5px) scale(1.03);
@@ -1049,6 +1050,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
         }
 
         .submission-drawing img {
@@ -1058,13 +1060,102 @@
             display: block;
         }
 
-        .submission-caption {
-            font-size: 1em;
-            color: #FFD700;
-            font-style: italic;
-            padding: 8px 5px 2px;
+        .expand-btn {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 1.1em;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 2;
+        }
+
+        .submission-card:hover .expand-btn,
+        .judge-sub-card:hover .expand-btn {
+            opacity: 1;
+        }
+
+        .expand-btn:hover {
+            background: rgba(255,105,180,0.8);
+        }
+
+        /* Image Lightbox */
+        .image-lightbox {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .lightbox-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+        }
+
+        .lightbox-content {
+            position: relative;
+            max-width: 90vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .lightbox-content img {
+            max-width: 90vw;
+            max-height: 80vh;
+            object-fit: contain;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 0 40px rgba(255,105,180,0.3);
+        }
+
+        .lightbox-player-name {
+            color: #FFB6C1;
+            font-size: 1.2em;
+            margin-top: 12px;
             text-align: center;
-            word-break: break-word;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: -15px;
+            right: -15px;
+            background: rgba(255,105,180,0.9);
+            border: none;
+            color: #fff;
+            font-size: 1.5em;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1;
+        }
+
+        .lightbox-close:hover {
+            background: #FF1493;
         }
 
         .submission-card-image {
@@ -1678,18 +1769,18 @@
         @keyframes deal-card {
             0% {
                 opacity: 0;
-                transform: translateX(-120vw) rotate(-15deg);
+                transform: translate3d(-80%, 0, 0) rotate(-8deg) scale(0.9);
             }
-            60% {
+            50% {
                 opacity: 1;
-                transform: translateX(15px) rotate(2deg);
+                transform: translate3d(3%, 0, 0) rotate(1.5deg) scale(1.02);
             }
-            80% {
-                transform: translateX(-5px) rotate(-1deg);
+            75% {
+                transform: translate3d(-1%, 0, 0) rotate(-0.5deg) scale(1);
             }
             100% {
                 opacity: 1;
-                transform: translateX(0) rotate(0);
+                transform: translate3d(0, 0, 0) rotate(0) scale(1);
             }
         }
 
@@ -2328,6 +2419,16 @@
         </div><!-- /game-screen -->
 
     </div><!-- /container -->
+
+    <!-- Image Lightbox -->
+    <div id="image-lightbox" class="image-lightbox" style="display:none;">
+        <div class="lightbox-backdrop"></div>
+        <div class="lightbox-content">
+            <img id="lightbox-img" src="" alt="Expanded drawing">
+            <div class="lightbox-player-name" id="lightbox-player-name"></div>
+            <button class="lightbox-close" id="lightbox-close">&times;</button>
+        </div>
+    </div>
 
     <!-- ================================================================
          AUDIO ELEMENTS

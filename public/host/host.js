@@ -70,6 +70,7 @@ let timerRemaining = 0;
 let currentSubmissions = [];
 let pendingModifierData = null;
 let scoreboardDebounceTimer = null;
+let hostInitiatedRoll = false;
 
 // =============================================================================
 // SOCKET CONNECTION
@@ -813,10 +814,27 @@ function updateGameUI() {
 
 function rollAlignment() {
     if (dom.rollBtn) dom.rollBtn.disabled = true;
+    hostInitiatedRoll = true;
 
     playSound('roll');
+    runDiceAnimation(() => {
+        // Animation done, now emit to server for the actual roll result
+        socket.emit('host:rollAlignment', (response) => {
+            if (!response.success) {
+                showNotification(`Roll failed: ${response.error}`, 'error');
+                if (dom.rollBtn) dom.rollBtn.disabled = false;
+                hostInitiatedRoll = false;
+            }
+            // Result handled by game:alignmentRolled listener
+        });
+    });
+}
 
-    // Run rolling animation: 25 iterations at 100ms
+/**
+ * Run the dice rolling animation on the alignment grid.
+ * Calls onComplete when the animation finishes.
+ */
+function runDiceAnimation(onComplete) {
     let iteration = 0;
     const totalIterations = 25;
     const gridCells = dom.alignmentGrid ? dom.alignmentGrid.querySelectorAll('.alignment-cell') : [];
@@ -847,14 +865,7 @@ function rollAlignment() {
             // Clear rolling highlights
             gridCells.forEach(cell => cell.classList.remove('rolling'));
 
-            // Now emit to server for the actual roll result
-            socket.emit('host:rollAlignment', (response) => {
-                if (!response.success) {
-                    showNotification(`Roll failed: ${response.error}`, 'error');
-                    if (dom.rollBtn) dom.rollBtn.disabled = false;
-                }
-                // Result handled by game:alignmentRolled listener
-            });
+            if (onComplete) onComplete();
         }
     }, 100);
 }
@@ -864,6 +875,22 @@ function handleAlignmentRolled(data) {
     gameState.alignment = alignment;
     gameState.alignmentName = fullName;
 
+    // If host initiated the roll, animation already played - show result immediately
+    if (hostInitiatedRoll) {
+        hostInitiatedRoll = false;
+        showAlignmentResult(alignment, fullName, isJudgeChoice);
+    } else {
+        // Judge rolled from their device - play animation on host screen first
+        showPhase('alignment');
+        if (dom.rollBtn) dom.rollBtn.disabled = true;
+        playSound('roll');
+        runDiceAnimation(() => {
+            showAlignmentResult(alignment, fullName, isJudgeChoice);
+        });
+    }
+}
+
+function showAlignmentResult(alignment, fullName, isJudgeChoice) {
     const gridCells = dom.alignmentGrid ? dom.alignmentGrid.querySelectorAll('.alignment-cell') : [];
 
     // Clear animation leftovers
@@ -1200,13 +1227,22 @@ function renderSubmissionGallery(submissions) {
         card.innerHTML = `
             <div class="submission-drawing">
                 <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}" />
+                <button class="expand-btn" title="Expand image">&#x1F50D;</button>
             </div>
-            ${sub.caption ? `<div class="submission-caption">"${escapeHtml(sub.caption)}"</div>` : ''}
             <div class="submission-info">
                 <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
                 <span class="submission-name">${escapeHtml(sub.playerName)}</span>
             </div>
         `;
+
+        // Expand button opens lightbox without selecting winner
+        const expandBtn = card.querySelector('.expand-btn');
+        if (expandBtn) {
+            expandBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openImageLightbox(sub.drawing, sub.playerName);
+            });
+        }
 
         card.addEventListener('click', () => {
             selectWinner(sub.playerId);
@@ -1946,6 +1982,29 @@ function spawnConfetti(count) {
             if (particle.parentNode) particle.parentNode.removeChild(particle);
         }, 4000);
     }
+}
+
+function openImageLightbox(imageSrc, playerName) {
+    const lightbox = document.getElementById('image-lightbox');
+    const img = document.getElementById('lightbox-img');
+    const nameEl = document.getElementById('lightbox-player-name');
+    const closeBtn = document.getElementById('lightbox-close');
+    const backdrop = lightbox ? lightbox.querySelector('.lightbox-backdrop') : null;
+
+    if (!lightbox || !img) return;
+
+    img.src = imageSrc;
+    if (nameEl) nameEl.textContent = playerName ? `Drawing by ${escapeHtml(playerName)}` : '';
+    lightbox.style.display = 'flex';
+
+    const closeLightbox = () => {
+        lightbox.style.display = 'none';
+        img.src = '';
+    };
+
+    if (closeBtn) closeBtn.onclick = closeLightbox;
+    if (backdrop) backdrop.onclick = closeLightbox;
+    lightbox.onkeydown = (e) => { if (e.key === 'Escape') closeLightbox(); };
 }
 
 function escapeHtml(str) {
