@@ -122,6 +122,13 @@ function cacheElements() {
         // Submitted
         submittedPreview: document.getElementById('submitted-preview'),
 
+        // Judging (judge-specific)
+        judgingTitle: document.getElementById('judging-title'),
+        judgeSubmissionsGallery: document.getElementById('judge-submissions-gallery'),
+        judgeSubmissionsList: document.getElementById('judge-submissions-list'),
+        judgeConfirmWinnerBtn: document.getElementById('judge-confirm-winner-btn'),
+        judgingWaitState: document.getElementById('judging-wait-state'),
+
         // Results
         resultsWinner: document.getElementById('result-title'),
         resultsScore: document.getElementById('result-score'),
@@ -137,6 +144,7 @@ function cacheElements() {
         // Game over
         gameoverWinner: document.getElementById('gameover-winner'),
         gameoverRank: document.getElementById('gameover-rank'),
+        gameoverScores: document.getElementById('gameover-scores'),
 
         // Disconnected
         disconnectedReason: document.getElementById('disconnect-reason'),
@@ -310,6 +318,12 @@ function setupEventListeners() {
             const btn = e.target.closest('[data-size]');
             if (btn) selectSize(btn);
         });
+    }
+
+    // Fullscreen canvas
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', enterFullscreen);
     }
 
     // Steal
@@ -524,6 +538,10 @@ function setupSocketListeners() {
         // Show active modifiers
         displayActiveModifiers();
 
+        // Clear caption from previous round
+        const captionInput = document.getElementById('caption-input');
+        if (captionInput) captionInput.value = '';
+
         // Reset canvas for new round
         clearCanvas();
         resizeCanvas();
@@ -579,6 +597,9 @@ function setupSocketListeners() {
             elements.drawingTimerBar.style.width = '0%';
         }
 
+        // Exit fullscreen canvas if open
+        if (isFullscreen) exitFullscreen();
+
         // Auto-submit if player hasn't submitted yet
         if (!playerState.hasSubmitted && !playerState.isJudge && playerState.currentPhase === 'drawing') {
             submitDrawing();
@@ -592,28 +613,38 @@ function setupSocketListeners() {
         }
     });
 
-    socket.on('game:submissionsCollected', () => {
+    socket.on('game:submissionsCollected', (data) => {
+        if (isFullscreen) exitFullscreen();
         showScreen('judging');
-        if (elements.judgingMessage) {
-            if (playerState.isJudge) {
-                elements.judgingMessage.textContent = 'Review the drawings on the main screen and pick a winner!';
-            } else {
-                elements.judgingMessage.textContent = 'The judge is reviewing all drawings...';
-            }
+        playerState.currentPhase = 'judging';
+
+        if (playerState.isJudge && data && data.submissions) {
+            // Judge sees the submissions and can pick a winner
+            if (elements.judgingTitle) elements.judgingTitle.textContent = 'Pick the Winner!';
+            if (elements.judgingWaitState) elements.judgingWaitState.style.display = 'none';
+            renderJudgeSubmissions(data.submissions);
+        } else {
+            // Non-judge waits
+            if (elements.judgingTitle) elements.judgingTitle.textContent = 'The Judge is Deciding...';
+            if (elements.judgingWaitState) elements.judgingWaitState.style.display = '';
+            if (elements.judgeSubmissionsGallery) elements.judgeSubmissionsGallery.style.display = 'none';
         }
     });
 
     socket.on('game:winnerSelected', (data) => {
-        showScreen('results');
-
-        const isWinner = data.winnerId === playerState.playerId;
-
         // Update local score from scores array
         const myScore = data.scores.find(s => s.id === playerState.playerId);
         if (myScore) {
             playerState.score = myScore.score;
             playerState.tokens = { ...myScore.tokens };
         }
+
+        // If game is over, the game:over event will handle display
+        if (data.gameOver) return;
+
+        showScreen('results');
+
+        const isWinner = data.winnerId === playerState.playerId;
 
         if (elements.resultsWinner) {
             if (isWinner) {
@@ -637,9 +668,6 @@ function setupSocketListeners() {
             elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
         }
 
-        if (data.gameOver) {
-            showNotification('Game Over!');
-        }
     });
 
     socket.on('game:tokenAwarded', (data) => {
@@ -791,7 +819,7 @@ function setupSocketListeners() {
 
     socket.on('game:curseCardDrawn', (data) => {
         if (data.modifier) {
-            showNotification(`Curse drawn: ${data.modifier.icon || ''} ${data.modifier.name}`);
+            showNotification(`Curse drawn: ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
         }
     });
 
@@ -809,7 +837,7 @@ function setupSocketListeners() {
             const latestMod = me.activeModifiers[me.activeModifiers.length - 1];
             showNotification(`You were cursed! ${latestMod.icon || ''} ${latestMod.name}: ${latestMod.description}`);
         } else {
-            showNotification(`${data.targetName} was cursed with ${data.modifier.icon || ''} ${data.modifier.name}!`);
+            showNotification(`${data.targetName} was cursed with ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
         }
     });
 
@@ -1237,6 +1265,427 @@ function undoStroke() {
 }
 
 // =============================================================================
+// FULLSCREEN CANVAS MODE
+// =============================================================================
+
+let isFullscreen = false;
+let fullscreenCanvas = null;
+let fullscreenCtx = null;
+let toolbarDragging = false;
+let toolbarOffsetX = 0;
+let toolbarOffsetY = 0;
+
+function enterFullscreen() {
+    if (isFullscreen || playerState.hasSubmitted) return;
+    isFullscreen = true;
+
+    const overlay = document.getElementById('fullscreen-canvas-overlay');
+    const toolbar = document.getElementById('floating-toolbar');
+    fullscreenCanvas = document.getElementById('fullscreen-canvas');
+
+    if (!overlay || !fullscreenCanvas || !toolbar) return;
+
+    fullscreenCtx = fullscreenCanvas.getContext('2d');
+
+    // Show overlay
+    overlay.classList.add('active');
+    toolbar.style.display = '';
+
+    // Size the fullscreen canvas to the viewport
+    fullscreenCanvas.width = window.innerWidth;
+    fullscreenCanvas.height = window.innerHeight;
+
+    // Copy existing drawing to fullscreen canvas
+    fullscreenCtx.fillStyle = '#FFFFFF';
+    fullscreenCtx.fillRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
+
+    // Scale and replay strokes
+    const scaleX = fullscreenCanvas.width / (canvas.width || 1);
+    const scaleY = fullscreenCanvas.height / (canvas.height || 1);
+
+    for (const path of drawingHistory) {
+        for (const seg of path) {
+            fullscreenCtx.beginPath();
+            fullscreenCtx.moveTo(seg.fromX * scaleX, seg.fromY * scaleY);
+            fullscreenCtx.lineTo(seg.toX * scaleX, seg.toY * scaleY);
+            fullscreenCtx.strokeStyle = seg.color;
+            fullscreenCtx.lineWidth = seg.size * Math.min(scaleX, scaleY);
+            fullscreenCtx.lineCap = 'round';
+            fullscreenCtx.lineJoin = 'round';
+            fullscreenCtx.stroke();
+        }
+    }
+
+    // Build toolbar palettes
+    buildFullscreenPalettes();
+
+    // Setup drawing on fullscreen canvas
+    fullscreenCanvas.addEventListener('touchstart', fsHandleTouchStart, { passive: false });
+    fullscreenCanvas.addEventListener('touchmove', fsHandleTouchMove, { passive: false });
+    fullscreenCanvas.addEventListener('touchend', fsHandleTouchEnd, { passive: false });
+    fullscreenCanvas.addEventListener('touchcancel', fsHandleTouchEnd, { passive: false });
+    fullscreenCanvas.addEventListener('mousedown', fsHandleMouseDown);
+    fullscreenCanvas.addEventListener('mousemove', fsHandleMouseMove);
+    fullscreenCanvas.addEventListener('mouseup', fsHandleMouseUp);
+    fullscreenCanvas.addEventListener('mouseout', fsHandleMouseUp);
+
+    // Setup toolbar dragging
+    setupToolbarDrag();
+
+    // Position toolbar at bottom center
+    toolbar.style.bottom = '20px';
+    toolbar.style.left = '50%';
+    toolbar.style.transform = 'translateX(-50%)';
+    toolbar.style.top = '';
+    toolbar.style.right = '';
+}
+
+function exitFullscreen() {
+    if (!isFullscreen) return;
+    isFullscreen = false;
+
+    const overlay = document.getElementById('fullscreen-canvas-overlay');
+    const toolbar = document.getElementById('floating-toolbar');
+
+    if (overlay) overlay.classList.remove('active');
+    if (toolbar) toolbar.style.display = 'none';
+
+    // Copy fullscreen drawing back to main canvas
+    if (fullscreenCanvas && canvas && ctx) {
+        // Rebuild history scaled back to main canvas coordinates
+        const scaleX = fullscreenCanvas.width / (canvas.width || 1);
+        const scaleY = fullscreenCanvas.height / (canvas.height || 1);
+
+        // Update history to scale back
+        const scaledHistory = drawingHistory.map(path =>
+            path.map(seg => ({
+                fromX: seg.fromX,
+                fromY: seg.fromY,
+                toX: seg.toX,
+                toY: seg.toY,
+                color: seg.color,
+                size: seg.size
+            }))
+        );
+        drawingHistory = scaledHistory;
+        redrawFromHistory();
+    }
+
+    // Remove fullscreen canvas listeners
+    if (fullscreenCanvas) {
+        fullscreenCanvas.removeEventListener('touchstart', fsHandleTouchStart);
+        fullscreenCanvas.removeEventListener('touchmove', fsHandleTouchMove);
+        fullscreenCanvas.removeEventListener('touchend', fsHandleTouchEnd);
+        fullscreenCanvas.removeEventListener('touchcancel', fsHandleTouchEnd);
+        fullscreenCanvas.removeEventListener('mousedown', fsHandleMouseDown);
+        fullscreenCanvas.removeEventListener('mousemove', fsHandleMouseMove);
+        fullscreenCanvas.removeEventListener('mouseup', fsHandleMouseUp);
+        fullscreenCanvas.removeEventListener('mouseout', fsHandleMouseUp);
+    }
+
+    fullscreenCanvas = null;
+    fullscreenCtx = null;
+}
+
+// Fullscreen canvas event handlers (mirror the main canvas handlers but use fullscreen coords)
+function fsGetCoords(e) {
+    const rect = fullscreenCanvas.getBoundingClientRect();
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+    const scaleX = fullscreenCanvas.width / rect.width;
+    const scaleY = fullscreenCanvas.height / rect.height;
+    return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+    };
+}
+
+// We need to store fullscreen-specific coords but save back to main canvas coords
+let fsLastX = 0, fsLastY = 0, fsCurrentPath = [];
+
+function fsHandleTouchStart(e) {
+    e.preventDefault();
+    if (playerState.hasSubmitted) return;
+    isDrawing = true;
+    const coords = fsGetCoords(e);
+    fsLastX = coords.x;
+    fsLastY = coords.y;
+
+    // Store in main canvas coordinate space
+    const sx = (canvas.width || 1) / fullscreenCanvas.width;
+    const sy = (canvas.height || 1) / fullscreenCanvas.height;
+
+    fsCurrentPath = [{
+        fromX: coords.x * sx, fromY: coords.y * sy,
+        toX: coords.x * sx, toY: coords.y * sy,
+        color: currentColor, size: currentSize
+    }];
+
+    // Draw on fullscreen canvas
+    fsDraw(coords.x, coords.y, coords.x, coords.y);
+}
+
+function fsHandleTouchMove(e) {
+    e.preventDefault();
+    if (!isDrawing || playerState.hasSubmitted) return;
+    const coords = fsGetCoords(e);
+    fsDraw(fsLastX, fsLastY, coords.x, coords.y);
+
+    const sx = (canvas.width || 1) / fullscreenCanvas.width;
+    const sy = (canvas.height || 1) / fullscreenCanvas.height;
+
+    fsCurrentPath.push({
+        fromX: fsLastX * sx, fromY: fsLastY * sy,
+        toX: coords.x * sx, toY: coords.y * sy,
+        color: currentColor, size: currentSize
+    });
+
+    fsLastX = coords.x;
+    fsLastY = coords.y;
+}
+
+function fsHandleTouchEnd(e) {
+    if (e) e.preventDefault();
+    if (!isDrawing) return;
+    isDrawing = false;
+    if (fsCurrentPath.length > 0) {
+        drawingHistory.push([...fsCurrentPath]);
+        fsCurrentPath = [];
+    }
+}
+
+function fsHandleMouseDown(e) {
+    if (playerState.hasSubmitted) return;
+    isDrawing = true;
+    const coords = fsGetCoords(e);
+    fsLastX = coords.x;
+    fsLastY = coords.y;
+
+    const sx = (canvas.width || 1) / fullscreenCanvas.width;
+    const sy = (canvas.height || 1) / fullscreenCanvas.height;
+
+    fsCurrentPath = [{
+        fromX: coords.x * sx, fromY: coords.y * sy,
+        toX: coords.x * sx, toY: coords.y * sy,
+        color: currentColor, size: currentSize
+    }];
+
+    fsDraw(coords.x, coords.y, coords.x, coords.y);
+}
+
+function fsHandleMouseMove(e) {
+    if (!isDrawing || playerState.hasSubmitted) return;
+    const coords = fsGetCoords(e);
+    fsDraw(fsLastX, fsLastY, coords.x, coords.y);
+
+    const sx = (canvas.width || 1) / fullscreenCanvas.width;
+    const sy = (canvas.height || 1) / fullscreenCanvas.height;
+
+    fsCurrentPath.push({
+        fromX: fsLastX * sx, fromY: fsLastY * sy,
+        toX: coords.x * sx, toY: coords.y * sy,
+        color: currentColor, size: currentSize
+    });
+
+    fsLastX = coords.x;
+    fsLastY = coords.y;
+}
+
+function fsHandleMouseUp() {
+    if (!isDrawing) return;
+    isDrawing = false;
+    if (fsCurrentPath.length > 0) {
+        drawingHistory.push([...fsCurrentPath]);
+        fsCurrentPath = [];
+    }
+}
+
+function fsDraw(fromX, fromY, toX, toY) {
+    if (!fullscreenCtx) return;
+    const scale = Math.min(
+        fullscreenCanvas.width / (canvas.width || 1),
+        fullscreenCanvas.height / (canvas.height || 1)
+    );
+    fullscreenCtx.beginPath();
+    fullscreenCtx.moveTo(fromX, fromY);
+    fullscreenCtx.lineTo(toX, toY);
+    fullscreenCtx.strokeStyle = currentColor;
+    fullscreenCtx.lineWidth = currentSize * scale;
+    fullscreenCtx.lineCap = 'round';
+    fullscreenCtx.lineJoin = 'round';
+    fullscreenCtx.stroke();
+}
+
+function fsRedraw() {
+    if (!fullscreenCtx || !fullscreenCanvas) return;
+    fullscreenCtx.fillStyle = '#FFFFFF';
+    fullscreenCtx.fillRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
+
+    const scaleX = fullscreenCanvas.width / (canvas.width || 1);
+    const scaleY = fullscreenCanvas.height / (canvas.height || 1);
+
+    for (const path of drawingHistory) {
+        for (const seg of path) {
+            fullscreenCtx.beginPath();
+            fullscreenCtx.moveTo(seg.fromX * scaleX, seg.fromY * scaleY);
+            fullscreenCtx.lineTo(seg.toX * scaleX, seg.toY * scaleY);
+            fullscreenCtx.strokeStyle = seg.color;
+            fullscreenCtx.lineWidth = seg.size * Math.min(scaleX, scaleY);
+            fullscreenCtx.lineCap = 'round';
+            fullscreenCtx.lineJoin = 'round';
+            fullscreenCtx.stroke();
+        }
+    }
+}
+
+function fsUndo() {
+    if (drawingHistory.length === 0) return;
+    drawingHistory.pop();
+    fsRedraw();
+}
+
+function fsClear() {
+    drawingHistory = [];
+    fsCurrentPath = [];
+    if (fullscreenCtx && fullscreenCanvas) {
+        fullscreenCtx.fillStyle = '#FFFFFF';
+        fullscreenCtx.fillRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
+    }
+}
+
+function buildFullscreenPalettes() {
+    const colorRow = document.getElementById('ft-color-row');
+    const sizeRow = document.getElementById('ft-size-row');
+
+    if (colorRow) {
+        colorRow.innerHTML = '';
+        COLORS.forEach(c => {
+            const btn = document.createElement('button');
+            btn.className = 'ft-color-btn' + (c.name === 'Eraser' ? ' eraser' : '');
+            btn.dataset.color = c.color;
+            btn.style.background = c.color;
+            btn.title = c.name;
+            if (c.color === currentColor) btn.classList.add('active');
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                currentColor = c.color;
+                colorRow.querySelectorAll('.ft-color-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                // Sync main palette
+                if (elements.colorButtons) {
+                    elements.colorButtons.querySelectorAll('[data-color]').forEach(b => {
+                        b.classList.toggle('active', b.dataset.color === c.color);
+                    });
+                }
+            });
+            colorRow.appendChild(btn);
+        });
+    }
+
+    if (sizeRow) {
+        sizeRow.innerHTML = '';
+        SIZES.forEach(s => {
+            const btn = document.createElement('button');
+            btn.className = 'ft-size-btn';
+            btn.dataset.size = s.size;
+            if (s.size === currentSize) btn.classList.add('active');
+            const dot = document.createElement('div');
+            dot.className = 'ft-size-dot';
+            dot.style.width = (s.dotSize * 0.7) + 'px';
+            dot.style.height = (s.dotSize * 0.7) + 'px';
+            btn.appendChild(dot);
+            btn.appendChild(document.createTextNode(s.label));
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                currentSize = s.size;
+                sizeRow.querySelectorAll('.ft-size-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                // Sync main palette
+                if (elements.sizeButtons) {
+                    elements.sizeButtons.querySelectorAll('[data-size]').forEach(b => {
+                        b.classList.toggle('active', parseInt(b.dataset.size, 10) === s.size);
+                    });
+                }
+            });
+            sizeRow.appendChild(btn);
+        });
+    }
+
+    // Toolbar action buttons
+    const undoBtn = document.getElementById('ft-undo-btn');
+    const clearBtn = document.getElementById('ft-clear-btn');
+    const submitBtn = document.getElementById('ft-submit-btn');
+    const exitBtn = document.getElementById('ft-exit-btn');
+
+    if (undoBtn) undoBtn.onclick = (e) => { e.stopPropagation(); fsUndo(); };
+    if (clearBtn) clearBtn.onclick = (e) => { e.stopPropagation(); fsClear(); };
+    if (submitBtn) submitBtn.onclick = (e) => { e.stopPropagation(); exitFullscreen(); submitDrawing(); };
+    if (exitBtn) exitBtn.onclick = (e) => { e.stopPropagation(); exitFullscreen(); };
+}
+
+function setupToolbarDrag() {
+    const toolbar = document.getElementById('floating-toolbar');
+    const handle = document.getElementById('toolbar-handle');
+    if (!toolbar || !handle) return;
+
+    function onDragStart(e) {
+        toolbarDragging = true;
+        const rect = toolbar.getBoundingClientRect();
+        let clientX, clientY;
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        toolbarOffsetX = clientX - rect.left;
+        toolbarOffsetY = clientY - rect.top;
+        // Switch to absolute positioning
+        toolbar.style.left = rect.left + 'px';
+        toolbar.style.top = rect.top + 'px';
+        toolbar.style.bottom = '';
+        toolbar.style.transform = '';
+        e.preventDefault();
+    }
+
+    function onDragMove(e) {
+        if (!toolbarDragging) return;
+        let clientX, clientY;
+        if (e.touches) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        toolbar.style.left = (clientX - toolbarOffsetX) + 'px';
+        toolbar.style.top = (clientY - toolbarOffsetY) + 'px';
+        e.preventDefault();
+    }
+
+    function onDragEnd() {
+        toolbarDragging = false;
+    }
+
+    handle.addEventListener('touchstart', onDragStart, { passive: false });
+    handle.addEventListener('mousedown', onDragStart);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('touchend', onDragEnd);
+    document.addEventListener('mouseup', onDragEnd);
+}
+
+// =============================================================================
 // SUBMIT DRAWING
 // =============================================================================
 
@@ -1277,6 +1726,73 @@ function submitDrawing() {
             showNotification(response.error || 'Failed to submit drawing.');
         }
     });
+}
+
+// =============================================================================
+// JUDGE WINNER SELECTION (on player device)
+// =============================================================================
+
+function renderJudgeSubmissions(submissions) {
+    if (!elements.judgeSubmissionsList || !elements.judgeSubmissionsGallery) return;
+
+    elements.judgeSubmissionsGallery.style.display = '';
+    elements.judgeSubmissionsList.innerHTML = '';
+
+    let selectedPlayerId = null;
+
+    submissions.forEach(sub => {
+        const card = document.createElement('div');
+        card.classList.add('judge-sub-card');
+        card.dataset.playerId = sub.playerId;
+
+        card.innerHTML = `
+            <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}">
+            ${sub.caption ? `<div class="sub-caption">"${escapeHtml(sub.caption)}"</div>` : ''}
+            <div class="sub-player-info">
+                <span>${sub.playerAvatar || ''}</span>
+                <span>${escapeHtml(sub.playerName)}</span>
+            </div>
+        `;
+
+        card.addEventListener('click', () => {
+            elements.judgeSubmissionsList.querySelectorAll('.judge-sub-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            selectedPlayerId = sub.playerId;
+            if (elements.judgeConfirmWinnerBtn) {
+                elements.judgeConfirmWinnerBtn.disabled = false;
+                elements.judgeConfirmWinnerBtn.style.display = '';
+            }
+        });
+
+        elements.judgeSubmissionsList.appendChild(card);
+    });
+
+    // Setup confirm button
+    if (elements.judgeConfirmWinnerBtn) {
+        elements.judgeConfirmWinnerBtn.disabled = true;
+        elements.judgeConfirmWinnerBtn.style.display = 'none';
+        elements.judgeConfirmWinnerBtn.onclick = () => {
+            if (!selectedPlayerId) return;
+            elements.judgeConfirmWinnerBtn.disabled = true;
+            elements.judgeConfirmWinnerBtn.textContent = 'Confirming...';
+
+            // Disable all cards
+            elements.judgeSubmissionsList.querySelectorAll('.judge-sub-card').forEach(c => {
+                c.style.pointerEvents = 'none';
+            });
+
+            socket.emit('judge:selectWinner', selectedPlayerId, (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Failed to select winner');
+                    elements.judgeConfirmWinnerBtn.disabled = false;
+                    elements.judgeConfirmWinnerBtn.textContent = 'Confirm Winner';
+                    elements.judgeSubmissionsList.querySelectorAll('.judge-sub-card').forEach(c => {
+                        c.style.pointerEvents = '';
+                    });
+                }
+            });
+        };
+    }
 }
 
 // =============================================================================

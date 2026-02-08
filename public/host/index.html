@@ -527,7 +527,7 @@
             background: rgba(255,105,180,0.08);
             border: 2px solid rgba(255,105,180,0.3);
             border-radius: 10px;
-            transition: all 0.3s ease;
+            transition: border-color 0.3s ease, background 0.3s ease;
         }
 
         .score-card.is-judge {
@@ -1092,7 +1092,7 @@
             border: 3px solid #FFD700;
             border-radius: 15px;
             box-shadow: 0 0 30px rgba(255,215,0,0.2);
-            animation: winner-pulse 2s ease-in-out infinite;
+            animation: winner-pulse 2s ease-in-out 3;
         }
 
         .winner-announcement-label {
@@ -1355,7 +1355,7 @@
         .gameover-trophy {
             font-size: 5em;
             margin-bottom: 15px;
-            animation: winner-pulse 2s ease-in-out infinite;
+            animation: winner-pulse 2s ease-in-out 3;
         }
 
         .gameover-title {
@@ -1390,7 +1390,6 @@
             background: rgba(255,105,180,0.08);
             border: 2px solid rgba(255,105,180,0.3);
             border-radius: 12px;
-            transition: all 0.3s;
         }
 
         .final-score-row.rank-1 {
