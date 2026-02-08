@@ -40,6 +40,7 @@ let playerState = {
 };
 
 let currentAvatarIndex = 0;
+let usedAvatars = [];
 
 // =============================================================================
 // DRAWING STATE
@@ -94,6 +95,15 @@ function cacheElements() {
 
         // Waiting
         waitingMessage: document.getElementById('waiting-message'),
+        waitingJudgeName: document.getElementById('waiting-judge-name'),
+        waitingJudgeAvatar: document.getElementById('waiting-judge-avatar'),
+
+        // Judge controls
+        judgeControls: document.getElementById('judge-controls'),
+        judgeRollBtn: document.getElementById('judge-roll-btn'),
+        judgeChoiceGrid: document.getElementById('judge-choice-grid'),
+        judgeDrawPromptsBtn: document.getElementById('judge-draw-prompts-btn'),
+        judgePromptCards: document.getElementById('judge-prompt-cards'),
 
         // Drawing
         drawingCanvas: document.getElementById('drawing-canvas'),
@@ -242,10 +252,14 @@ function setupEventListeners() {
         });
     }
 
-    // Room code auto-uppercase
+    // Room code auto-uppercase + fetch used avatars
     if (elements.roomCodeInput) {
         elements.roomCodeInput.addEventListener('input', () => {
             elements.roomCodeInput.value = elements.roomCodeInput.value.toUpperCase();
+            const code = elements.roomCodeInput.value.trim();
+            if (code.length === 4 && /^[A-Z]{4}$/.test(code)) {
+                fetchUsedAvatars(code);
+            }
         });
     }
 
@@ -430,6 +444,14 @@ function setupSocketListeners() {
     socket.on('game:started', (gameState) => {
         handleGameState(gameState);
         showNotification('Game started!');
+        // Show judge info
+        if (gameState.judge) {
+            updateJudgeDisplay(gameState.judge);
+        }
+        // If we're the judge, show roll button
+        if (playerState.isJudge) {
+            showJudgeRollButton();
+        }
     });
 
     socket.on('game:alignmentRolled', (data) => {
@@ -439,6 +461,14 @@ function setupSocketListeners() {
 
         if (playerState.isJudge) {
             updateWaitingMessage(`Alignment rolled: ${data.fullName}`);
+            // If judge's choice, show the choice grid
+            if (data.isJudgeChoice) {
+                showJudgeChoiceGrid();
+            } else {
+                // Alignment determined, show draw prompts button
+                hideJudgeControls();
+                showJudgeDrawPrompts();
+            }
         } else {
             updateWaitingMessage(`Alignment: ${data.fullName}`);
         }
@@ -448,10 +478,16 @@ function setupSocketListeners() {
         playerState.currentAlignment = data.alignment;
         playerState.currentAlignmentFullName = data.fullName;
         updateWaitingMessage(`Judge chose: ${data.fullName}`);
+        if (playerState.isJudge) {
+            hideJudgeControls();
+            showJudgeDrawPrompts();
+        }
     });
 
-    socket.on('game:promptsDrawn', () => {
-        if (!playerState.isJudge) {
+    socket.on('game:promptsDrawn', (data) => {
+        if (playerState.isJudge) {
+            showJudgePromptCards(data.prompts);
+        } else {
             updateWaitingMessage('The judge is choosing a prompt...');
         }
     });
@@ -645,13 +681,19 @@ function setupSocketListeners() {
 
         showScreen('waiting');
 
+        // Show judge info
+        const judge = data.judge;
+        updateJudgeDisplay(judge);
+
         if (playerState.isJudge) {
             updateWaitingMessage(`Round ${data.round} - You are the Judge!`);
             updateWaitingRole('judge');
+            showJudgeRollButton();
         } else {
-            const judgeName = data.judge ? data.judge.name : 'Someone';
+            const judgeName = judge ? judge.name : 'Someone';
             updateWaitingMessage(`Round ${data.round} - ${judgeName} is judging`);
             updateWaitingRole('player');
+            hideJudgeControls();
         }
     });
 
@@ -784,14 +826,39 @@ function setupSocketListeners() {
 // AVATAR SELECTION
 // =============================================================================
 
+function fetchUsedAvatars(roomCode) {
+    fetch(`/api/room/${roomCode}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.exists && data.usedAvatars) {
+                usedAvatars = data.usedAvatars;
+                // If current avatar is taken, auto-skip to next available
+                if (usedAvatars.includes(AVATARS[currentAvatarIndex])) {
+                    cycleAvatar(1);
+                } else {
+                    updateAvatarPreview();
+                }
+            }
+        })
+        .catch(() => { /* ignore fetch errors */ });
+}
+
 function cycleAvatar(direction) {
-    currentAvatarIndex = (currentAvatarIndex + direction + AVATARS.length) % AVATARS.length;
+    const startIndex = currentAvatarIndex;
+    let attempts = 0;
+    do {
+        currentAvatarIndex = (currentAvatarIndex + direction + AVATARS.length) % AVATARS.length;
+        attempts++;
+    } while (usedAvatars.includes(AVATARS[currentAvatarIndex]) && attempts < AVATARS.length);
     updateAvatarPreview();
 }
 
 function updateAvatarPreview() {
     if (elements.avatarPreview) {
-        elements.avatarPreview.textContent = AVATARS[currentAvatarIndex];
+        const avatar = AVATARS[currentAvatarIndex];
+        const isTaken = usedAvatars.includes(avatar);
+        elements.avatarPreview.textContent = avatar;
+        elements.avatarPreview.style.opacity = isTaken ? '0.3' : '1';
     }
 }
 
@@ -1186,8 +1253,10 @@ function submitDrawing() {
     }
 
     const drawingDataURL = canvas.toDataURL('image/png');
+    const captionInput = document.getElementById('caption-input');
+    const caption = captionInput ? captionInput.value.trim() : '';
 
-    socket.emit('player:submitDrawing', drawingDataURL, (response) => {
+    socket.emit('player:submitDrawing', { drawing: drawingDataURL, caption }, (response) => {
         if (response.success) {
             showScreen('submitted');
 
@@ -1520,6 +1589,143 @@ function updateTokenDisplay() {
     html += '</div>';
 
     elements.resultsTokens.innerHTML = html;
+}
+
+// =============================================================================
+// JUDGE CONTROLS (for when this player is the judge)
+// =============================================================================
+
+const ALIGNMENT_NAMES = {
+    LG: "Lawful Good", NG: "Neutral Good", CG: "Chaotic Good",
+    LN: "Lawful Neutral", TN: "True Neutral", CN: "Chaotic Neutral",
+    LE: "Lawful Evil", NE: "Neutral Evil", CE: "Chaotic Evil"
+};
+
+function updateJudgeDisplay(judge) {
+    if (elements.waitingJudgeName && judge) {
+        elements.waitingJudgeName.textContent = judge.name || '';
+    }
+    if (elements.waitingJudgeAvatar && judge) {
+        elements.waitingJudgeAvatar.textContent = judge.avatar || '\uD83D\uDC51';
+    }
+}
+
+function hideJudgeControls() {
+    if (elements.judgeControls) elements.judgeControls.style.display = 'none';
+    if (elements.judgeChoiceGrid) elements.judgeChoiceGrid.style.display = 'none';
+    if (elements.judgeDrawPromptsBtn) elements.judgeDrawPromptsBtn.style.display = 'none';
+    if (elements.judgePromptCards) elements.judgePromptCards.style.display = 'none';
+    if (elements.judgeRollBtn) elements.judgeRollBtn.style.display = 'none';
+}
+
+function showJudgeRollButton() {
+    if (elements.judgeControls) elements.judgeControls.style.display = '';
+    if (elements.judgeRollBtn) {
+        elements.judgeRollBtn.style.display = '';
+        elements.judgeRollBtn.disabled = false;
+        elements.judgeRollBtn.textContent = 'Roll Alignment';
+        elements.judgeRollBtn.onclick = () => {
+            elements.judgeRollBtn.disabled = true;
+            elements.judgeRollBtn.textContent = 'Rolling...';
+            socket.emit('judge:rollAlignment', (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Roll failed');
+                    elements.judgeRollBtn.disabled = false;
+                    elements.judgeRollBtn.textContent = 'Roll Alignment';
+                }
+            });
+        };
+    }
+    // Hide other controls
+    if (elements.judgeChoiceGrid) elements.judgeChoiceGrid.style.display = 'none';
+    if (elements.judgeDrawPromptsBtn) elements.judgeDrawPromptsBtn.style.display = 'none';
+    if (elements.judgePromptCards) elements.judgePromptCards.style.display = 'none';
+}
+
+function showJudgeChoiceGrid() {
+    if (elements.judgeControls) elements.judgeControls.style.display = '';
+    if (elements.judgeRollBtn) elements.judgeRollBtn.style.display = 'none';
+    if (elements.judgeChoiceGrid) {
+        elements.judgeChoiceGrid.style.display = 'grid';
+        elements.judgeChoiceGrid.innerHTML = '';
+
+        const alignments = ['LG', 'NG', 'CG', 'LN', 'TN', 'CN', 'LE', 'NE', 'CE'];
+        alignments.forEach(code => {
+            const btn = document.createElement('button');
+            btn.className = 'judge-choice-btn';
+            btn.textContent = ALIGNMENT_NAMES[code];
+            btn.addEventListener('click', () => {
+                elements.judgeChoiceGrid.querySelectorAll('.judge-choice-btn').forEach(b => {
+                    b.disabled = true;
+                });
+                btn.classList.add('selected');
+                socket.emit('judge:selectJudgeAlignment', code, (response) => {
+                    if (!response.success) {
+                        showNotification(response.error || 'Selection failed');
+                        elements.judgeChoiceGrid.querySelectorAll('.judge-choice-btn').forEach(b => {
+                            b.disabled = false;
+                            b.classList.remove('selected');
+                        });
+                    }
+                });
+            });
+            elements.judgeChoiceGrid.appendChild(btn);
+        });
+    }
+}
+
+function showJudgeDrawPrompts() {
+    if (elements.judgeControls) elements.judgeControls.style.display = '';
+    if (elements.judgeDrawPromptsBtn) {
+        elements.judgeDrawPromptsBtn.style.display = '';
+        elements.judgeDrawPromptsBtn.disabled = false;
+        elements.judgeDrawPromptsBtn.textContent = 'Draw Prompts';
+        elements.judgeDrawPromptsBtn.onclick = () => {
+            elements.judgeDrawPromptsBtn.disabled = true;
+            elements.judgeDrawPromptsBtn.textContent = 'Drawing...';
+            socket.emit('judge:drawPrompts', (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Draw failed');
+                    elements.judgeDrawPromptsBtn.disabled = false;
+                    elements.judgeDrawPromptsBtn.textContent = 'Draw Prompts';
+                }
+            });
+        };
+    }
+}
+
+function showJudgePromptCards(prompts) {
+    if (elements.judgeControls) elements.judgeControls.style.display = '';
+    if (elements.judgeDrawPromptsBtn) elements.judgeDrawPromptsBtn.style.display = 'none';
+    if (elements.judgePromptCards) {
+        elements.judgePromptCards.style.display = 'flex';
+        elements.judgePromptCards.innerHTML = '';
+
+        prompts.forEach((prompt, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'judge-prompt-btn';
+            btn.textContent = prompt;
+            btn.addEventListener('click', () => {
+                elements.judgePromptCards.querySelectorAll('.judge-prompt-btn').forEach(b => {
+                    b.disabled = true;
+                    b.classList.remove('selected');
+                });
+                btn.classList.add('selected');
+                socket.emit('judge:selectPrompt', index, (response) => {
+                    if (!response.success) {
+                        showNotification(response.error || 'Selection failed');
+                        elements.judgePromptCards.querySelectorAll('.judge-prompt-btn').forEach(b => {
+                            b.disabled = false;
+                        });
+                    } else {
+                        updateWaitingMessage('Players are drawing... Sit tight, Judge!');
+                        hideJudgeControls();
+                    }
+                });
+            });
+            elements.judgePromptCards.appendChild(btn);
+        });
+    }
 }
 
 // =============================================================================

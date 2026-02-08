@@ -69,7 +69,8 @@ app.get('/api/room/:code', (req, res) => {
             playerCount: room.players.length,
             maxPlayers: room.maxPlayers,
             gameStarted: room.gameStarted,
-            canJoin: room.canJoin()
+            canJoin: room.canJoin(),
+            usedAvatars: room.getUsedAvatars()
         });
     } else {
         res.json({ exists: false });
@@ -553,11 +554,15 @@ io.on('connection', (socket) => {
      * player:submitDrawing
      * A player submits their drawing for the current round.
      */
-    socket.on('player:submitDrawing', (drawingData, callback) => {
+    socket.on('player:submitDrawing', (data, callback) => {
         const room = getRoom(socket, callback);
         if (!room) return;
 
-        const result = room.submitDrawing(socket.id, drawingData);
+        // Support both old format (raw drawingData) and new format ({ drawing, caption })
+        const drawing = data && data.drawing ? data.drawing : data;
+        const caption = data && data.caption ? data.caption : '';
+
+        const result = room.submitDrawing(socket.id, drawing, caption);
         if (result.success) {
             io.to(room.code).emit('game:submissionReceived', {
                 playerId: socket.id,
@@ -632,6 +637,92 @@ io.on('connection', (socket) => {
         } else {
             callback(result);
         }
+    });
+
+    // ======================================================================
+    // JUDGE EVENTS (player who is the judge can control game from their device)
+    // ======================================================================
+
+    /**
+     * Helper: check if the socket belongs to the current judge.
+     */
+    function getJudgeRoom(socket, callback) {
+        const room = gameManager.getRoom(socket.roomCode);
+        if (!room) {
+            callback({ success: false, error: 'Room not found' });
+            return null;
+        }
+        const judge = room.getCurrentJudge();
+        if (!judge || judge.id !== socket.id) {
+            callback({ success: false, error: 'Not the current judge' });
+            return null;
+        }
+        return room;
+    }
+
+    socket.on('judge:rollAlignment', (callback) => {
+        const room = getJudgeRoom(socket, callback);
+        if (!room) return;
+
+        const result = room.rollAlignment();
+        if (result.success) {
+            const isJudgeChoice = result.alignment === 'U';
+            io.to(room.code).emit('game:alignmentRolled', {
+                alignment: result.alignment,
+                fullName: result.fullName,
+                isJudgeChoice
+            });
+        }
+        callback(result);
+    });
+
+    socket.on('judge:selectJudgeAlignment', (alignment, callback) => {
+        const room = getJudgeRoom(socket, callback);
+        if (!room) return;
+
+        const result = room.selectJudgeAlignment(alignment);
+        if (result.success) {
+            io.to(room.code).emit('game:judgeAlignmentSelected', {
+                alignment: result.alignment,
+                fullName: result.fullName
+            });
+        }
+        callback(result);
+    });
+
+    socket.on('judge:drawPrompts', (callback) => {
+        const room = getJudgeRoom(socket, callback);
+        if (!room) return;
+
+        const result = room.drawPrompts();
+        if (result.success) {
+            io.to(room.code).emit('game:promptsDrawn', {
+                prompts: result.prompts
+            });
+        }
+        callback(result);
+    });
+
+    socket.on('judge:selectPrompt', (index, callback) => {
+        const room = getJudgeRoom(socket, callback);
+        if (!room) return;
+
+        const result = room.selectPrompt(index);
+        if (result.success) {
+            io.to(room.code).emit('game:promptSelected', {
+                prompt: result.prompt,
+                alignment: room.currentAlignment,
+                alignmentFullName: room.currentAlignmentFullName
+            });
+
+            io.to(room.code).emit('game:startDrawing', {
+                prompt: result.prompt,
+                alignment: room.currentAlignment,
+                alignmentFullName: room.currentAlignmentFullName,
+                timeLimit: room.settings.timerDuration
+            });
+        }
+        callback(result);
     });
 
     // ======================================================================
