@@ -88,11 +88,11 @@ app.get('/api/room/:code', (req, res) => {
 function getHostRoom(socket, callback) {
     const room = gameManager.getRoom(socket.roomCode);
     if (!room) {
-        callback({ success: false, error: 'Room not found' });
+        if (typeof callback === 'function') callback({ success: false, error: 'Room not found' });
         return null;
     }
     if (!socket.isHost) {
-        callback({ success: false, error: 'Not authorized — host only' });
+        if (typeof callback === 'function') callback({ success: false, error: 'Not authorized — host only' });
         return null;
     }
     return room;
@@ -105,7 +105,7 @@ function getHostRoom(socket, callback) {
 function getRoom(socket, callback) {
     const room = gameManager.getRoom(socket.roomCode);
     if (!room) {
-        callback({ success: false, error: 'Room not found' });
+        if (typeof callback === 'function') callback({ success: false, error: 'Room not found' });
         return null;
     }
     return room;
@@ -126,6 +126,7 @@ io.on('connection', (socket) => {
      * Creates a new game room and makes this socket the host.
      */
     socket.on('host:createRoom', (callback) => {
+        if (typeof callback !== 'function') return;
         try {
             const room = gameManager.createRoom(socket.id);
             socket.join(room.code);
@@ -150,6 +151,7 @@ io.on('connection', (socket) => {
      * Allows a host to reclaim their room after a disconnect/reconnect.
      */
     socket.on('host:reconnect', (roomCode, callback) => {
+        if (typeof callback !== 'function') return;
         if (!roomCode) {
             return callback({ success: false, error: 'Room code is required' });
         }
@@ -307,9 +309,11 @@ io.on('connection', (socket) => {
      * Manually ends the drawing phase, collects all submissions.
      */
     socket.on('host:endDrawing', (callback) => {
+        if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
+        room.clearTimer();
         room.collectSubmissions();
         const submissions = room.getSubmissionsForJudging();
 
@@ -355,9 +359,13 @@ io.on('connection', (socket) => {
      * Awards a single bonus token to a player.
      */
     socket.on('host:awardToken', (data, callback) => {
+        if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
+        if (!data || typeof data !== 'object') {
+            return callback({ success: false, error: 'Invalid request data' });
+        }
         const { playerId, tokenType } = data;
         const result = room.awardToken(playerId, tokenType);
         if (result.success) {
@@ -439,9 +447,13 @@ io.on('connection', (socket) => {
      * Applies a drawn curse card to a target player.
      */
     socket.on('host:applyCurse', (data, callback) => {
+        if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
+        if (!data || typeof data !== 'object') {
+            return callback({ success: false, error: 'Invalid request data' });
+        }
         const { targetIndex, modifier } = data;
         const result = room.applyCurse(targetIndex, modifier);
         if (result.success) {
@@ -500,6 +512,40 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
+    /**
+     * host:stealForPlayer
+     * Host triggers a steal on behalf of a player (from the scoreboard UI).
+     */
+    socket.on('host:stealForPlayer', (data, callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
+
+        if (!data || typeof data !== 'object') {
+            return callback({ success: false, error: 'Invalid request data' });
+        }
+        const { stealerId, targetId } = data;
+
+        const result = room.executeSteal(stealerId, targetId);
+        if (result.success) {
+            io.to(room.code).emit('game:stealExecuted', {
+                stealerId,
+                stealerName: result.stealerName,
+                targetId,
+                targetName: result.targetName,
+                scores: room.getScores()
+            });
+
+            if (result.gameOver) {
+                io.to(room.code).emit('game:over', {
+                    winner: result.winner,
+                    finalScores: room.getScores()
+                });
+            }
+        }
+        callback(result);
+    });
+
     // ======================================================================
     // PLAYER EVENTS
     // ======================================================================
@@ -509,6 +555,10 @@ io.on('connection', (socket) => {
      * A player joins an existing room by code and name.
      */
     socket.on('player:joinRoom', (data, callback) => {
+        if (typeof callback !== 'function') return;
+        if (!data || typeof data !== 'object') {
+            return callback({ success: false, error: 'Invalid request data' });
+        }
         const { roomCode, playerName, avatar } = data;
 
         if (!roomCode || !playerName) {
@@ -555,12 +605,22 @@ io.on('connection', (socket) => {
      * A player submits their drawing for the current round.
      */
     socket.on('player:submitDrawing', (data, callback) => {
+        if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
 
         // Support both old format (raw drawingData) and new format ({ drawing, caption })
         const drawing = data && data.drawing ? data.drawing : data;
         const caption = data && data.caption ? data.caption : '';
+
+        // Validate drawing data to prevent XSS via img src
+        if (typeof drawing !== 'string' || !drawing.startsWith('data:image/')) {
+            return callback({ success: false, error: 'Invalid drawing data' });
+        }
+        // Limit drawing size to 5MB
+        if (drawing.length > 5 * 1024 * 1024) {
+            return callback({ success: false, error: 'Drawing data too large' });
+        }
 
         const result = room.submitDrawing(socket.id, drawing, caption);
         if (result.success) {
@@ -577,6 +637,7 @@ io.on('connection', (socket) => {
      * The judge selects a winner from their player device.
      */
     socket.on('judge:selectWinner', (playerId, callback) => {
+        if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
 
@@ -644,6 +705,10 @@ io.on('connection', (socket) => {
      * A disconnected player reconnects to their existing room.
      */
     socket.on('player:reconnect', (data, callback) => {
+        if (typeof callback !== 'function') return;
+        if (!data || typeof data !== 'object') {
+            return callback({ success: false, error: 'Invalid request data' });
+        }
         const { roomCode, playerName } = data;
 
         if (!roomCode || !playerName) {
@@ -688,12 +753,12 @@ io.on('connection', (socket) => {
     function getJudgeRoom(socket, callback) {
         const room = gameManager.getRoom(socket.roomCode);
         if (!room) {
-            callback({ success: false, error: 'Room not found' });
+            if (typeof callback === 'function') callback({ success: false, error: 'Room not found' });
             return null;
         }
         const judge = room.getCurrentJudge();
         if (!judge || judge.id !== socket.id) {
-            callback({ success: false, error: 'Not the current judge' });
+            if (typeof callback === 'function') callback({ success: false, error: 'Not the current judge' });
             return null;
         }
         return room;
@@ -795,6 +860,8 @@ io.on('connection', (socket) => {
 
         if (socket.isHost) {
             console.log(`[Room ${room.code}] Host disconnected — waiting 60s before closing`);
+            // Reset reconnect flag so the timer check works correctly
+            room._hostReconnected = false;
             // Give the host a grace period to reconnect
             room._hostDisconnectTimer = setTimeout(() => {
                 const currentRoom = gameManager.getRoom(socket.roomCode);
@@ -819,6 +886,9 @@ io.on('connection', (socket) => {
 // ---------------------------------------------------------------------------
 // Start Server
 // ---------------------------------------------------------------------------
+// Start periodic cleanup of inactive rooms
+gameManager.startCleanupInterval();
+
 httpServer.listen(PORT, () => {
     console.log(`
   ┌─────────────────────────────────────────────────────────────┐
