@@ -267,7 +267,11 @@ export default class Room {
         }
     }
 
-    submitDrawing(playerId, drawingData) {
+    getUsedAvatars() {
+        return this.players.map(p => p.avatar);
+    }
+
+    submitDrawing(playerId, drawingData, caption) {
         const player = this.players.find(p => p.id === playerId);
         if (!player) {
             return { success: false, error: 'Player not found' };
@@ -282,6 +286,7 @@ export default class Room {
             playerName: player.name,
             playerAvatar: player.avatar,
             drawing: drawingData,
+            caption: caption || '',
             timestamp: Date.now()
         });
 
@@ -565,6 +570,7 @@ export default class Room {
             targetScore: this.settings.targetScore,
             players: this.getPlayersPublicData(),
             judge: this.getCurrentJudge(),
+            usedAvatars: this.getUsedAvatars(),
             currentAlignment: this.currentAlignment,
             currentAlignmentFullName: this.currentAlignmentFullName,
             currentPrompts: this.currentPrompts,

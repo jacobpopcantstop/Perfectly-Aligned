@@ -514,63 +514,113 @@
         }
 
         .scoreboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
 
         .score-card {
-            background: linear-gradient(135deg, rgba(255,105,180,0.15), rgba(255,20,147,0.1));
-            border: 3px solid #FF69B4;
-            border-radius: 15px;
-            padding: 12px;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            background: rgba(255,105,180,0.08);
+            border: 2px solid rgba(255,105,180,0.3);
+            border-radius: 10px;
             transition: all 0.3s ease;
         }
 
         .score-card.is-judge {
             border-color: #FFD700;
-            box-shadow: 0 0 15px rgba(255,215,0,0.3);
+            background: rgba(255,215,0,0.06);
         }
 
-        .score-card-avatar {
-            font-size: 2em;
+        .score-card.disconnected {
+            opacity: 0.4;
         }
 
-        .score-card-name {
-            font-size: 0.9em;
+        .score-card.cursed {
+            border-color: #ff4444;
+            background: rgba(255,68,68,0.06);
+        }
+
+        .score-rank {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #FF69B4;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .score-avatar {
+            font-size: 1.8em;
+        }
+
+        .score-details {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .score-player-name {
+            font-size: 1em;
+            font-weight: bold;
             color: #FFB6C1;
-            font-weight: bold;
-            margin: 4px 0;
-            word-break: break-word;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
         }
 
-        .score-card-score {
-            font-size: 1.6em;
-            font-weight: bold;
-            color: #FFD700;
+        .judge-badge {
+            font-size: 0.8em;
         }
 
-        .score-card-tokens {
+        .dc-badge {
+            font-size: 0.7em;
+        }
+
+        .curse-icon {
+            font-size: 0.8em;
+        }
+
+        .score-tokens {
             font-size: 0.75em;
             color: #FF69B4;
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
-        .score-card-judge-badge {
-            display: inline-block;
-            font-size: 0.7em;
-            padding: 2px 8px;
-            border-radius: 8px;
-            background: rgba(255,215,0,0.2);
+        .token-icon {
+            margin-right: 4px;
+        }
+
+        .no-tokens {
+            opacity: 0.3;
+        }
+
+        .score-points {
+            font-size: 2em;
+            font-weight: bold;
             color: #FFD700;
-            margin-top: 5px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            min-width: 40px;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255,215,0,0.3);
         }
 
-        .score-card-disconnected {
-            opacity: 0.4;
+        .steal-btn {
+            font-family: 'Courier New', monospace;
+            background: rgba(255,215,0,0.15);
+            border: 2px solid #FFD700;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #FFD700;
+        }
+
+        .steal-btn:hover {
+            background: rgba(255,215,0,0.3);
+            transform: scale(1.1);
         }
 
         /* Judge Indicator */
@@ -976,6 +1026,33 @@
         .submission-card.selected {
             border-color: #00FF00;
             box-shadow: 0 0 25px rgba(0,255,0,0.4);
+        }
+
+        .submission-drawing {
+            overflow: hidden;
+            border-radius: 10px;
+            border: 2px solid rgba(255,105,180,0.3);
+            background: #fff;
+            max-height: 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .submission-drawing img {
+            max-width: 100%;
+            max-height: 280px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .submission-caption {
+            font-size: 1em;
+            color: #FFD700;
+            font-style: italic;
+            padding: 8px 5px 2px;
+            text-align: center;
+            word-break: break-word;
         }
 
         .submission-card-image {
@@ -2044,11 +2121,14 @@
                 <div class="modifier-section">
                     <h2 class="section-heading mb-20">Curse Phase</h2>
 
+                    <!-- Curse Explanation -->
+                    <p id="curse-explanation" style="color: #FFB6C1; font-size: 1.05em; margin-bottom: 15px; text-align: center; font-style: italic;"></p>
+
                     <!-- Curser Display -->
                     <div id="curser-display" class="curser-display">
                         <div class="curser-avatar" id="curser-avatar">&#x1F608;</div>
                         <div class="curser-info">
-                            <div class="curser-label">Last Place Curser</div>
+                            <div class="curser-label">Round Loser - Draws a Curse!</div>
                             <div class="curser-name" id="curser-name">---</div>
                         </div>
                     </div>

@@ -1143,7 +1143,24 @@ function endDrawing() {
 
 function handleSubmissionsCollected(data) {
     currentSubmissions = data.submissions || [];
+
+    // If no submissions, skip judging and go to next round
+    if (currentSubmissions.length === 0) {
+        showNotification('No drawings were submitted. Skipping to next round.', 'warning', 3000);
+        nextRound();
+        return;
+    }
+
     showPhase('judging');
+
+    // Populate alignment and prompt in judging phase
+    if (dom.judgingAlignment) {
+        dom.judgingAlignment.textContent = gameState.alignmentName || gameState.alignment || '---';
+    }
+    if (dom.judgingPrompt) {
+        dom.judgingPrompt.textContent = gameState.selectedPrompt || '---';
+    }
+
     renderSubmissionGallery(currentSubmissions);
 }
 
@@ -1169,6 +1186,7 @@ function renderSubmissionGallery(submissions) {
             <div class="submission-drawing">
                 <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}" />
             </div>
+            ${sub.caption ? `<div class="submission-caption">"${escapeHtml(sub.caption)}"</div>` : ''}
             <div class="submission-info">
                 <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
                 <span class="submission-name">${escapeHtml(sub.playerName)}</span>
@@ -1411,12 +1429,9 @@ function resetRoundUI() {
     // Re-enable roll button
     if (dom.rollBtn) dom.rollBtn.disabled = false;
 
-    // Reset prompt cards - restore placeholders
+    // Clear prompt cards completely - new ones created when judge draws
     if (dom.promptCards) {
-        dom.promptCards.querySelectorAll('.prompt-card').forEach(card => {
-            card.textContent = '\u00A0';
-            card.classList.remove('selected', 'dimmed', 'dealing', 'disabled');
-        });
+        dom.promptCards.innerHTML = '';
     }
     if (dom.drawPromptsBtn) dom.drawPromptsBtn.disabled = true;
     if (dom.confirmPromptBtn) dom.confirmPromptBtn.disabled = true;
@@ -1460,6 +1475,12 @@ function showModifierPhase(data) {
     }
     if (dom.curserName) {
         dom.curserName.textContent = escapeHtml(curser.name);
+    }
+
+    // Update the explanation text to make the mechanic clear
+    const curseExplain = document.getElementById('curse-explanation');
+    if (curseExplain) {
+        curseExplain.textContent = `${escapeHtml(curser.name)} lost this round and gets to draw a Curse Card! Curses can be played on any other player to give them a handicap next round.`;
     }
 
     // Show/hide buttons
@@ -1534,8 +1555,8 @@ function showCurseTargetSelection(modifier) {
         const targetBtn = document.createElement('button');
         targetBtn.classList.add('curse-target-card');
         targetBtn.innerHTML = `
-            <span class="curse-target-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
-            <span class="curse-target-name">${escapeHtml(player.name)}</span>
+            <span class="target-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+            <span class="target-name">${escapeHtml(player.name)}</span>
         `;
 
         targetBtn.addEventListener('click', () => {
@@ -1629,7 +1650,7 @@ function updateScoreboard() {
 
     sorted.forEach((player, rank) => {
         const entry = document.createElement('div');
-        entry.classList.add('scoreboard-entry');
+        entry.classList.add('score-card');
         if (player.isJudge) entry.classList.add('is-judge');
         if (!player.connected) entry.classList.add('disconnected');
         if (player.activeModifiers && player.activeModifiers.length > 0) {
@@ -1639,22 +1660,25 @@ function updateScoreboard() {
         const totalTokens = getTotalTokens(player);
         const tokenIcons = buildTokenIcons(player.tokens);
         const canSteal = totalTokens >= 3 && !player.isJudge;
+        const curseIcons = (player.activeModifiers && player.activeModifiers.length > 0)
+            ? player.activeModifiers.map(m => `<span class="curse-icon" title="${escapeHtml(m.name)}">${m.icon || '\u26A0\uFE0F'}</span>`).join('')
+            : '';
 
         entry.innerHTML = `
-            <div class="scoreboard-rank">${rank + 1}</div>
-            <div class="scoreboard-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
-            <div class="scoreboard-name">
-                ${escapeHtml(player.name)}
-                ${player.isJudge ? '<span class="judge-indicator">\uD83D\uDD28</span>' : ''}
-                ${!player.connected ? '<span class="dc-indicator">\u274C</span>' : ''}
+            <div class="score-rank">${rank + 1}</div>
+            <div class="score-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
+            <div class="score-details">
+                <div class="score-player-name">
+                    ${escapeHtml(player.name)}
+                    ${player.isJudge ? '<span class="judge-badge" title="Judge">&#x2696;&#xFE0F;</span>' : ''}
+                    ${!player.connected ? '<span class="dc-badge" title="Disconnected">\u274C</span>' : ''}
+                    ${curseIcons}
+                </div>
+                <div class="score-tokens">${tokenIcons}</div>
             </div>
-            <div class="scoreboard-score">${player.score}</div>
-            <div class="scoreboard-tokens">${tokenIcons}</div>
-            ${player.activeModifiers && player.activeModifiers.length > 0
-                ? `<div class="scoreboard-curses">${player.activeModifiers.map(m => `<span title="${escapeHtml(m.name)}">${m.icon || '\u26A0\uFE0F'}</span>`).join('')}</div>`
-                : ''}
+            <div class="score-points">${player.score}</div>
             ${canSteal
-                ? `<button class="steal-btn" data-player-id="${player.id}" title="Spend 3 tokens to steal a point">\uD83D\uDC80 Steal</button>`
+                ? `<button class="steal-btn" data-player-id="${player.id}" title="Spend 3 tokens to steal a point">\uD83D\uDC80</button>`
                 : ''}
         `;
 

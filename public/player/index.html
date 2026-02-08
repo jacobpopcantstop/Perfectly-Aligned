@@ -1079,6 +1079,62 @@
         .flex-col { display: flex; flex-direction: column; }
 
         /* ================================================================
+           JUDGE CONTROLS
+           ================================================================ */
+        .judge-choice-btn {
+            padding: 10px 6px;
+            background: rgba(255,215,0,0.08);
+            border: 2px solid #FFD700;
+            border-radius: 8px;
+            color: #FFD700;
+            font-family: 'Courier New', monospace;
+            font-size: 0.65rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-height: 44px;
+        }
+
+        .judge-choice-btn:active,
+        .judge-choice-btn.selected {
+            background: rgba(0,255,0,0.15);
+            border-color: #00FF00;
+            color: #00FF00;
+        }
+
+        .judge-choice-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .judge-prompt-btn {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255,105,180,0.1);
+            border: 2px solid #FF69B4;
+            border-radius: 10px;
+            color: #FFB6C1;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            min-height: 48px;
+        }
+
+        .judge-prompt-btn:active,
+        .judge-prompt-btn.selected {
+            background: rgba(0,255,0,0.1);
+            border-color: #00FF00;
+            color: #00FF00;
+        }
+
+        .judge-prompt-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* ================================================================
            DISCONNECTED SCREEN
            ================================================================ */
         .disconnect-icon {
@@ -1248,6 +1304,17 @@
                 <span></span><span></span><span></span>
             </div>
 
+            <!-- Judge Controls (shown when this player is the judge) -->
+            <div id="judge-controls" style="display:none; margin-top: 16px;">
+                <button class="btn btn-gold" id="judge-roll-btn" style="display:none; margin-bottom:10px;">Roll Alignment</button>
+
+                <div id="judge-choice-grid" style="display:none; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:10px;"></div>
+
+                <button class="btn btn-primary" id="judge-draw-prompts-btn" style="display:none; margin-bottom:10px;">Draw Prompts</button>
+
+                <div id="judge-prompt-cards" style="display:none; flex-direction:column; gap:8px;"></div>
+            </div>
+
             <div class="divider"></div>
 
             <div class="stats-row">
@@ -1297,6 +1364,17 @@
 
                 <!-- Brush sizes -->
                 <div class="tool-row" id="size-palette"></div>
+
+                <!-- Caption -->
+                <div style="margin-bottom: 6px;">
+                    <input type="text"
+                           id="caption-input"
+                           placeholder="Add a caption (optional)"
+                           maxlength="80"
+                           autocomplete="off"
+                           spellcheck="false"
+                           style="width:100%; padding:8px 12px; font-size:0.8rem; text-align:center;">
+                </div>
 
                 <!-- Actions -->
                 <div class="action-row">
