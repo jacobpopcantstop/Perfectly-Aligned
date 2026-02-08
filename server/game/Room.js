@@ -97,8 +97,19 @@ export default class Room {
         this.players.splice(index, 1);
         this.lastActivity = Date.now();
 
-        if (this.judgeIndex >= this.players.length) {
+        // Fix judge index when a player is removed
+        if (this.players.length === 0) {
             this.judgeIndex = 0;
+        } else if (index < this.judgeIndex) {
+            // Removed player was before current judge, shift judge index back
+            this.judgeIndex--;
+        } else if (this.judgeIndex >= this.players.length) {
+            this.judgeIndex = 0;
+        }
+
+        // Update judge flags for remaining players
+        if (this.gameStarted && this.players.length > 0) {
+            this.updateJudge();
         }
 
         return { success: true };
@@ -130,7 +141,8 @@ export default class Room {
 
         if (settings.selectedDecks) this.settings.selectedDecks = settings.selectedDecks;
         if (settings.timerDuration !== undefined) this.settings.timerDuration = settings.timerDuration;
-        if (settings.targetScore) this.settings.targetScore = settings.targetScore;
+        if (settings.targetScore !== undefined && settings.targetScore > 0) this.settings.targetScore = settings.targetScore;
+        if (settings.modifiersEnabled !== undefined) this.modifiersEnabled = settings.modifiersEnabled;
 
         this.availableCards = buildPromptPool(this.settings.selectedDecks);
 
@@ -184,6 +196,11 @@ export default class Room {
     selectJudgeAlignment(alignment) {
         if (this.gamePhase !== 'judge_choice') {
             return { success: false, error: 'Wrong phase' };
+        }
+
+        // Validate alignment is a known value (exclude 'U' since judge is choosing a specific one)
+        if (!ALIGNMENT_NAMES[alignment] || alignment === 'U') {
+            return { success: false, error: 'Invalid alignment' };
         }
 
         this.currentAlignment = alignment;
@@ -272,6 +289,10 @@ export default class Room {
     }
 
     submitDrawing(playerId, drawingData, caption) {
+        if (this.gamePhase !== 'drawing') {
+            return { success: false, error: 'Not in drawing phase' };
+        }
+
         const player = this.players.find(p => p.id === playerId);
         if (!player) {
             return { success: false, error: 'Player not found' };
@@ -466,9 +487,10 @@ export default class Room {
             return { success: false, error: 'Cannot curse yourself' };
         }
 
+        // Store by player ID instead of array index for stability across player removals
         this.pendingModifiers.push({
-            curserIndex: this.currentCurser ? this.currentCurser.index : null,
-            targetIndex,
+            curserId: this.currentCurser ? this.currentCurser.player.id : null,
+            targetId: target.id,
             modifier
         });
 
@@ -515,9 +537,10 @@ export default class Room {
             player.activeModifiers = [];
         });
 
-        this.pendingModifiers.forEach(({ targetIndex, modifier }) => {
-            if (this.players[targetIndex]) {
-                this.players[targetIndex].activeModifiers.push(modifier);
+        this.pendingModifiers.forEach(({ targetId, modifier }) => {
+            const target = this.players.find(p => p.id === targetId);
+            if (target) {
+                target.activeModifiers.push(modifier);
             }
         });
         this.pendingModifiers = [];

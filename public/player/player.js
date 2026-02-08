@@ -751,6 +751,7 @@ function setupSocketListeners() {
 
     socket.on('game:over', (data) => {
         showScreen('gameover');
+        spawnConfetti(35);
 
         const winner = data.winner;
         const finalScores = data.finalScores;
@@ -1274,6 +1275,9 @@ let fullscreenCtx = null;
 let toolbarDragging = false;
 let toolbarOffsetX = 0;
 let toolbarOffsetY = 0;
+// Store references to document-level drag listeners for cleanup
+let _toolbarDragMove = null;
+let _toolbarDragEnd = null;
 
 function enterFullscreen() {
     if (isFullscreen || playerState.hasSubmitted) return;
@@ -1381,6 +1385,18 @@ function exitFullscreen() {
         fullscreenCanvas.removeEventListener('mousemove', fsHandleMouseMove);
         fullscreenCanvas.removeEventListener('mouseup', fsHandleMouseUp);
         fullscreenCanvas.removeEventListener('mouseout', fsHandleMouseUp);
+    }
+
+    // Remove document-level toolbar drag listeners
+    if (_toolbarDragMove) {
+        document.removeEventListener('touchmove', _toolbarDragMove);
+        document.removeEventListener('mousemove', _toolbarDragMove);
+        _toolbarDragMove = null;
+    }
+    if (_toolbarDragEnd) {
+        document.removeEventListener('touchend', _toolbarDragEnd);
+        document.removeEventListener('mouseup', _toolbarDragEnd);
+        _toolbarDragEnd = null;
     }
 
     fullscreenCanvas = null;
@@ -1676,6 +1692,20 @@ function setupToolbarDrag() {
     function onDragEnd() {
         toolbarDragging = false;
     }
+
+    // Remove previous document listeners if any (prevents leaks on re-entry)
+    if (_toolbarDragMove) {
+        document.removeEventListener('touchmove', _toolbarDragMove);
+        document.removeEventListener('mousemove', _toolbarDragMove);
+    }
+    if (_toolbarDragEnd) {
+        document.removeEventListener('touchend', _toolbarDragEnd);
+        document.removeEventListener('mouseup', _toolbarDragEnd);
+    }
+
+    // Store references for cleanup
+    _toolbarDragMove = onDragMove;
+    _toolbarDragEnd = onDragEnd;
 
     handle.addEventListener('touchstart', onDragStart, { passive: false });
     handle.addEventListener('mousedown', onDragStart);
@@ -2247,6 +2277,26 @@ function showJudgePromptCards(prompts) {
 // =============================================================================
 // UTILITY
 // =============================================================================
+
+function spawnConfetti(count) {
+    count = count || 35;
+    const colors = ['#FF69B4', '#FFD700', '#00FF00', '#FF1493', '#00CED1', '#FF6347', '#9370DB'];
+    for (let i = 0; i < count; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'confetti-particle';
+        particle.style.left = Math.random() * 100 + 'vw';
+        particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+        particle.style.width = (Math.random() * 6 + 4) + 'px';
+        particle.style.height = (Math.random() * 6 + 4) + 'px';
+        particle.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        particle.style.animationDuration = (Math.random() * 2 + 1.5) + 's';
+        particle.style.animationDelay = (Math.random() * 0.8) + 's';
+        document.body.appendChild(particle);
+        setTimeout(() => {
+            if (particle.parentNode) particle.parentNode.removeChild(particle);
+        }, 4000);
+    }
+}
 
 function showScreen(screenName) {
     playerState.currentPhase = screenName;

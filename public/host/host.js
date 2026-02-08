@@ -99,6 +99,7 @@ function cacheDomElements() {
     dom.roomCode = document.getElementById('room-code-value');
     dom.joinUrl = document.getElementById('room-code-join-url');
     dom.roomCodeRepeat = document.getElementById('room-code-repeat');
+    dom.roomCodeQR = document.getElementById('room-code-qr');
     dom.lobbyPlayerGrid = document.getElementById('player-lobby-list');
     dom.playerCount = document.getElementById('player-count-msg');
     dom.startGameBtn = document.getElementById('start-game-btn');
@@ -386,10 +387,6 @@ function setupSocketListeners() {
         });
     });
 
-    socket.on('room:closed', (data) => {
-        showNotification(`Room closed: ${data.reason}`, 'error', 5000);
-    });
-
     // -- Game events --
 
     socket.on('game:started', (state) => {
@@ -545,8 +542,9 @@ function setupSocketListeners() {
         }
     });
 
-    socket.on('room:closed', () => {
-        showNotification('Room has been closed.', 'error', 5000);
+    socket.on('room:closed', (data) => {
+        const reason = data && data.reason ? data.reason : 'Room has been closed';
+        showNotification(reason, 'error', 5000);
         resetToCreateRoom();
     });
 }
@@ -634,6 +632,9 @@ function createRoom() {
                 const url = `${window.location.origin}/play/${response.roomCode}`;
                 dom.joinUrl.textContent = `Join at: ${url}`;
             }
+
+            // Generate QR code for joining
+            generateRoomQR(response.roomCode);
 
             // Hide create button, show lobby settings
             if (dom.createRoomBtn) {
@@ -876,10 +877,10 @@ function handleAlignmentRolled(data) {
 
         updateAlignmentResult("Judge's Choice!", "The Judge picks any alignment!");
 
-        // Show judge choice phase (inside alignment phase)
+        // Show judge choice phase (inside alignment phase) using class instead of inline style
         setTimeout(() => {
             if (dom.judgeChoicePhase) {
-                dom.judgeChoicePhase.style.display = 'block';
+                dom.judgeChoicePhase.classList.add('active');
             }
         }, 1500);
     } else {
@@ -1115,11 +1116,13 @@ function updateTimerDisplay(timeLeft, totalDuration) {
         const seconds = timeLeft % 60;
         dom.timerText.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-        // Warning class when low
+        // Warning class when low - critical animation for last 10 seconds
         if (timeLeft <= 10 && timeLeft > 0) {
             dom.timerText.classList.add('warning');
+            dom.timerText.classList.add('timer-critical');
         } else {
             dom.timerText.classList.remove('warning');
+            dom.timerText.classList.remove('timer-critical');
         }
 
         if (timeLeft <= 0) {
@@ -1424,7 +1427,7 @@ function resetRoundUI() {
 
     // Hide judges choice section
     if (dom.judgeChoicePhase) {
-        dom.judgeChoicePhase.style.display = 'none';
+        dom.judgeChoicePhase.classList.remove('active');
     }
 
     // Reset alignment result
@@ -1774,7 +1777,7 @@ function closeStealModal() {
 }
 
 function executeSteal(fromId, targetId) {
-    socket.emit('player:steal', targetId, (response) => {
+    socket.emit('host:stealForPlayer', { stealerId: fromId, targetId }, (response) => {
         if (!response.success) {
             showNotification(`Steal failed: ${response.error}`, 'error');
         }
@@ -1789,6 +1792,7 @@ function executeSteal(fromId, targetId) {
 function showGameOver(data) {
     playSound('win');
     showScreen('gameover');
+    spawnConfetti(50);
 
     // Display winner
     if (dom.gameOverWinner && data.winner) {
@@ -1810,6 +1814,7 @@ function showGameOver(data) {
         sorted.forEach((player, index) => {
             const row = document.createElement('div');
             row.classList.add('final-score-row');
+            row.style.animation = `revealSlide 0.5s cubic-bezier(0.22, 1, 0.36, 1) ${index * 0.15}s backwards`;
             if (index === 0) row.classList.add('rank-1');
             else if (index === 1) row.classList.add('rank-2');
             else if (index === 2) row.classList.add('rank-3');
@@ -1834,6 +1839,46 @@ function showGameOver(data) {
 
     if (dom.playAgainBtn) {
         dom.playAgainBtn.disabled = false;
+    }
+}
+
+// =============================================================================
+// QR CODE
+// =============================================================================
+
+function generateRoomQR(roomCode) {
+    const container = dom.roomCodeQR;
+    if (!container) return;
+
+    const url = `${window.location.origin}/play/${roomCode}`;
+
+    // Use qrcode-generator library if available
+    if (typeof qrcode !== 'undefined') {
+        container.innerHTML = '';
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+
+        const cellSize = 4;
+        const moduleCount = qr.getModuleCount();
+        const size = moduleCount * cellSize;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        for (let row = 0; row < moduleCount; row++) {
+            for (let col = 0; col < moduleCount; col++) {
+                ctx.fillStyle = qr.isDark(row, col) ? '#1a1a2e' : '#ffffff';
+                ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+            }
+        }
+
+        container.appendChild(canvas);
+    } else {
+        // Fallback: show text URL if library didn't load
+        container.innerHTML = `<span style="color:#FFB6C1;font-size:0.8em;">Scan unavailable</span>`;
     }
 }
 
@@ -1882,6 +1927,26 @@ function showNotification(message, type, duration) {
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
+
+function spawnConfetti(count) {
+    count = count || 40;
+    const colors = ['#FF69B4', '#FFD700', '#00FF00', '#FF1493', '#00CED1', '#FF6347', '#9370DB'];
+    for (let i = 0; i < count; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'confetti-particle';
+        particle.style.left = Math.random() * 100 + 'vw';
+        particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+        particle.style.width = (Math.random() * 8 + 5) + 'px';
+        particle.style.height = (Math.random() * 8 + 5) + 'px';
+        particle.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        particle.style.animationDuration = (Math.random() * 2 + 1.5) + 's';
+        particle.style.animationDelay = (Math.random() * 0.8) + 's';
+        document.body.appendChild(particle);
+        setTimeout(() => {
+            if (particle.parentNode) particle.parentNode.removeChild(particle);
+        }, 4000);
+    }
+}
 
 function escapeHtml(str) {
     if (!str) return '';
