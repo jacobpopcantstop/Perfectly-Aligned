@@ -104,6 +104,9 @@ function cacheElements() {
         judgeChoiceGrid: document.getElementById('judge-choice-grid'),
         judgeDrawPromptsBtn: document.getElementById('judge-draw-prompts-btn'),
         judgePromptCards: document.getElementById('judge-prompt-cards'),
+        judgeEndTimerSection: document.getElementById('judge-end-timer-section'),
+        judgeEndTimerBtn: document.getElementById('judge-end-timer-btn'),
+        judgeSubmissionStatus: document.getElementById('judge-submission-status'),
 
         // Drawing
         drawingCanvas: document.getElementById('drawing-canvas'),
@@ -326,6 +329,22 @@ function setupEventListeners() {
         fullscreenBtn.addEventListener('click', enterFullscreen);
     }
 
+    // Judge end timer
+    if (elements.judgeEndTimerBtn) {
+        elements.judgeEndTimerBtn.addEventListener('click', () => {
+            elements.judgeEndTimerBtn.disabled = true;
+            elements.judgeEndTimerBtn.textContent = 'Ending...';
+            socket.emit('judge:endDrawing', (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Failed to end drawing');
+                    elements.judgeEndTimerBtn.disabled = false;
+                    elements.judgeEndTimerBtn.textContent = 'End Timer - Start Judging';
+                }
+                // Result handled by game:submissionsCollected listener
+            });
+        });
+    }
+
     // Steal
     if (elements.stealButton) {
         elements.stealButton.addEventListener('click', () => {
@@ -516,6 +535,17 @@ function setupSocketListeners() {
         if (playerState.isJudge) {
             showScreen('waiting');
             updateWaitingMessage('Players are drawing... Sit tight, Judge!');
+            hideJudgeControls();
+            // Show the end timer section for the judge to track submissions
+            if (elements.judgeEndTimerSection) {
+                elements.judgeEndTimerSection.style.display = '';
+            }
+            if (elements.judgeEndTimerBtn) {
+                elements.judgeEndTimerBtn.style.display = 'none';
+            }
+            if (elements.judgeSubmissionStatus) {
+                elements.judgeSubmissionStatus.textContent = '0 drawings received...';
+            }
             return;
         }
 
@@ -537,10 +567,6 @@ function setupSocketListeners() {
 
         // Show active modifiers
         displayActiveModifiers();
-
-        // Clear caption from previous round
-        const captionInput = document.getElementById('caption-input');
-        if (captionInput) captionInput.value = '';
 
         // Reset canvas for new round
         clearCanvas();
@@ -607,14 +633,28 @@ function setupSocketListeners() {
     });
 
     socket.on('game:submissionReceived', (data) => {
-        // Optional: show submission count progress
         if (playerState.isJudge) {
-            updateWaitingMessage(`Received ${data.submissionCount} drawing(s)...`);
+            const count = data.submissionCount;
+            const total = data.totalExpected || 0;
+            updateWaitingMessage(`Received ${count}${total ? ' / ' + total : ''} drawing(s)...`);
+
+            // Update judge end timer section
+            if (elements.judgeSubmissionStatus) {
+                elements.judgeSubmissionStatus.textContent = `${count}${total ? ' / ' + total : ''} drawings received`;
+            }
+
+            // Show end timer button when all players have submitted
+            if (total > 0 && count >= total && elements.judgeEndTimerBtn) {
+                elements.judgeEndTimerBtn.style.display = '';
+            }
         }
     });
 
     socket.on('game:submissionsCollected', (data) => {
         if (isFullscreen) exitFullscreen();
+        // Hide judge end timer section
+        if (elements.judgeEndTimerSection) elements.judgeEndTimerSection.style.display = 'none';
+
         showScreen('judging');
         playerState.currentPhase = 'judging';
 
@@ -1732,10 +1772,8 @@ function submitDrawing() {
     }
 
     const drawingDataURL = canvas.toDataURL('image/png');
-    const captionInput = document.getElementById('caption-input');
-    const caption = captionInput ? captionInput.value.trim() : '';
 
-    socket.emit('player:submitDrawing', { drawing: drawingDataURL, caption }, (response) => {
+    socket.emit('player:submitDrawing', { drawing: drawingDataURL }, (response) => {
         if (response.success) {
             showScreen('submitted');
 
@@ -1777,12 +1815,21 @@ function renderJudgeSubmissions(submissions) {
 
         card.innerHTML = `
             <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}">
-            ${sub.caption ? `<div class="sub-caption">"${escapeHtml(sub.caption)}"</div>` : ''}
             <div class="sub-player-info">
                 <span>${sub.playerAvatar || ''}</span>
                 <span>${escapeHtml(sub.playerName)}</span>
             </div>
+            <button class="expand-btn" title="Expand image">&#x1F50D;</button>
         `;
+
+        // Expand button opens lightbox
+        const expandBtn = card.querySelector('.expand-btn');
+        if (expandBtn) {
+            expandBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openImageLightbox(sub.drawing, sub.playerName);
+            });
+        }
 
         card.addEventListener('click', () => {
             elements.judgeSubmissionsList.querySelectorAll('.judge-sub-card').forEach(c => c.classList.remove('selected'));
@@ -2400,6 +2447,28 @@ function getOrdinal(n) {
     const s = ['th', 'st', 'nd', 'rd'];
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function openImageLightbox(imageSrc, playerName) {
+    const lightbox = document.getElementById('image-lightbox');
+    const img = document.getElementById('lightbox-img');
+    const nameEl = document.getElementById('lightbox-player-name');
+    const closeBtn = document.getElementById('lightbox-close');
+    const backdrop = lightbox ? lightbox.querySelector('.lightbox-backdrop') : null;
+
+    if (!lightbox || !img) return;
+
+    img.src = imageSrc;
+    if (nameEl) nameEl.textContent = playerName ? `Drawing by ${escapeHtml(playerName)}` : '';
+    lightbox.style.display = 'flex';
+
+    const closeLightbox = () => {
+        lightbox.style.display = 'none';
+        img.src = '';
+    };
+
+    if (closeBtn) closeBtn.onclick = closeLightbox;
+    if (backdrop) backdrop.onclick = closeLightbox;
 }
 
 function escapeHtml(text) {
