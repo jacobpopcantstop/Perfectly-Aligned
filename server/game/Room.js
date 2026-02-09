@@ -29,6 +29,7 @@ export default class Room {
         this.selectedPrompt = null;
         this.submissions = new Map();
         this.selectedWinner = null;
+        this.winningDrawings = [];
 
         this.availableCards = [];
         this.lastAlignment = null;
@@ -337,6 +338,20 @@ export default class Room {
         const player = this.players.find(p => p.id === playerId);
         if (!player) {
             return { success: false, error: 'Player not found' };
+        }
+
+        // Save the winning drawing for the gallery
+        const submission = this.submissions.get(playerId);
+        if (submission) {
+            this.winningDrawings.push({
+                round: this.currentRound,
+                playerId: player.id,
+                playerName: player.name,
+                playerAvatar: player.avatar,
+                drawing: submission.drawing,
+                prompt: this.selectedPrompt,
+                alignment: this.currentAlignmentFullName || this.currentAlignment
+            });
         }
 
         player.score += 1;

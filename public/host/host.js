@@ -187,6 +187,7 @@ function cacheDomElements() {
     // Game over elements
     dom.gameOverWinner = document.getElementById('gameover-winner-name');
     dom.finalRankings = document.getElementById('final-scoreboard');
+    dom.winningGallery = document.getElementById('winning-gallery');
     dom.playAgainBtn = document.getElementById('play-again-btn');
 
     // Steal modal
@@ -1079,7 +1080,8 @@ function startDrawingPhase(data) {
         // Hide end-drawing button until timer expires
         if (dom.endDrawingBtn) {
             dom.endDrawingBtn.style.display = 'none';
-            dom.endDrawingBtn.disabled = true;
+            dom.endDrawingBtn.disabled = false;
+            dom.endDrawingBtn.textContent = "End Drawing - Start Judging";
         }
     } else {
         if (dom.timerText) dom.timerText.textContent = 'No Timer';
@@ -1349,9 +1351,9 @@ function renderTokenAwards() {
                 <button class="token-btn ${isAwarded ? 'unavailable' : ''}"
                         data-player-id="${player.id}"
                         data-token-type="${tokenType}"
-                        ${isAwarded ? 'disabled' : ''}
-                        title="${tokenInfo.description}">
+                        ${isAwarded ? 'disabled' : ''}>
                     ${tokenInfo.icon} ${tokenInfo.name}
+                    <span class="token-tooltip">${tokenInfo.description}</span>
                 </button>
             `;
         });
@@ -1760,7 +1762,7 @@ function buildTokenIcons(tokens) {
     TOKEN_TYPE_KEYS.forEach(key => {
         const count = tokens[key] || 0;
         if (count > 0) {
-            icons += `<span class="token-icon" title="${TOKEN_TYPES[key].name}">${TOKEN_TYPES[key].icon}${count > 1 ? `x${count}` : ''}</span>`;
+            icons += `<span class="token-icon">${TOKEN_TYPES[key].icon}${count > 1 ? `x${count}` : ''}<span class="token-icon-tip">${TOKEN_TYPES[key].name}: ${TOKEN_TYPES[key].description}</span></span>`;
         }
     });
     return icons || '<span class="no-tokens">-</span>';
@@ -1873,9 +1875,46 @@ function showGameOver(data) {
         });
     }
 
+    // Display winning drawings gallery
+    renderWinningGallery(data.winningDrawings || []);
+
     if (dom.playAgainBtn) {
         dom.playAgainBtn.disabled = false;
     }
+}
+
+function renderWinningGallery(drawings) {
+    const gallery = document.getElementById('winning-gallery');
+    if (!gallery) return;
+    gallery.innerHTML = '';
+
+    if (!drawings || drawings.length === 0) {
+        gallery.innerHTML = '<div style="color: #FF69B4; opacity: 0.6; padding: 20px;">No winning drawings to display.</div>';
+        return;
+    }
+
+    drawings.forEach((drawing) => {
+        const card = document.createElement('div');
+        card.classList.add('winning-card');
+
+        const promptText = drawing.prompt ? escapeHtml(drawing.prompt) : '';
+        const alignText = drawing.alignment ? escapeHtml(drawing.alignment) : '';
+
+        card.innerHTML = `
+            <img class="winning-card-img" src="${drawing.drawing}" alt="Winning drawing by ${escapeHtml(drawing.playerName)}" />
+            <div class="winning-card-info">
+                <div class="winning-card-round">Round ${drawing.round}${alignText ? ' \u2022 ' + alignText : ''}</div>
+                <div class="winning-card-player">${drawing.playerAvatar || '\uD83C\uDFA8'} ${escapeHtml(drawing.playerName)}</div>
+                ${promptText ? `<div class="winning-card-prompt">"${promptText}"</div>` : ''}
+            </div>
+        `;
+
+        card.addEventListener('click', () => {
+            openImageLightbox(drawing.drawing, drawing.playerName);
+        });
+
+        gallery.appendChild(card);
+    });
 }
 
 // =============================================================================

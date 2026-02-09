@@ -347,7 +347,8 @@ io.on('connection', (socket) => {
             if (gameOver) {
                 io.to(room.code).emit('game:over', {
                     winner,
-                    finalScores: scores
+                    finalScores: scores,
+                    winningDrawings: room.winningDrawings
                 });
             }
         }
@@ -391,7 +392,8 @@ io.on('connection', (socket) => {
             if (result.gameOver) {
                 io.to(room.code).emit('game:over', {
                     winner: result.winner,
-                    finalScores: room.getScores()
+                    finalScores: room.getScores(),
+                    winningDrawings: room.winningDrawings
                 });
             } else {
                 io.to(room.code).emit('game:newRound', {
@@ -539,7 +541,8 @@ io.on('connection', (socket) => {
             if (result.gameOver) {
                 io.to(room.code).emit('game:over', {
                     winner: result.winner,
-                    finalScores: room.getScores()
+                    finalScores: room.getScores(),
+                    winningDrawings: room.winningDrawings
                 });
             }
         }
@@ -624,12 +627,23 @@ io.on('connection', (socket) => {
 
         const result = room.submitDrawing(socket.id, drawing, caption);
         if (result.success) {
-            const nonJudgePlayers = room.players.filter(p => !p.isJudge).length;
+            const nonJudgePlayers = room.players.filter(p => !p.isJudge && p.connected);
+            const submissionCount = room.getSubmissionCount();
+            const totalExpected = nonJudgePlayers.length;
+
             io.to(room.code).emit('game:submissionReceived', {
                 playerId: socket.id,
-                submissionCount: room.getSubmissionCount(),
-                totalExpected: nonJudgePlayers
+                submissionCount,
+                totalExpected
             });
+
+            // Auto-end drawing phase when all connected non-judge players have submitted
+            if (submissionCount >= totalExpected && totalExpected > 0 && room.gamePhase === 'drawing') {
+                room.clearTimer();
+                room.collectSubmissions();
+                const submissions = room.getSubmissionsForJudging();
+                io.to(room.code).emit('game:submissionsCollected', { submissions });
+            }
         }
         callback(result);
     });
@@ -667,7 +681,8 @@ io.on('connection', (socket) => {
             if (gameOver) {
                 io.to(room.code).emit('game:over', {
                     winner,
-                    finalScores: scores
+                    finalScores: scores,
+                    winningDrawings: room.winningDrawings
                 });
             }
         }
@@ -695,7 +710,8 @@ io.on('connection', (socket) => {
             if (result.gameOver) {
                 io.to(room.code).emit('game:over', {
                     winner: result.winner,
-                    finalScores: room.getScores()
+                    finalScores: room.getScores(),
+                    winningDrawings: room.winningDrawings
                 });
             }
         }

@@ -334,7 +334,17 @@ function setupEventListeners() {
         elements.judgeEndTimerBtn.addEventListener('click', () => {
             elements.judgeEndTimerBtn.disabled = true;
             elements.judgeEndTimerBtn.textContent = 'Ending...';
+
+            // Safety timeout: reset button if no response after 5 seconds
+            const safetyTimeout = setTimeout(() => {
+                if (elements.judgeEndTimerBtn.textContent === 'Ending...') {
+                    elements.judgeEndTimerBtn.disabled = false;
+                    elements.judgeEndTimerBtn.textContent = 'End Timer - Start Judging';
+                }
+            }, 5000);
+
             socket.emit('judge:endDrawing', (response) => {
+                clearTimeout(safetyTimeout);
                 if (!response.success) {
                     showNotification(response.error || 'Failed to end drawing');
                     elements.judgeEndTimerBtn.disabled = false;
@@ -481,10 +491,6 @@ function setupSocketListeners() {
         if (gameState.judge) {
             updateJudgeDisplay(gameState.judge);
         }
-        // If we're the judge, show roll button
-        if (playerState.isJudge) {
-            showJudgeRollButton();
-        }
     });
 
     socket.on('game:alignmentRolled', (data) => {
@@ -542,6 +548,8 @@ function setupSocketListeners() {
             }
             if (elements.judgeEndTimerBtn) {
                 elements.judgeEndTimerBtn.style.display = 'none';
+                elements.judgeEndTimerBtn.disabled = false;
+                elements.judgeEndTimerBtn.textContent = 'End Timer - Start Judging';
             }
             if (elements.judgeSubmissionStatus) {
                 elements.judgeSubmissionStatus.textContent = '0 drawings received...';
@@ -1890,11 +1898,11 @@ function showStealModal(players) {
     }
 
     elements.stealTargetList.innerHTML = targets.map(t =>
-        `<button class="steal-target-btn" data-target-id="${t.id}">
-            <span class="steal-target-avatar">${t.avatar || ''}</span>
-            <span class="steal-target-name">${escapeHtml(t.name)}</span>
-            <span class="steal-target-score">Score: ${t.score}</span>
-        </button>`
+        `<li><button class="steal-target-btn" data-target-id="${t.id}">
+            <span class="target-avatar">${t.avatar || ''}</span>
+            <span class="target-name">${escapeHtml(t.name)}</span>
+            <span class="target-score">Score: ${t.score}</span>
+        </button></li>`
     ).join('');
 
     // Attach click listeners to target buttons
@@ -2052,8 +2060,22 @@ function handleGameState(state) {
         case 'prompts':
             showScreen('waiting');
             if (playerState.isJudge) {
-                updateWaitingMessage('You are the Judge! Watch the main screen.');
                 updateWaitingRole('judge');
+                if (phase === 'alignment') {
+                    updateWaitingMessage('You are the Judge! Roll the alignment.');
+                    showJudgeRollButton();
+                } else if (phase === 'judge_choice') {
+                    updateWaitingMessage('Pick an alignment!');
+                    showJudgeChoiceGrid();
+                } else if (phase === 'prompts') {
+                    if (state.currentPrompts && state.currentPrompts.length > 0) {
+                        updateWaitingMessage('Pick a prompt!');
+                        showJudgePromptCards(state.currentPrompts);
+                    } else {
+                        updateWaitingMessage('Draw some prompts!');
+                        showJudgeDrawPrompts();
+                    }
+                }
             } else {
                 const judge = state.judge;
                 const judgeName = judge ? judge.name : 'The judge';
