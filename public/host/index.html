@@ -602,6 +602,29 @@
 
         .token-icon {
             margin-right: 4px;
+            position: relative;
+            cursor: default;
+        }
+
+        .token-icon .token-icon-tip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.95);
+            border: 2px solid #FF69B4;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.85em;
+            color: #FFB6C1;
+            white-space: nowrap;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .token-icon:hover .token-icon-tip {
+            display: block;
         }
 
         .no-tokens {
@@ -1042,11 +1065,11 @@
         }
 
         .submission-drawing {
+            position: relative;
             overflow: hidden;
             border-radius: 10px;
             border: 2px solid rgba(255,105,180,0.3);
             background: #fff;
-            max-height: 280px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1055,7 +1078,7 @@
 
         .submission-drawing img {
             max-width: 100%;
-            max-height: 280px;
+            height: auto;
             object-fit: contain;
             display: block;
         }
@@ -1407,10 +1430,11 @@
         }
 
         .curse-target-card {
+            font-family: 'Courier New', monospace;
             background: linear-gradient(135deg, rgba(255,105,180,0.1), rgba(199,21,133,0.05));
             border: 3px solid #FF69B4;
             border-radius: 15px;
-            padding: 15px;
+            padding: 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -1429,14 +1453,19 @@
         }
 
         .curse-target-card .target-avatar {
-            font-size: 2em;
-            margin-bottom: 5px;
+            display: block;
+            font-size: 2.5em;
+            margin-bottom: 8px;
         }
 
         .curse-target-card .target-name {
-            font-size: 0.9em;
+            display: block;
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
             color: #FFB6C1;
             font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .curse-actions {
@@ -1537,6 +1566,92 @@
             font-size: 1.4em;
             font-weight: bold;
             color: #FFD700;
+        }
+
+        /* ================================================================
+           WINNING DRAWINGS GALLERY
+           ================================================================ */
+        .winning-gallery-wrapper {
+            position: relative;
+            overflow: hidden;
+            margin: 20px 0 30px;
+        }
+
+        .winning-gallery {
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+            padding: 10px 5px 20px;
+            scroll-behavior: smooth;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .winning-gallery::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .winning-gallery::-webkit-scrollbar-track {
+            background: rgba(255,105,180,0.1);
+            border-radius: 4px;
+        }
+
+        .winning-gallery::-webkit-scrollbar-thumb {
+            background: #FF69B4;
+            border-radius: 4px;
+        }
+
+        .winning-card {
+            flex: 0 0 280px;
+            scroll-snap-align: center;
+            background: linear-gradient(135deg, rgba(255,105,180,0.1), rgba(199,21,133,0.05));
+            border: 3px solid #FF69B4;
+            border-radius: 15px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .winning-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(255,105,180,0.4);
+            border-color: #FFD700;
+        }
+
+        .winning-card-img {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+            border: 2px solid rgba(255,105,180,0.3);
+            background: #fff;
+            display: block;
+            object-fit: contain;
+        }
+
+        .winning-card-info {
+            margin-top: 10px;
+        }
+
+        .winning-card-round {
+            font-size: 0.75em;
+            color: #FF69B4;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+        }
+
+        .winning-card-player {
+            font-size: 1em;
+            color: #FFB6C1;
+            font-weight: bold;
+        }
+
+        .winning-card-prompt {
+            font-size: 0.8em;
+            color: #FF69B4;
+            font-style: italic;
+            margin-top: 4px;
+            opacity: 0.8;
         }
 
         /* ================================================================
@@ -2408,6 +2523,13 @@
 
                     <div class="final-scoreboard" id="final-scoreboard">
                         <!-- Final score rows injected by JS -->
+                    </div>
+
+                    <h3 class="section-heading mt-20 mb-10" style="text-align:center;">Winning Drawings</h3>
+                    <div class="winning-gallery-wrapper">
+                        <div class="winning-gallery" id="winning-gallery">
+                            <!-- Winning drawing cards injected by JS -->
+                        </div>
                     </div>
 
                     <div class="center-actions">
