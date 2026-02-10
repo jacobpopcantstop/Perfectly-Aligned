@@ -604,6 +604,30 @@ io.on('connection', (socket) => {
     });
 
     /**
+     * player:selectAvatar
+     * A player in the lobby changes their avatar.
+     */
+    socket.on('player:selectAvatar', (data, callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
+        const { avatar } = data || {};
+        if (!avatar) {
+            return callback({ success: false, error: 'Avatar is required' });
+        }
+
+        const result = room.setPlayerAvatar(socket.id, avatar);
+        if (result.success) {
+            io.to(room.code).emit('room:playerJoined', {
+                player: result.player,
+                players: room.getPlayersPublicData()
+            });
+        }
+        callback(result);
+    });
+
+    /**
      * player:submitDrawing
      * A player submits their drawing for the current round.
      */

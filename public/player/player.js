@@ -20,6 +20,11 @@ const RECONNECT_DELAY_MS = 3000;
 const NOTIFICATION_DURATION_MS = 3000;
 const TOKENS_REQUIRED_TO_STEAL = 3;
 
+// Fixed canvas internal resolution (9:16 smartphone ratio)
+// All drawings use this resolution regardless of device screen size
+const CANVAS_WIDTH = 360;
+const CANVAS_HEIGHT = 640;
+
 // =============================================================================
 // PLAYER STATE
 // =============================================================================
@@ -188,6 +193,32 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupSocketConnection();
     setupSocketListeners();
+
+    // Auto-reconnect: if there's a stored session from a previous page load,
+    // pre-populate state so the socket connect handler triggers attemptRejoin
+    const stored = getStoredSession();
+    if (stored && stored.roomCode && stored.playerName) {
+        playerState.roomCode = stored.roomCode;
+        playerState.playerName = stored.playerName;
+        playerState.playerAvatar = stored.playerAvatar;
+        playerState.currentPhase = 'reconnecting';
+
+        // Show reconnecting state
+        showScreen('disconnected');
+        if (elements.disconnectedReason) {
+            elements.disconnectedReason.textContent = 'Reconnecting to your game...';
+        }
+        // Hide the "New Game" button while reconnecting
+        if (elements.disconnectNewGameBtn) {
+            elements.disconnectNewGameBtn.style.display = 'none';
+        }
+
+        // If already connected, attempt rejoin immediately
+        if (socket && socket.connected) {
+            attemptRejoin();
+        }
+        // Otherwise, the socket 'connect' handler will trigger attemptRejoin
+    }
 });
 
 // =============================================================================
@@ -263,14 +294,10 @@ function setupEventListeners() {
         });
     }
 
-    // Room code auto-uppercase + fetch used avatars
+    // Room code auto-uppercase
     if (elements.roomCodeInput) {
         elements.roomCodeInput.addEventListener('input', () => {
             elements.roomCodeInput.value = elements.roomCodeInput.value.toUpperCase();
-            const code = elements.roomCodeInput.value.trim();
-            if (code.length === 4 && /^[A-Z]{4}$/.test(code)) {
-                fetchUsedAvatars(code);
-            }
         });
     }
 
@@ -926,8 +953,26 @@ function cycleAvatar(direction) {
     do {
         currentAvatarIndex = (currentAvatarIndex + direction + AVATARS.length) % AVATARS.length;
         attempts++;
-    } while (usedAvatars.includes(AVATARS[currentAvatarIndex]) && attempts < AVATARS.length);
+    } while (usedAvatars.includes(AVATARS[currentAvatarIndex]) && AVATARS[currentAvatarIndex] !== playerState.playerAvatar && attempts < AVATARS.length);
     updateAvatarPreview();
+
+    // If we're in the lobby (already joined), emit avatar change to server
+    if (playerState.roomCode && socket && socket.connected) {
+        const newAvatar = AVATARS[currentAvatarIndex];
+        socket.emit('player:selectAvatar', { avatar: newAvatar }, (response) => {
+            if (response && response.success) {
+                playerState.playerAvatar = newAvatar;
+                saveToLocalStorage();
+            } else {
+                // Revert to previous avatar on failure
+                currentAvatarIndex = AVATARS.indexOf(playerState.playerAvatar) || 0;
+                updateAvatarPreview();
+                if (response && response.error) {
+                    showNotification(response.error);
+                }
+            }
+        });
+    }
 }
 
 function updateAvatarPreview() {
@@ -948,7 +993,6 @@ function handleJoinSubmit(e) {
 
     const roomCode = (elements.roomCodeInput ? elements.roomCodeInput.value.trim().toUpperCase() : '');
     const playerName = (elements.playerNameInput ? elements.playerNameInput.value.trim() : '');
-    const avatar = AVATARS[currentAvatarIndex];
 
     // Validation
     if (!roomCode || roomCode.length !== 4) {
@@ -981,16 +1025,30 @@ function handleJoinSubmit(e) {
         elements.joinButton.textContent = 'Joining...';
     }
 
-    socket.emit('player:joinRoom', { roomCode, playerName, avatar }, (response) => {
+    // Join without avatar - server assigns default, player picks in lobby
+    socket.emit('player:joinRoom', { roomCode, playerName, avatar: null }, (response) => {
         if (response.success) {
             // Save state
             playerState.playerId = response.playerId;
             playerState.playerName = playerName;
-            playerState.playerAvatar = avatar;
             playerState.roomCode = roomCode;
+
+            // Get the avatar assigned by the server
+            if (response.gameState && response.gameState.players) {
+                const me = response.gameState.players.find(p => p.id === playerState.playerId);
+                if (me) {
+                    playerState.playerAvatar = me.avatar;
+                    // Set the avatar index to match the server-assigned avatar
+                    const idx = AVATARS.indexOf(me.avatar);
+                    if (idx !== -1) currentAvatarIndex = idx;
+                }
+            }
 
             // Save to localStorage for reconnection
             saveToLocalStorage();
+
+            // Fetch used avatars for the lobby avatar selector
+            fetchUsedAvatars(roomCode);
 
             // Check if game is already in progress (late join after reconnect scenario)
             if (response.gameState && response.gameState.gameStarted) {
@@ -1004,6 +1062,8 @@ function handleJoinSubmit(e) {
                 if (response.gameState && response.gameState.players) {
                     updateLobbyPlayerList(response.gameState.players);
                 }
+                // Update avatar display in lobby
+                updateAvatarPreview();
             }
         } else {
             showJoinError(response.error || 'Failed to join room.');
@@ -1075,20 +1135,9 @@ function setupCanvas() {
 function resizeCanvas() {
     if (!canvas || !ctx) return;
 
-    const container = elements.canvasContainer || canvas.parentElement;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const width = rect.width || 300;
-    const height = rect.height || 300;
-
-    // Preserve existing drawing by saving it
-    const imageData = canvas.width > 0 && canvas.height > 0
-        ? ctx.getImageData(0, 0, canvas.width, canvas.height)
-        : null;
-
-    canvas.width = width;
-    canvas.height = height;
+    // Use fixed internal resolution to prevent stretching across devices
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
 
     // Fill with white background
     ctx.fillStyle = '#FFFFFF';
@@ -1343,15 +1392,35 @@ function enterFullscreen() {
     overlay.classList.add('active');
     toolbar.style.display = '';
 
-    // Size the fullscreen canvas to the viewport
-    fullscreenCanvas.width = window.innerWidth;
-    fullscreenCanvas.height = window.innerHeight;
+    // Size the fullscreen canvas to fit viewport while maintaining 9:16 ratio
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+    const targetRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
+
+    let fsW, fsH;
+    if (viewW / viewH < targetRatio) {
+        fsW = viewW;
+        fsH = viewW / targetRatio;
+    } else {
+        fsH = viewH;
+        fsW = viewH * targetRatio;
+    }
+
+    fullscreenCanvas.width = Math.round(fsW);
+    fullscreenCanvas.height = Math.round(fsH);
+
+    // Center the canvas in the overlay
+    fullscreenCanvas.style.width = Math.round(fsW) + 'px';
+    fullscreenCanvas.style.height = Math.round(fsH) + 'px';
+    fullscreenCanvas.style.position = 'absolute';
+    fullscreenCanvas.style.top = Math.round((viewH - fsH) / 2) + 'px';
+    fullscreenCanvas.style.left = Math.round((viewW - fsW) / 2) + 'px';
 
     // Copy existing drawing to fullscreen canvas
     fullscreenCtx.fillStyle = '#FFFFFF';
     fullscreenCtx.fillRect(0, 0, fullscreenCanvas.width, fullscreenCanvas.height);
 
-    // Scale and replay strokes
+    // Scale and replay strokes (uniform scale since aspect ratios match)
     const scaleX = fullscreenCanvas.width / (canvas.width || 1);
     const scaleY = fullscreenCanvas.height / (canvas.height || 1);
 
@@ -2005,6 +2074,11 @@ function attemptRejoin() {
             showNotification('Reconnected!');
         } else {
             clearLocalStorage();
+            // Reset state
+            playerState.roomCode = null;
+            playerState.playerName = null;
+            playerState.playerAvatar = null;
+            playerState.currentPhase = 'join';
             showScreen('join');
             showJoinError('Could not rejoin. The room may no longer exist.');
         }
