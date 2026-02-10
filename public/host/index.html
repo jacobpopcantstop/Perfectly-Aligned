@@ -861,9 +861,7 @@
         }
 
         .prompt-card.dealt {
-            opacity: 1;
-            transform: translate3d(0, 0, 0);
-            animation: deal-card 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            animation: deal-card 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
         .prompt-card.dealt:nth-child(1) { animation-delay: 0.05s; }
@@ -1038,8 +1036,8 @@
 
         .submissions-gallery {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 25px;
             margin: 20px 0;
         }
 
@@ -2350,7 +2348,7 @@
                     </div>
 
                     <div class="center-actions mt-20">
-                        <button class="btn" id="draw-cards-btn" disabled>Draw Cards</button>
+                        <button class="btn btn-gold" id="draw-cards-btn" disabled>Draw Cards</button>
                     </div>
                 </div>
             </div>
@@ -2370,9 +2368,7 @@
                 </div>
 
                 <div id="prompt-cards-container" class="prompt-cards-container">
-                    <div class="prompt-card" id="prompt-card-0">&nbsp;</div>
-                    <div class="prompt-card" id="prompt-card-1">&nbsp;</div>
-                    <div class="prompt-card" id="prompt-card-2">&nbsp;</div>
+                    <!-- Cards injected by JS when judge draws prompts -->
                 </div>
 
                 <div class="center-actions mt-20">
@@ -2464,7 +2460,7 @@
                 </div>
 
                 <div class="center-actions mt-20">
-                    <button class="btn" id="next-round-btn">Next Round</button>
+                    <button class="btn btn-gold" id="next-round-btn">Next Round</button>
                 </div>
             </div>
 
@@ -2488,7 +2484,7 @@
                     </div>
 
                     <div class="center-actions mb-20">
-                        <button class="btn btn-danger" id="draw-curse-btn">Draw Curse Card</button>
+                        <button class="btn btn-danger" id="draw-curse-btn" style="font-size:1.2em; padding:16px 40px;">Draw Curse Card</button>
                     </div>
 
                     <!-- Curse Card Display -->

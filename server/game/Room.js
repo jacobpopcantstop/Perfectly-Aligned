@@ -116,6 +116,21 @@ export default class Room {
         return { success: true };
     }
 
+    setPlayerAvatar(playerId, avatar) {
+        const player = this.players.find(p => p.id === playerId);
+        if (!player) {
+            return { success: false, error: 'Player not found' };
+        }
+        // Check if avatar is already taken by another player
+        const taken = this.players.some(p => p.id !== playerId && p.avatar === avatar);
+        if (taken) {
+            return { success: false, error: 'Avatar already taken' };
+        }
+        player.avatar = avatar;
+        this.lastActivity = Date.now();
+        return { success: true, player };
+    }
+
     setPlayerDisconnected(playerId) {
         const player = this.players.find(p => p.id === playerId);
         if (player) {
