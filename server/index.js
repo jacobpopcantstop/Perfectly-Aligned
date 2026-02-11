@@ -619,7 +619,8 @@ io.on('connection', (socket) => {
 
         const result = room.setPlayerAvatar(socket.id, avatar);
         if (result.success) {
-            io.to(room.code).emit('room:playerJoined', {
+            // Emit a silent update (not room:playerJoined) to avoid spurious notifications
+            io.to(room.code).emit('room:playerUpdated', {
                 player: result.player,
                 players: room.getPlayersPublicData()
             });
@@ -740,6 +741,108 @@ io.on('connection', (socket) => {
             }
         }
         callback(result);
+    });
+
+    /**
+     * player:drawCurseCard
+     * The curser draws a curse card from their device.
+     */
+    socket.on('player:drawCurseCard', (callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
+        // Verify this player is the curser
+        if (!room.currentCurser || room.currentCurser.player.id !== socket.id) {
+            return callback({ success: false, error: 'Only the curser can draw a curse card' });
+        }
+
+        const result = room.drawCurseCard();
+        if (result.success) {
+            io.to(room.code).emit('game:curseCardDrawn', {
+                modifier: result.modifier
+            });
+        }
+        callback(result);
+    });
+
+    /**
+     * player:applyCurse
+     * The curser applies a drawn curse card to a target from their device.
+     */
+    socket.on('player:applyCurse', (data, callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
+        if (!room.currentCurser || room.currentCurser.player.id !== socket.id) {
+            return callback({ success: false, error: 'Only the curser can apply a curse' });
+        }
+
+        if (!data || typeof data !== 'object') {
+            return callback({ success: false, error: 'Invalid request data' });
+        }
+        const { targetIndex, modifier } = data;
+        const result = room.applyCurse(targetIndex, modifier);
+        if (result.success) {
+            io.to(room.code).emit('game:curseApplied', {
+                targetName: result.targetName,
+                modifier: result.modifier,
+                gameState: room.getState()
+            });
+        }
+        callback(result);
+    });
+
+    /**
+     * player:holdCurse
+     * The curser holds a curse card for a future round.
+     */
+    socket.on('player:holdCurse', (modifier, callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
+        if (!room.currentCurser || room.currentCurser.player.id !== socket.id) {
+            return callback({ success: false, error: 'Only the curser can hold a curse' });
+        }
+
+        const result = room.holdCurse(modifier);
+        if (result.success) {
+            io.to(room.code).emit('game:curseHeld', {
+                gameState: room.getState()
+            });
+        }
+        callback(result);
+    });
+
+    /**
+     * player:skipCurse
+     * The curser skips the curse phase from their device.
+     */
+    socket.on('player:skipCurse', (callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getRoom(socket, callback);
+        if (!room) return;
+
+        if (!room.currentCurser || room.currentCurser.player.id !== socket.id) {
+            return callback({ success: false, error: 'Only the curser can skip' });
+        }
+
+        // Advance past modifiers
+        room.gamePhase = 'scoring';
+        room.currentCurser = null;
+        callback({ success: true });
+
+        // Trigger next round
+        const roundResult = room.advanceRound();
+        if (roundResult.success) {
+            io.to(room.code).emit('game:newRound', {
+                round: room.currentRound,
+                judge: roundResult.judge,
+                gameState: room.getState()
+            });
+        }
     });
 
     /**

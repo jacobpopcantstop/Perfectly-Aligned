@@ -41,7 +41,8 @@ let playerState = {
     hasSubmitted: false,
     currentPhase: 'join',
     activeModifiers: [],
-    heldCurse: null
+    heldCurse: null,
+    isCurser: false
 };
 
 let currentAvatarIndex = 0;
@@ -153,6 +154,20 @@ function cacheElements() {
         gameoverWinner: document.getElementById('gameover-winner'),
         gameoverRank: document.getElementById('gameover-rank'),
         gameoverScores: document.getElementById('gameover-scores'),
+
+        // Curser controls
+        curserControls: document.getElementById('curser-controls'),
+        playerDrawCurseBtn: document.getElementById('player-draw-curse-btn'),
+        playerCurseCardDisplay: document.getElementById('player-curse-card-display'),
+        playerCurseIcon: document.getElementById('player-curse-icon'),
+        playerCurseName: document.getElementById('player-curse-name'),
+        playerCurseDesc: document.getElementById('player-curse-desc'),
+        playerCurseTargets: document.getElementById('player-curse-targets'),
+        playerCurseTargetList: document.getElementById('player-curse-target-list'),
+        playerCurseActions: document.getElementById('player-curse-actions'),
+        playerApplyCurseBtn: document.getElementById('player-apply-curse-btn'),
+        playerHoldCurseBtn: document.getElementById('player-hold-curse-btn'),
+        playerSkipCurseBtn: document.getElementById('player-skip-curse-btn'),
 
         // Disconnected
         disconnectedReason: document.getElementById('disconnect-reason'),
@@ -396,6 +411,54 @@ function setupEventListeners() {
         elements.stealCloseButton.addEventListener('click', hideStealModal);
     }
 
+    // Curser controls
+    if (elements.playerDrawCurseBtn) {
+        elements.playerDrawCurseBtn.addEventListener('click', () => {
+            elements.playerDrawCurseBtn.disabled = true;
+            elements.playerDrawCurseBtn.textContent = 'Drawing...';
+            socket.emit('player:drawCurseCard', (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Failed to draw curse');
+                    elements.playerDrawCurseBtn.disabled = false;
+                    elements.playerDrawCurseBtn.textContent = 'Draw Curse Card';
+                }
+            });
+        });
+    }
+    if (elements.playerApplyCurseBtn) {
+        elements.playerApplyCurseBtn.addEventListener('click', () => {
+            if (curserSelectedTargetIndex === null || !curserDrawnModifier) return;
+            elements.playerApplyCurseBtn.disabled = true;
+            socket.emit('player:applyCurse', { targetIndex: curserSelectedTargetIndex, modifier: curserDrawnModifier }, (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Failed to apply curse');
+                    elements.playerApplyCurseBtn.disabled = false;
+                }
+            });
+        });
+    }
+    if (elements.playerHoldCurseBtn) {
+        elements.playerHoldCurseBtn.addEventListener('click', () => {
+            if (!curserDrawnModifier) return;
+            elements.playerHoldCurseBtn.disabled = true;
+            socket.emit('player:holdCurse', curserDrawnModifier, (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Failed to hold curse');
+                    elements.playerHoldCurseBtn.disabled = false;
+                }
+            });
+        });
+    }
+    if (elements.playerSkipCurseBtn) {
+        elements.playerSkipCurseBtn.addEventListener('click', () => {
+            socket.emit('player:skipCurse', (response) => {
+                if (!response.success) {
+                    showNotification(response.error || 'Failed to skip');
+                }
+            });
+        });
+    }
+
     // Rejoin
     if (elements.rejoinButton) {
         elements.rejoinButton.addEventListener('click', attemptRejoin);
@@ -481,6 +544,10 @@ function setupSocketListeners() {
         }
     });
 
+    socket.on('room:playerUpdated', (data) => {
+        updateLobbyPlayerList(data.players);
+    });
+
     socket.on('room:playerLeft', (data) => {
         updateLobbyPlayerList(data.players);
     });
@@ -490,7 +557,10 @@ function setupSocketListeners() {
     });
 
     socket.on('room:playerReconnected', (data) => {
-        showNotification(`${data.playerName} reconnected!`);
+        // Only notify other players, not the reconnecting player themselves
+        if (data.playerId !== playerState.playerId) {
+            showNotification(`${data.playerName} reconnected!`);
+        }
     });
 
     socket.on('room:closed', (data) => {
@@ -536,7 +606,11 @@ function setupSocketListeners() {
                 showJudgeDrawPrompts();
             }
         } else {
-            updateWaitingMessage(`Alignment: ${data.fullName}`);
+            // Delay showing the result to match the host dice animation (adds suspense)
+            updateWaitingMessage('Rolling alignment...');
+            setTimeout(() => {
+                updateWaitingMessage(`Alignment: ${data.fullName}`);
+            }, 2800);
         }
     });
 
@@ -621,6 +695,9 @@ function setupSocketListeners() {
             elements.drawingTimerBar.style.width = '100%';
             elements.drawingTimerBar.classList.remove('warning');
         }
+
+        // Auto-enter fullscreen for a better drawing experience
+        setTimeout(() => enterFullscreen(), 150);
     });
 
     socket.on('game:timerStarted', (data) => {
@@ -737,10 +814,9 @@ function setupSocketListeners() {
 
         updateTokenDisplay();
 
-        // Show steal button if enough tokens
-        const totalTokens = getTotalTokens();
+        // Steal is only available when you become judge (see game:newRound)
         if (elements.stealBtnContainer) {
-            elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
+            elements.stealBtnContainer.style.display = 'none';
         }
 
     });
@@ -788,15 +864,27 @@ function setupSocketListeners() {
         const judge = data.judge;
         updateJudgeDisplay(judge);
 
+        // Hide curser controls from previous phase
+        hideCurserControls();
+
         if (playerState.isJudge) {
             updateWaitingMessage(`Round ${data.round} - You are the Judge!`);
             updateWaitingRole('judge');
             showJudgeRollButton();
+
+            // Steal is available when you become judge
+            const totalTokens = getTotalTokens();
+            if (elements.stealBtnContainer) {
+                elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
+            }
         } else {
             const judgeName = judge ? judge.name : 'Someone';
             updateWaitingMessage(`Round ${data.round} - ${judgeName} is judging`);
             updateWaitingRole('player');
             hideJudgeControls();
+            if (elements.stealBtnContainer) {
+                elements.stealBtnContainer.style.display = 'none';
+            }
         }
     });
 
@@ -817,11 +905,6 @@ function setupSocketListeners() {
             showNotification(`${data.stealerName} stole a point from ${data.targetName}!`);
         }
 
-        // Update steal button visibility
-        if (elements.stealBtnContainer) {
-            const totalTokens = getTotalTokens();
-            elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
-        }
     });
 
     socket.on('game:over', (data) => {
@@ -884,10 +967,12 @@ function setupSocketListeners() {
         showScreen('waiting');
 
         if (data.curser && data.curser.id === playerState.playerId) {
-            updateWaitingMessage('You get to curse another player! Watch the main screen.');
+            updateWaitingMessage('You lost the round — time for revenge!');
+            showCurserControls(data);
         } else {
             const curserName = data.curser ? data.curser.name : 'Someone';
             updateWaitingMessage(`${curserName} is choosing a curse...`);
+            hideCurserControls();
         }
 
         showNotification(`Curse phase! ${data.curser ? data.curser.name : 'A player'} is cursing someone!`);
@@ -896,6 +981,10 @@ function setupSocketListeners() {
     socket.on('game:curseCardDrawn', (data) => {
         if (data.modifier) {
             showNotification(`Curse drawn: ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
+            // If we are the curser, update our curse card display
+            if (playerState.isCurser) {
+                showPlayerCurseCard(data.modifier);
+            }
         }
     });
 
@@ -1935,7 +2024,20 @@ function renderJudgeSubmissions(submissions) {
                 c.style.pointerEvents = 'none';
             });
 
+            // Safety timeout: if no response after 5 seconds, reset the button
+            const safetyTimeout = setTimeout(() => {
+                if (elements.judgeConfirmWinnerBtn.textContent === 'Confirming...') {
+                    elements.judgeConfirmWinnerBtn.disabled = false;
+                    elements.judgeConfirmWinnerBtn.textContent = 'Confirm Winner';
+                    elements.judgeSubmissionsList.querySelectorAll('.judge-sub-card').forEach(c => {
+                        c.style.pointerEvents = '';
+                    });
+                    showNotification('No response from server. Try again.');
+                }
+            }, 5000);
+
             socket.emit('judge:selectWinner', selectedPlayerId, (response) => {
+                clearTimeout(safetyTimeout);
                 if (!response.success) {
                     showNotification(response.error || 'Failed to select winner');
                     elements.judgeConfirmWinnerBtn.disabled = false;
@@ -1943,6 +2045,8 @@ function renderJudgeSubmissions(submissions) {
                     elements.judgeSubmissionsList.querySelectorAll('.judge-sub-card').forEach(c => {
                         c.style.pointerEvents = '';
                     });
+                } else {
+                    elements.judgeConfirmWinnerBtn.textContent = 'Winner Selected!';
                 }
             });
         };
@@ -1992,6 +2096,92 @@ function hideStealModal() {
         elements.stealModal.classList.remove('active');
         elements.stealModal.style.display = 'none';
     }
+}
+
+// =============================================================================
+// CURSE CONTROLS (for when this player is the curser)
+// =============================================================================
+
+let curserModifierData = null;
+let curserDrawnModifier = null;
+let curserSelectedTargetIndex = null;
+
+function showCurserControls(data) {
+    playerState.isCurser = true;
+    curserModifierData = data;
+    curserDrawnModifier = null;
+    curserSelectedTargetIndex = null;
+
+    if (elements.curserControls) {
+        elements.curserControls.style.display = '';
+    }
+    if (elements.playerDrawCurseBtn) {
+        elements.playerDrawCurseBtn.style.display = '';
+        elements.playerDrawCurseBtn.disabled = false;
+    }
+    if (elements.playerCurseCardDisplay) elements.playerCurseCardDisplay.style.display = 'none';
+    if (elements.playerCurseTargets) elements.playerCurseTargets.style.display = 'none';
+    if (elements.playerCurseActions) elements.playerCurseActions.style.display = 'none';
+}
+
+function hideCurserControls() {
+    playerState.isCurser = false;
+    curserModifierData = null;
+    curserDrawnModifier = null;
+    curserSelectedTargetIndex = null;
+
+    if (elements.curserControls) {
+        elements.curserControls.style.display = 'none';
+    }
+}
+
+function showPlayerCurseCard(modifier) {
+    curserDrawnModifier = modifier;
+
+    if (elements.playerDrawCurseBtn) elements.playerDrawCurseBtn.style.display = 'none';
+    if (elements.playerCurseCardDisplay) {
+        elements.playerCurseCardDisplay.style.display = '';
+        if (elements.playerCurseIcon) elements.playerCurseIcon.textContent = modifier.icon || '\u26A0\uFE0F';
+        if (elements.playerCurseName) elements.playerCurseName.textContent = modifier.name;
+        if (elements.playerCurseDesc) elements.playerCurseDesc.textContent = modifier.description;
+    }
+    if (elements.playerCurseActions) elements.playerCurseActions.style.display = '';
+    if (elements.playerApplyCurseBtn) elements.playerApplyCurseBtn.disabled = true;
+
+    // Show target selection
+    showPlayerCurseTargets();
+}
+
+function showPlayerCurseTargets() {
+    if (!elements.playerCurseTargets || !elements.playerCurseTargetList || !curserModifierData) return;
+
+    elements.playerCurseTargets.style.display = '';
+    elements.playerCurseTargetList.innerHTML = '';
+    curserSelectedTargetIndex = null;
+
+    const curserIndex = curserModifierData.curserIndex;
+    const players = curserModifierData.gameState.players;
+
+    players.forEach((player, index) => {
+        if (player.isJudge || index === curserIndex) return;
+
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-secondary';
+        btn.style.cssText = 'padding:8px 14px; font-size:0.95em;';
+        btn.innerHTML = `<span>${player.avatar || ''}</span> ${escapeHtml(player.name)}`;
+        btn.addEventListener('click', () => {
+            elements.playerCurseTargetList.querySelectorAll('button').forEach(b => {
+                b.style.borderColor = '';
+                b.style.boxShadow = '';
+            });
+            btn.style.borderColor = '#FF1493';
+            btn.style.boxShadow = '0 0 10px rgba(255,20,147,0.5)';
+            curserSelectedTargetIndex = index;
+            if (elements.playerApplyCurseBtn) elements.playerApplyCurseBtn.disabled = false;
+        });
+
+        elements.playerCurseTargetList.appendChild(btn);
+    });
 }
 
 function executeSteal(targetId) {
@@ -2204,8 +2394,7 @@ function handleGameState(state) {
             }
             updateTokenDisplay();
             if (elements.stealBtnContainer) {
-                const totalTokens = getTotalTokens();
-                elements.stealBtnContainer.style.display = totalTokens >= TOKENS_REQUIRED_TO_STEAL ? '' : 'none';
+                elements.stealBtnContainer.style.display = 'none';
             }
             break;
 
