@@ -290,6 +290,16 @@ function setupEventListeners() {
         dom.endDrawingBtn.addEventListener('click', endDrawing);
     }
 
+    // Confirm winner (two-step: select card then confirm)
+    if (dom.confirmWinnerBtn) {
+        dom.confirmWinnerBtn.addEventListener('click', () => {
+            if (!selectedWinnerId) return;
+            dom.confirmWinnerBtn.disabled = true;
+            dom.confirmWinnerBtn.textContent = 'Confirming...';
+            selectWinner(selectedWinnerId);
+        });
+    }
+
     // Next round
     if (dom.nextRoundBtn) {
         dom.nextRoundBtn.addEventListener('click', nextRound);
@@ -361,6 +371,11 @@ function setupSocketListeners() {
         updateLobbyPlayers();
         updateStartButtonState();
         showNotification(`${data.player.name} joined!`, 'info');
+    });
+
+    socket.on('room:playerUpdated', (data) => {
+        gameState.players = data.players;
+        updateLobbyPlayers();
     });
 
     socket.on('room:playerLeft', (data) => {
@@ -1208,9 +1223,18 @@ function handleSubmissionsCollected(data) {
     renderSubmissionGallery(currentSubmissions);
 }
 
+let selectedWinnerId = null;
+
 function renderSubmissionGallery(submissions) {
     if (!dom.submissionGallery) return;
     dom.submissionGallery.innerHTML = '';
+    selectedWinnerId = null;
+
+    // Reset confirm winner button
+    if (dom.confirmWinnerBtn) {
+        dom.confirmWinnerBtn.disabled = true;
+        dom.confirmWinnerBtn.textContent = 'Confirm Winner';
+    }
 
     if (submissions.length === 0) {
         dom.submissionGallery.innerHTML = '<div class="no-submissions">No drawings were submitted this round.</div>';
@@ -1246,8 +1270,16 @@ function renderSubmissionGallery(submissions) {
             });
         }
 
+        // Click to select (not confirm) - requires Confirm Winner button click
         card.addEventListener('click', () => {
-            selectWinner(sub.playerId);
+            dom.submissionGallery.querySelectorAll('.submission-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+            card.classList.add('selected');
+            selectedWinnerId = sub.playerId;
+            if (dom.confirmWinnerBtn) {
+                dom.confirmWinnerBtn.disabled = false;
+            }
         });
 
         dom.submissionGallery.appendChild(card);

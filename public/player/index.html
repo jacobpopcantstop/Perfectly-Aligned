@@ -1398,7 +1398,7 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             z-index: 500;
-            background: #fff;
+            background: #1a1a2e;
         }
 
         .fullscreen-canvas-overlay.active {
@@ -1410,6 +1410,9 @@
             touch-action: none;
             cursor: crosshair;
             background: #fff;
+            border: 3px solid #FF69B4;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(255,105,180,0.3);
         }
 
         .floating-toolbar {
@@ -1696,6 +1699,36 @@
                 <button class="btn btn-gold" id="judge-end-timer-btn" style="display:none;">End Timer - Start Judging</button>
             </div>
 
+            <!-- Curser Controls (shown when this player gets to curse) -->
+            <div id="curser-controls" style="display:none; margin-top: 16px;">
+                <div class="section-label text-center" style="color:#FF69B4;">You're Cursing!</div>
+                <button class="btn btn-danger" id="player-draw-curse-btn" style="margin:10px auto;">Draw Curse Card</button>
+
+                <div id="player-curse-card-display" style="display:none; text-align:center; margin:12px 0;">
+                    <div style="font-size:2rem;" id="player-curse-icon"></div>
+                    <div style="font-weight:bold; color:#FFD700; font-size:1.1em;" id="player-curse-name"></div>
+                    <div style="color:#FFB6C1; font-size:0.9em; margin-top:4px;" id="player-curse-desc"></div>
+                </div>
+
+                <div id="player-curse-targets" style="display:none; margin:12px 0;">
+                    <div class="section-label text-center">Choose a Target</div>
+                    <div id="player-curse-target-list" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
+                </div>
+
+                <div id="player-curse-actions" style="display:none; text-align:center; margin-top:10px;">
+                    <button class="btn btn-danger" id="player-apply-curse-btn" disabled style="margin:4px;">Apply Curse</button>
+                    <button class="btn" id="player-hold-curse-btn" style="margin:4px;">Hold for Later</button>
+                    <button class="btn btn-secondary btn-small" id="player-skip-curse-btn" style="margin:4px;">Skip</button>
+                </div>
+            </div>
+
+            <!-- Steal: available when you are judge -->
+            <div id="steal-btn-container" class="mt-16" style="display:none;">
+                <button class="btn btn-gold" id="steal-btn">
+                    Steal a Point (3 Tokens)
+                </button>
+            </div>
+
             <div class="divider"></div>
 
             <div class="stats-row">
@@ -1837,10 +1870,8 @@
                 </div>
             </div>
 
-            <div id="steal-btn-container" class="mt-16" style="display:none;">
-                <button class="btn btn-gold" id="steal-btn">
-                    Steal a Point (3 Tokens)
-                </button>
+            <div id="steal-btn-container-old" class="mt-16" style="display:none;">
+                <!-- Steal moved to waiting screen when judge -->
             </div>
         </div>
     </div>
