@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: perfectly-aligned
+    runtime: node
+    plan: free
+    autoDeploy: true
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: MAX_DRAWING_DATA_URL_LENGTH
+        value: "1500000"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "10000"
+      - key: JOIN_RATE_LIMIT
+        value: "8"
+      - key: RECONNECT_RATE_LIMIT
+        value: "12"
+      - key: SUBMIT_RATE_LIMIT
+        value: "6"

@@ -52,7 +52,7 @@ export default class Room {
         return !this.gameStarted && this.players.length < this.maxPlayers;
     }
 
-    addPlayer(socketId, name, avatar) {
+    addPlayer(socketId, name, avatar, reconnectToken) {
         if (!this.canJoin()) {
             return { success: false, error: 'Cannot join room' };
         }
@@ -75,6 +75,7 @@ export default class Room {
             id: socketId,
             name: sanitized,
             avatar,
+            reconnectToken,
             score: 0,
             tokens: createInitialTokenState(),
             connected: true,
@@ -139,15 +140,18 @@ export default class Room {
         }
     }
 
-    reconnectPlayer(oldId, newId, name) {
-        const player = this.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+    reconnectPlayer(newId, name, reconnectToken, nextReconnectToken) {
+        const player = this.players.find(
+            p => p.name.toLowerCase() === name.toLowerCase() && p.reconnectToken === reconnectToken
+        );
         if (player) {
             player.id = newId;
             player.connected = true;
+            player.reconnectToken = nextReconnectToken;
             this.lastActivity = Date.now();
             return { success: true, player };
         }
-        return { success: false, error: 'Player not found' };
+        return { success: false, error: 'Player not found or reconnect token invalid' };
     }
 
     startGame(settings = {}) {

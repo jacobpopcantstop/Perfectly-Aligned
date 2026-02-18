@@ -34,6 +34,7 @@ let playerState = {
     playerName: null,
     playerAvatar: null,
     roomCode: null,
+    reconnectToken: null,
     connected: false,
     isJudge: false,
     score: 0,
@@ -1121,6 +1122,7 @@ function handleJoinSubmit(e) {
             playerState.playerId = response.playerId;
             playerState.playerName = playerName;
             playerState.roomCode = roomCode;
+            playerState.reconnectToken = response.reconnectToken || null;
 
             // Get the avatar assigned by the server
             if (response.gameState && response.gameState.players) {
@@ -2206,6 +2208,7 @@ function saveToLocalStorage() {
         localStorage.setItem('pa_playerName', playerState.playerName);
         localStorage.setItem('pa_roomCode', playerState.roomCode);
         localStorage.setItem('pa_playerAvatar', playerState.playerAvatar);
+        localStorage.setItem('pa_reconnectToken', playerState.reconnectToken || '');
     } catch (e) {
         // localStorage may not be available
     }
@@ -2217,6 +2220,7 @@ function clearLocalStorage() {
         localStorage.removeItem('pa_playerName');
         localStorage.removeItem('pa_roomCode');
         localStorage.removeItem('pa_playerAvatar');
+        localStorage.removeItem('pa_reconnectToken');
     } catch (e) {
         // localStorage may not be available
     }
@@ -2228,7 +2232,8 @@ function getStoredSession() {
             playerId: localStorage.getItem('pa_playerId'),
             playerName: localStorage.getItem('pa_playerName'),
             roomCode: localStorage.getItem('pa_roomCode'),
-            playerAvatar: localStorage.getItem('pa_playerAvatar')
+            playerAvatar: localStorage.getItem('pa_playerAvatar'),
+            reconnectToken: localStorage.getItem('pa_reconnectToken')
         };
     } catch (e) {
         return null;
@@ -2237,20 +2242,22 @@ function getStoredSession() {
 
 function attemptRejoin() {
     const stored = getStoredSession();
-    if (!stored || !stored.roomCode || !stored.playerName) {
+    if (!stored || !stored.roomCode || !stored.playerName || !stored.reconnectToken) {
         showScreen('join');
         return;
     }
 
     socket.emit('player:reconnect', {
         roomCode: stored.roomCode,
-        playerName: stored.playerName
+        playerName: stored.playerName,
+        reconnectToken: stored.reconnectToken
     }, (response) => {
         if (response.success) {
             playerState.playerId = socket.id;
             playerState.playerName = stored.playerName;
             playerState.playerAvatar = stored.playerAvatar;
             playerState.roomCode = stored.roomCode;
+            playerState.reconnectToken = response.reconnectToken || stored.reconnectToken;
 
             // Update localStorage with new socket ID
             saveToLocalStorage();

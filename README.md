@@ -82,6 +82,26 @@ npm run dev
 npm start
 ```
 
+### Environment Variables
+
+Copy `.env.example` and configure as needed:
+
+- `PORT` - Server port (default: `3000`)
+- `ALLOWED_ORIGINS` - Comma-separated allowlist for Socket.IO origins
+- `MAX_DRAWING_DATA_URL_LENGTH` - Maximum accepted drawing payload size (characters)
+- `RATE_LIMIT_WINDOW_MS` - Socket event rate-limit window in milliseconds
+- `JOIN_RATE_LIMIT` - Max `player:joinRoom` calls per window per socket
+- `RECONNECT_RATE_LIMIT` - Max `player:reconnect` calls per window per socket
+- `SUBMIT_RATE_LIMIT` - Max `player:submitDrawing` calls per window per socket
+
+### Health Check
+
+- `GET /healthz` returns process uptime and room stats for deployment health probes.
+
+### Render Deployment
+
+- A Render Blueprint file is included at `render.yaml`.
+
 ## Card Decks
 
 - **Core Mix:** General scenarios, dilemmas, historical events
