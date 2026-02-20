@@ -560,22 +560,30 @@ function setupSocketListeners() {
     // ---- Room events ----
 
     socket.on('room:playerJoined', (data) => {
+        usedAvatars = (data.players || []).map(p => p.avatar).filter(Boolean);
         updateLobbyPlayerList(data.players);
+        updateAvatarPreview();
         if (data.player && data.player.id !== playerState.playerId) {
             showNotification(`${data.player.name} joined!`);
         }
     });
 
     socket.on('room:playerUpdated', (data) => {
+        usedAvatars = (data.players || []).map(p => p.avatar).filter(Boolean);
         updateLobbyPlayerList(data.players);
+        updateAvatarPreview();
     });
 
     socket.on('room:playerLeft', (data) => {
+        usedAvatars = (data.players || []).map(p => p.avatar).filter(Boolean);
         updateLobbyPlayerList(data.players);
+        updateAvatarPreview();
     });
 
     socket.on('room:playerDisconnected', (data) => {
+        usedAvatars = (data.players || []).map(p => p.avatar).filter(Boolean);
         updateLobbyPlayerList(data.players);
+        updateAvatarPreview();
     });
 
     socket.on('room:playerReconnected', (data) => {
@@ -1047,14 +1055,7 @@ function fetchUsedAvatars(roomCode) {
         .then(data => {
             if (data.exists && data.usedAvatars) {
                 usedAvatars = data.usedAvatars;
-                // If current avatar is taken, auto-skip to next available
-                const currentAvatar = AVATARS[currentAvatarIndex];
-                const currentIsMine = playerState.playerAvatar === currentAvatar;
-                if (usedAvatars.includes(currentAvatar) && !currentIsMine) {
-                    cycleAvatar(1);
-                } else {
-                    updateAvatarPreview();
-                }
+                updateAvatarPreview();
             }
         })
         .catch(() => { /* ignore fetch errors */ });
