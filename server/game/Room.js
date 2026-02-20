@@ -46,13 +46,54 @@ export default class Room {
 
         this.createdAt = Date.now();
         this.lastActivity = Date.now();
+        this.offlineMode = false;
     }
 
     canJoin() {
         return !this.gameStarted && this.players.length < this.maxPlayers;
     }
 
-    addPlayer(socketId, name, avatar, reconnectToken) {
+    addOfflinePlayer(name) {
+        if (this.players.length >= this.maxPlayers) {
+            return { success: false, error: 'Room is full' };
+        }
+        const sanitized = sanitizePlayerName(name, 20);
+        if (!sanitized) {
+            return { success: false, error: 'Invalid name' };
+        }
+        if (this.players.some(p => p.name.toLowerCase() === sanitized.toLowerCase())) {
+            return { success: false, error: 'Name already taken' };
+        }
+        const usedAvatars = this.players.map(p => p.avatar);
+        const avatar = AVATARS.find(a => !usedAvatars.includes(a)) || AVATARS[0];
+        const id = 'offline_' + Math.random().toString(36).substring(2, 11);
+        const player = {
+            id,
+            name: sanitized,
+            avatar,
+            score: 0,
+            tokens: createInitialTokenState(),
+            connected: true,
+            isJudge: false,
+            activeModifiers: [],
+            heldCurse: null
+        };
+        this.players.push(player);
+        this.lastActivity = Date.now();
+        return { success: true, player };
+    }
+
+    removeOfflinePlayer(playerId) {
+        const index = this.players.findIndex(p => p.id === playerId);
+        if (index === -1) {
+            return { success: false, error: 'Player not found' };
+        }
+        this.players.splice(index, 1);
+        this.lastActivity = Date.now();
+        return { success: true };
+    }
+
+    addPlayer(socketId, name, avatar) {
         if (!this.canJoin()) {
             return { success: false, error: 'Cannot join room' };
         }
@@ -341,6 +382,21 @@ export default class Room {
     }
 
     collectSubmissions() {
+        // In offline mode, create placeholder submissions for all non-judge players
+        if (this.offlineMode) {
+            this.players.forEach(p => {
+                if (!p.isJudge) {
+                    this.submissions.set(p.id, {
+                        playerId: p.id,
+                        playerName: p.name,
+                        playerAvatar: p.avatar,
+                        drawing: null,
+                        caption: '',
+                        timestamp: Date.now()
+                    });
+                }
+            });
+        }
         this.gamePhase = 'judging';
         this.lastActivity = Date.now();
     }
@@ -636,6 +692,7 @@ export default class Room {
             selectedWinner: this.selectedWinner,
             settings: this.settings,
             modifiersEnabled: this.modifiersEnabled,
+            offlineMode: this.offlineMode,
             currentCurser: this.currentCurser ? {
                 playerId: this.currentCurser.player.id,
                 playerName: this.currentCurser.player.name,

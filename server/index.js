@@ -181,15 +181,23 @@ io.on('connection', (socket) => {
      * host:createRoom
      * Creates a new game room and makes this socket the host.
      */
-    socket.on('host:createRoom', (callback) => {
+    socket.on('host:createRoom', (data, callback) => {
+        // Support both old callback-only and new data+callback signatures
+        if (typeof data === 'function') {
+            callback = data;
+            data = {};
+        }
         if (typeof callback !== 'function') return;
         try {
             const room = gameManager.createRoom(socket.id);
+            if (data && data.offlineMode) {
+                room.offlineMode = true;
+            }
             socket.join(room.code);
             socket.roomCode = room.code;
             socket.isHost = true;
 
-            console.log(`[Room] Created: ${room.code} by host ${socket.id}`);
+            console.log(`[Room] Created: ${room.code} by host ${socket.id} (${room.offlineMode ? 'offline' : 'online'} mode)`);
 
             callback({
                 success: true,
@@ -566,6 +574,55 @@ io.on('connection', (socket) => {
             });
 
             console.log(`[Room ${room.code}] Player kicked: ${playerId}`);
+        }
+        callback(result);
+    });
+
+    /**
+     * host:addOfflinePlayer
+     * Adds a virtual player in offline mode (no phone connection needed).
+     */
+    socket.on('host:addOfflinePlayer', (data, callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
+
+        if (!room.offlineMode) {
+            return callback({ success: false, error: 'Room is not in offline mode' });
+        }
+        if (!data || !data.name) {
+            return callback({ success: false, error: 'Player name is required' });
+        }
+
+        const result = room.addOfflinePlayer(data.name);
+        if (result.success) {
+            io.to(room.code).emit('room:playerJoined', {
+                player: result.player,
+                players: room.getPlayersPublicData()
+            });
+        }
+        callback(result);
+    });
+
+    /**
+     * host:removeOfflinePlayer
+     * Removes a virtual player in offline mode.
+     */
+    socket.on('host:removeOfflinePlayer', (playerId, callback) => {
+        if (typeof callback !== 'function') return;
+        const room = getHostRoom(socket, callback);
+        if (!room) return;
+
+        if (!room.offlineMode) {
+            return callback({ success: false, error: 'Room is not in offline mode' });
+        }
+
+        const result = room.removeOfflinePlayer(playerId);
+        if (result.success) {
+            io.to(room.code).emit('room:playerLeft', {
+                playerId,
+                players: room.getPlayersPublicData()
+            });
         }
         callback(result);
     });

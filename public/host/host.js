@@ -54,6 +54,7 @@ let gameState = {
     prompts: [],
     selectedPrompt: null,
     submissions: [],
+    offlineMode: false,
     settings: {
         selectedDecks: ['core_white'],
         timerDuration: 90,
@@ -197,6 +198,20 @@ function cacheDomElements() {
 
     // Notification container
     dom.notificationContainer = document.getElementById('notification-container');
+
+    // Game mode toggle
+    dom.gameModeSelection = document.getElementById('game-mode-selection');
+    dom.modeOnlineBtn = document.getElementById('mode-online-btn');
+    dom.modeOfflineBtn = document.getElementById('mode-offline-btn');
+
+    // Offline player entry
+    dom.offlinePlayerEntry = document.getElementById('offline-player-entry');
+    dom.offlinePlayerName = document.getElementById('offline-player-name');
+    dom.addOfflinePlayerBtn = document.getElementById('add-offline-player-btn');
+    dom.lobbyEmptyMsg = document.getElementById('lobby-empty-msg');
+
+    // Judging instruction (dynamic text)
+    dom.judgingInstruction = document.getElementById('judging-instruction');
 }
 
 // =============================================================================
@@ -355,6 +370,24 @@ function setupEventListeners() {
             if (e.target === dom.stealModal) {
                 closeStealModal();
             }
+        });
+    }
+
+    // Game mode toggle
+    if (dom.modeOnlineBtn) {
+        dom.modeOnlineBtn.addEventListener('click', () => setGameMode('online'));
+    }
+    if (dom.modeOfflineBtn) {
+        dom.modeOfflineBtn.addEventListener('click', () => setGameMode('offline'));
+    }
+
+    // Offline player entry
+    if (dom.addOfflinePlayerBtn) {
+        dom.addOfflinePlayerBtn.addEventListener('click', addOfflinePlayer);
+    }
+    if (dom.offlinePlayerName) {
+        dom.offlinePlayerName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addOfflinePlayer();
         });
     }
 }
@@ -573,6 +606,7 @@ function resetToCreateRoom() {
     gameState.roomCode = null;
     gameState.players = [];
     gameState.gameStarted = false;
+    gameState.offlineMode = false;
 
     if (dom.createRoomBtn) {
         dom.createRoomBtn.style.display = '';
@@ -594,6 +628,14 @@ function resetToCreateRoom() {
         dom.playerCount.textContent = '0 / 8 players';
     }
 
+    // Re-show mode selection, hide offline entry
+    if (dom.gameModeSelection) dom.gameModeSelection.style.display = '';
+    if (dom.offlinePlayerEntry) dom.offlinePlayerEntry.style.display = 'none';
+
+    // Reset mode buttons to default (online)
+    if (dom.modeOnlineBtn) dom.modeOnlineBtn.classList.add('active');
+    if (dom.modeOfflineBtn) dom.modeOfflineBtn.classList.remove('active');
+
     showScreen('lobby');
 }
 
@@ -614,6 +656,7 @@ function syncFromServerState(state) {
     gameState.settings.targetScore = state.targetScore || state.settings?.targetScore || gameState.settings.targetScore;
     gameState.settings.timerDuration = state.settings?.timerDuration || gameState.settings.timerDuration;
     gameState.settings.modifiersEnabled = state.modifiersEnabled !== undefined ? state.modifiersEnabled : gameState.settings.modifiersEnabled;
+    if (state.offlineMode !== undefined) gameState.offlineMode = state.offlineMode;
 
     if (state.judge) {
         gameState.judge = state.judge;
@@ -627,41 +670,89 @@ function syncFromServerState(state) {
 // ROOM & LOBBY
 // =============================================================================
 
+function setGameMode(mode) {
+    gameState.offlineMode = (mode === 'offline');
+
+    // Toggle active class on mode buttons
+    if (dom.modeOnlineBtn) {
+        dom.modeOnlineBtn.classList.toggle('active', mode === 'online');
+    }
+    if (dom.modeOfflineBtn) {
+        dom.modeOfflineBtn.classList.toggle('active', mode === 'offline');
+    }
+}
+
 function createRoom() {
     if (dom.createRoomBtn) dom.createRoomBtn.disabled = true;
 
-    socket.emit('host:createRoom', (response) => {
+    socket.emit('host:createRoom', { offlineMode: gameState.offlineMode }, (response) => {
         if (response.success) {
             gameState.roomCode = response.roomCode;
             syncFromServerState(response.gameState);
 
-            // Show room code
-            if (dom.roomCodeDisplay) {
-                dom.roomCodeDisplay.classList.add('visible');
-            }
-            if (dom.roomCode) {
-                dom.roomCode.textContent = response.roomCode;
-            }
-            if (dom.roomCodeRepeat) {
-                dom.roomCodeRepeat.textContent = response.roomCode;
-            }
-            if (dom.joinUrl) {
-                const url = `${window.location.origin}/play/${response.roomCode}`;
-                dom.joinUrl.textContent = `Join at: ${url}`;
+            // In offline mode, hide room code/QR and show player entry form
+            if (gameState.offlineMode) {
+                if (dom.roomCodeDisplay) dom.roomCodeDisplay.classList.remove('visible');
+                if (dom.offlinePlayerEntry) dom.offlinePlayerEntry.style.display = '';
+            } else {
+                // Show room code
+                if (dom.roomCodeDisplay) {
+                    dom.roomCodeDisplay.classList.add('visible');
+                }
+                if (dom.roomCode) {
+                    dom.roomCode.textContent = response.roomCode;
+                }
+                if (dom.roomCodeRepeat) {
+                    dom.roomCodeRepeat.textContent = response.roomCode;
+                }
+                if (dom.joinUrl) {
+                    const url = `${window.location.origin}/play/${response.roomCode}`;
+                    dom.joinUrl.textContent = `Join at: ${url}`;
+                }
+
+                // Generate QR code for joining
+                generateRoomQR(response.roomCode);
             }
 
-            // Generate QR code for joining
-            generateRoomQR(response.roomCode);
-
-            // Hide create button, show lobby settings
+            // Hide create button and mode selection
             if (dom.createRoomBtn) {
                 dom.createRoomBtn.style.display = 'none';
             }
+            if (dom.gameModeSelection) {
+                dom.gameModeSelection.style.display = 'none';
+            }
 
-            showNotification(`Room ${response.roomCode} created!`, 'success');
+            const modeLabel = gameState.offlineMode ? 'Offline room' : `Room ${response.roomCode}`;
+            showNotification(`${modeLabel} created!`, 'success');
         } else {
             showNotification(`Failed to create room: ${response.error}`, 'error');
             if (dom.createRoomBtn) dom.createRoomBtn.disabled = false;
+        }
+    });
+}
+
+function addOfflinePlayer() {
+    if (!dom.offlinePlayerName) return;
+    const name = dom.offlinePlayerName.value.trim();
+    if (!name) {
+        showNotification('Enter a player name', 'warning');
+        return;
+    }
+
+    socket.emit('host:addOfflinePlayer', { name }, (response) => {
+        if (response.success) {
+            dom.offlinePlayerName.value = '';
+            dom.offlinePlayerName.focus();
+        } else {
+            showNotification(`Failed: ${response.error}`, 'error');
+        }
+    });
+}
+
+function removeOfflinePlayer(playerId) {
+    socket.emit('host:removeOfflinePlayer', playerId, (response) => {
+        if (!response.success) {
+            showNotification(`Failed: ${response.error}`, 'error');
         }
     });
 }
@@ -671,6 +762,15 @@ function updateLobbyPlayers() {
 
     dom.lobbyPlayerGrid.innerHTML = '';
 
+    if (gameState.players.length === 0) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.classList.add('lobby-empty-msg');
+        emptyMsg.textContent = gameState.offlineMode
+            ? 'Add players using the form above...'
+            : 'Waiting for players to join...';
+        dom.lobbyPlayerGrid.appendChild(emptyMsg);
+    }
+
     gameState.players.forEach(player => {
         const card = document.createElement('div');
         card.classList.add('player-lobby-card');
@@ -678,11 +778,22 @@ function updateLobbyPlayers() {
             card.classList.add('disconnected');
         }
 
+        const isOfflinePlayer = player.id && player.id.startsWith('offline_');
         card.innerHTML = `
             <div class="player-lobby-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
             <div class="player-lobby-name">${escapeHtml(player.name)}</div>
-            ${!player.connected ? '<div class="player-status">Disconnected</div>' : ''}
+            ${!player.connected && !isOfflinePlayer ? '<div class="player-status">Disconnected</div>' : ''}
+            ${isOfflinePlayer && !gameState.gameStarted ? '<button class="remove-offline-btn" data-player-id="' + player.id + '">Remove</button>' : ''}
         `;
+
+        // Attach remove handler for offline players
+        const removeBtn = card.querySelector('.remove-offline-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeOfflinePlayer(player.id);
+            });
+        }
 
         dom.lobbyPlayerGrid.appendChild(card);
     });
@@ -1082,11 +1193,23 @@ function startDrawingPhase(data) {
         dom.drawingAlignmentDisplay.textContent = data.alignmentFullName;
     }
 
+    // Update drawing instruction for offline mode
+    const instructionTitle = document.querySelector('.drawing-instruction-title');
+    if (instructionTitle) {
+        instructionTitle.textContent = gameState.offlineMode
+            ? 'DRAW ON PAPER NOW!'
+            : 'EVERYONE DRAW NOW!';
+    }
+
     // Show active modifiers for all players
     renderActiveModifiers();
 
-    // Reset submission counter
-    updateSubmissionCounter(0);
+    // Reset submission counter (hide in offline mode)
+    if (gameState.offlineMode) {
+        if (dom.submissionCounter) dom.submissionCounter.textContent = 'Players are drawing on paper...';
+    } else {
+        updateSubmissionCounter(0);
+    }
 
     // Setup timer display
     const duration = data.timeLimit || gameState.settings.timerDuration;
@@ -1203,8 +1326,8 @@ function endDrawing() {
 function handleSubmissionsCollected(data) {
     currentSubmissions = data.submissions || [];
 
-    // If no submissions, skip judging and go to next round
-    if (currentSubmissions.length === 0) {
+    // If no submissions and not offline mode, skip judging
+    if (currentSubmissions.length === 0 && !gameState.offlineMode) {
         showNotification('No drawings were submitted. Skipping to next round.', 'warning', 3000);
         nextRound();
         return;
@@ -1218,6 +1341,13 @@ function handleSubmissionsCollected(data) {
     }
     if (dom.judgingPrompt) {
         dom.judgingPrompt.textContent = gameState.selectedPrompt || '---';
+    }
+
+    // Update judging instruction for offline mode
+    if (dom.judgingInstruction) {
+        dom.judgingInstruction.textContent = gameState.offlineMode
+            ? 'Hold up your paper drawings! Judge, pick your favorite by clicking their name.'
+            : 'Hold up your drawings! Judge, pick your favorite.';
     }
 
     renderSubmissionGallery(currentSubmissions);
@@ -1250,24 +1380,37 @@ function renderSubmissionGallery(submissions) {
         card.style.animationDelay = `${index * 150}ms`;
         card.classList.add('revealing');
 
-        card.innerHTML = `
-            <div class="submission-drawing">
-                <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}" />
-                <button class="expand-btn" title="Expand image">&#x1F50D;</button>
-            </div>
-            <div class="submission-info">
-                <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
-                <span class="submission-name">${escapeHtml(sub.playerName)}</span>
-            </div>
-        `;
+        if (gameState.offlineMode || !sub.drawing) {
+            // Offline mode: show player name card (no drawing image)
+            card.innerHTML = `
+                <div class="submission-drawing" style="min-height:120px; display:flex; align-items:center; justify-content:center; background:rgba(255,105,180,0.08);">
+                    <span style="font-size:3em;">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                </div>
+                <div class="submission-info">
+                    <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                    <span class="submission-name">${escapeHtml(sub.playerName)}</span>
+                </div>
+            `;
+        } else {
+            card.innerHTML = `
+                <div class="submission-drawing">
+                    <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}" />
+                    <button class="expand-btn" title="Expand image">&#x1F50D;</button>
+                </div>
+                <div class="submission-info">
+                    <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                    <span class="submission-name">${escapeHtml(sub.playerName)}</span>
+                </div>
+            `;
 
-        // Expand button opens lightbox without selecting winner
-        const expandBtn = card.querySelector('.expand-btn');
-        if (expandBtn) {
-            expandBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                openImageLightbox(sub.drawing, sub.playerName);
-            });
+            // Expand button opens lightbox without selecting winner
+            const expandBtn = card.querySelector('.expand-btn');
+            if (expandBtn) {
+                expandBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openImageLightbox(sub.drawing, sub.playerName);
+                });
+            }
         }
 
         // Click to select (not confirm) - requires Confirm Winner button click
@@ -1932,18 +2075,31 @@ function renderWinningGallery(drawings) {
         const promptText = drawing.prompt ? escapeHtml(drawing.prompt) : '';
         const alignText = drawing.alignment ? escapeHtml(drawing.alignment) : '';
 
-        card.innerHTML = `
-            <img class="winning-card-img" src="${drawing.drawing}" alt="Winning drawing by ${escapeHtml(drawing.playerName)}" />
-            <div class="winning-card-info">
-                <div class="winning-card-round">Round ${drawing.round}${alignText ? ' \u2022 ' + alignText : ''}</div>
-                <div class="winning-card-player">${drawing.playerAvatar || '\uD83C\uDFA8'} ${escapeHtml(drawing.playerName)}</div>
-                ${promptText ? `<div class="winning-card-prompt">"${promptText}"</div>` : ''}
-            </div>
-        `;
-
-        card.addEventListener('click', () => {
-            openImageLightbox(drawing.drawing, drawing.playerName);
-        });
+        if (drawing.drawing) {
+            card.innerHTML = `
+                <img class="winning-card-img" src="${drawing.drawing}" alt="Winning drawing by ${escapeHtml(drawing.playerName)}" />
+                <div class="winning-card-info">
+                    <div class="winning-card-round">Round ${drawing.round}${alignText ? ' \u2022 ' + alignText : ''}</div>
+                    <div class="winning-card-player">${drawing.playerAvatar || '\uD83C\uDFA8'} ${escapeHtml(drawing.playerName)}</div>
+                    ${promptText ? `<div class="winning-card-prompt">"${promptText}"</div>` : ''}
+                </div>
+            `;
+            card.addEventListener('click', () => {
+                openImageLightbox(drawing.drawing, drawing.playerName);
+            });
+        } else {
+            // Offline mode: no drawing image, show avatar + name
+            card.innerHTML = `
+                <div style="min-height:120px; display:flex; align-items:center; justify-content:center; font-size:3em;">
+                    ${drawing.playerAvatar || '\uD83C\uDFA8'}
+                </div>
+                <div class="winning-card-info">
+                    <div class="winning-card-round">Round ${drawing.round}${alignText ? ' \u2022 ' + alignText : ''}</div>
+                    <div class="winning-card-player">${drawing.playerAvatar || '\uD83C\uDFA8'} ${escapeHtml(drawing.playerName)}</div>
+                    ${promptText ? `<div class="winning-card-prompt">"${promptText}"</div>` : ''}
+                </div>
+            `;
+        }
 
         gallery.appendChild(card);
     });

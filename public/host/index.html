@@ -1820,6 +1820,107 @@
             margin: 20px 0;
         }
 
+        /* ================================================================
+           GAME MODE TOGGLE
+           ================================================================ */
+        .game-mode-selection {
+            margin: 20px 0;
+        }
+
+        .mode-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .mode-btn {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, rgba(255,105,180,0.1), rgba(199,21,133,0.05));
+            border: 3px solid #FF69B4;
+            border-radius: 15px;
+            padding: 20px 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #FFB6C1;
+        }
+
+        .mode-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(255,105,180,0.3);
+        }
+
+        .mode-btn.active {
+            border-color: #00FF00;
+            box-shadow: 0 0 20px rgba(0,255,0,0.3);
+            background: linear-gradient(135deg, rgba(0,255,0,0.1), rgba(0,200,0,0.05));
+        }
+
+        .mode-icon {
+            display: block;
+            font-size: 2em;
+            margin-bottom: 8px;
+        }
+
+        .mode-label {
+            display: block;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #FFB6C1;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+        }
+
+        .mode-btn.active .mode-label {
+            color: #00FF00;
+        }
+
+        .mode-desc {
+            display: block;
+            font-size: 0.8em;
+            color: #FF69B4;
+            opacity: 0.8;
+        }
+
+        /* Offline Player Entry */
+        .offline-player-entry {
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .offline-player-form {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .offline-player-form input {
+            width: 200px;
+        }
+
+        .player-lobby-card .remove-offline-btn {
+            display: block;
+            margin: 8px auto 0;
+            font-family: 'Courier New', monospace;
+            background: rgba(255,68,68,0.2);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 4px 12px;
+            font-size: 0.75em;
+            color: #ff6666;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .player-lobby-card .remove-offline-btn:hover {
+            background: rgba(255,68,68,0.4);
+        }
+
         .hidden {
             display: none !important;
         }
@@ -2185,6 +2286,23 @@
             <h1 class="game-title">PERFECTLY ALIGNED</h1>
             <p class="game-subtitle">~ The creative party game for the morally dubious ~</p>
 
+            <!-- Game Mode Selection -->
+            <div id="game-mode-selection" class="game-mode-selection">
+                <h3 class="section-heading mb-10">Game Mode</h3>
+                <div class="mode-toggle">
+                    <button class="mode-btn active" id="mode-online-btn" data-mode="online">
+                        <span class="mode-icon">&#x1F310;</span>
+                        <span class="mode-label">Online</span>
+                        <span class="mode-desc">Players join on their phones</span>
+                    </button>
+                    <button class="mode-btn" id="mode-offline-btn" data-mode="offline">
+                        <span class="mode-icon">&#x270F;&#xFE0F;</span>
+                        <span class="mode-label">Offline</span>
+                        <span class="mode-desc">Draw on paper, same room</span>
+                    </button>
+                </div>
+            </div>
+
             <div class="center-actions">
                 <button class="btn" id="create-room-btn">Create Room</button>
             </div>
@@ -2200,8 +2318,17 @@
 
             <!-- Player Lobby List -->
             <h3 class="section-heading mt-20">Players</h3>
+
+            <!-- Offline Player Entry (hidden by default) -->
+            <div id="offline-player-entry" class="offline-player-entry" style="display:none;">
+                <div class="offline-player-form">
+                    <input type="text" id="offline-player-name" placeholder="Player name" maxlength="20">
+                    <button class="btn btn-small" id="add-offline-player-btn">Add Player</button>
+                </div>
+            </div>
+
             <div id="player-lobby-list" class="player-lobby-list">
-                <div class="lobby-empty-msg">Waiting for players to join...</div>
+                <div class="lobby-empty-msg" id="lobby-empty-msg">Waiting for players to join...</div>
             </div>
 
             <hr class="section-divider">
@@ -2425,7 +2552,7 @@
                     </div>
                 </div>
 
-                <p class="judging-instruction">
+                <p class="judging-instruction" id="judging-instruction">
                     Hold up your drawings! Judge, pick your favorite.
                 </p>
 
