@@ -39,6 +39,22 @@ const TOKEN_TYPES = {
 const TOKEN_TYPE_KEYS = Object.keys(TOKEN_TYPES);
 const DEFAULT_AVATAR = '/assets/images/avatars/alienlady.png';
 const DEFAULT_AVATAR_FALLBACK = '?';
+const AVATARS = [
+    '/assets/images/avatars/alienlady.png',
+    '/assets/images/avatars/cowboy.png',
+    '/assets/images/avatars/cyberdude.png',
+    '/assets/images/avatars/cyberlady.png',
+    '/assets/images/avatars/dadskeleton.png',
+    '/assets/images/avatars/elfgirl.png',
+    '/assets/images/avatars/king.png',
+    '/assets/images/avatars/lionguy.png',
+    '/assets/images/avatars/lizardguy.png',
+    '/assets/images/avatars/monster.png',
+    '/assets/images/avatars/mushroomgunner.png',
+    '/assets/images/avatars/sleepybuddy.png',
+    '/assets/images/avatars/vampiregirl.png',
+    '/assets/images/avatars/warriorqueen.png'
+];
 
 // =============================================================================
 // GAME STATE
@@ -74,6 +90,7 @@ let currentSubmissions = [];
 let pendingModifierData = null;
 let scoreboardDebounceTimer = null;
 let hostInitiatedRoll = false;
+let currentOfflineAvatarIndex = 0;
 
 // =============================================================================
 // SOCKET CONNECTION
@@ -210,6 +227,9 @@ function cacheDomElements() {
     dom.offlinePlayerEntry = document.getElementById('offline-player-entry');
     dom.offlinePlayerName = document.getElementById('offline-player-name');
     dom.addOfflinePlayerBtn = document.getElementById('add-offline-player-btn');
+    dom.offlineAvatarDisplay = document.getElementById('offline-avatar-display');
+    dom.offlineAvatarPrevBtn = document.getElementById('offline-avatar-prev');
+    dom.offlineAvatarNextBtn = document.getElementById('offline-avatar-next');
     dom.lobbyEmptyMsg = document.getElementById('lobby-empty-msg');
 
     // Judging instruction (dynamic text)
@@ -249,6 +269,7 @@ function playSound(name) {
 document.addEventListener('DOMContentLoaded', () => {
     cacheDomElements();
     loadSounds();
+    updateOfflineAvatarPreview();
     setupJudgeChoiceGrid();
     setupEventListeners();
     setupSocketListeners();
@@ -391,6 +412,12 @@ function setupEventListeners() {
         dom.offlinePlayerName.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') addOfflinePlayer();
         });
+    }
+    if (dom.offlineAvatarPrevBtn) {
+        dom.offlineAvatarPrevBtn.addEventListener('click', () => cycleOfflineAvatar(-1));
+    }
+    if (dom.offlineAvatarNextBtn) {
+        dom.offlineAvatarNextBtn.addEventListener('click', () => cycleOfflineAvatar(1));
     }
 }
 
@@ -682,6 +709,32 @@ function setGameMode(mode) {
     if (dom.modeOfflineBtn) {
         dom.modeOfflineBtn.classList.toggle('active', mode === 'offline');
     }
+
+    updateOfflineAvatarPreview();
+}
+
+function getUsedAvatarSet() {
+    return new Set((gameState.players || []).map(p => p.avatar).filter(Boolean));
+}
+
+function cycleOfflineAvatar(direction) {
+    if (!AVATARS.length) return;
+    const used = getUsedAvatarSet();
+    let attempts = 0;
+    do {
+        currentOfflineAvatarIndex = (currentOfflineAvatarIndex + direction + AVATARS.length) % AVATARS.length;
+        attempts++;
+    } while (used.has(AVATARS[currentOfflineAvatarIndex]) && attempts < AVATARS.length);
+    updateOfflineAvatarPreview();
+}
+
+function updateOfflineAvatarPreview() {
+    if (!dom.offlineAvatarDisplay) return;
+    const avatar = AVATARS[currentOfflineAvatarIndex] || DEFAULT_AVATAR;
+    const used = getUsedAvatarSet();
+    const isTaken = used.has(avatar);
+    dom.offlineAvatarDisplay.innerHTML = renderAvatarHtml(avatar, 'Offline avatar selection');
+    dom.offlineAvatarDisplay.style.opacity = isTaken ? '0.45' : '1';
 }
 
 function createRoom() {
@@ -741,10 +794,12 @@ function addOfflinePlayer() {
         return;
     }
 
-    socket.emit('host:addOfflinePlayer', { name }, (response) => {
+    const avatar = AVATARS[currentOfflineAvatarIndex] || DEFAULT_AVATAR;
+    socket.emit('host:addOfflinePlayer', { name, avatar }, (response) => {
         if (response.success) {
             dom.offlinePlayerName.value = '';
             dom.offlinePlayerName.focus();
+            cycleOfflineAvatar(1);
         } else {
             showNotification(`Failed: ${response.error}`, 'error');
         }
@@ -803,6 +858,8 @@ function updateLobbyPlayers() {
     if (dom.playerCount) {
         dom.playerCount.textContent = `${gameState.players.length} / 8 players`;
     }
+
+    updateOfflineAvatarPreview();
 }
 
 function updateStartButtonState() {

@@ -1934,6 +1934,40 @@
             width: 200px;
         }
 
+        .offline-avatar-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .offline-avatar-arrow {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 2px solid #FF69B4;
+            background: rgba(255, 105, 180, 0.12);
+            color: #FFB6C1;
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .offline-avatar-preview {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: 2px solid #FF69B4;
+            background: rgba(255, 105, 180, 0.08);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+
         .player-lobby-card .remove-offline-btn {
             display: block;
             margin: 8px auto 0;
@@ -2352,6 +2386,11 @@
 
             <!-- Offline Player Entry (hidden by default) -->
             <div id="offline-player-entry" class="offline-player-entry" style="display:none;">
+                <div class="offline-avatar-selector">
+                    <button class="offline-avatar-arrow" id="offline-avatar-prev" type="button" aria-label="Previous avatar">&larr;</button>
+                    <div class="offline-avatar-preview" id="offline-avatar-display"></div>
+                    <button class="offline-avatar-arrow" id="offline-avatar-next" type="button" aria-label="Next avatar">&rarr;</button>
+                </div>
                 <div class="offline-player-form">
                     <input type="text" id="offline-player-name" placeholder="Player name" maxlength="20">
                     <button class="btn btn-small" id="add-offline-player-btn">Add Player</button>

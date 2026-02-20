@@ -53,7 +53,7 @@ export default class Room {
         return !this.gameStarted && this.players.length < this.maxPlayers;
     }
 
-    addOfflinePlayer(name) {
+    addOfflinePlayer(name, avatar) {
         if (this.players.length >= this.maxPlayers) {
             return { success: false, error: 'Room is full' };
         }
@@ -65,12 +65,15 @@ export default class Room {
             return { success: false, error: 'Name already taken' };
         }
         const usedAvatars = this.players.map(p => p.avatar);
-        const avatar = AVATARS.find(a => !usedAvatars.includes(a)) || AVATARS[0];
+        const requestedAvatarAvailable = avatar && AVATARS.includes(avatar) && !usedAvatars.includes(avatar);
+        const selectedAvatar = requestedAvatarAvailable
+            ? avatar
+            : (AVATARS.find(a => !usedAvatars.includes(a)) || AVATARS[0]);
         const id = 'offline_' + Math.random().toString(36).substring(2, 11);
         const player = {
             id,
             name: sanitized,
-            avatar,
+            avatar: selectedAvatar,
             score: 0,
             tokens: createInitialTokenState(),
             connected: true,
@@ -93,7 +96,7 @@ export default class Room {
         return { success: true };
     }
 
-    addPlayer(socketId, name, avatar) {
+    addPlayer(socketId, name, avatar, reconnectToken) {
         if (!this.canJoin()) {
             return { success: false, error: 'Cannot join room' };
         }

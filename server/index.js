@@ -594,7 +594,7 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Player name is required' });
         }
 
-        const result = room.addOfflinePlayer(data.name);
+        const result = room.addOfflinePlayer(data.name, data.avatar);
         if (result.success) {
             io.to(room.code).emit('room:playerJoined', {
                 player: result.player,
