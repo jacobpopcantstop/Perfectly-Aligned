@@ -378,6 +378,18 @@
             transition: transform 0.2s;
         }
 
+        /* Force selector avatar art to fill the selector circle (big visual jump) */
+        .avatar-selector .avatar-display .avatar-wrap {
+            width: 84%;
+            height: 84%;
+        }
+
+        .avatar-selector .avatar-display .avatar-img,
+        .avatar-selector .avatar-display .avatar-fallback-badge {
+            width: 100%;
+            height: 100%;
+        }
+
         .avatar-selector .avatar-arrow {
             width: 48px;
             height: 48px;
@@ -426,6 +438,15 @@
 
         .lobby-player-avatar {
             font-size: 2.2rem;
+        }
+
+        .lobby-player-avatar .avatar-wrap,
+        .score-avatar .avatar-wrap,
+        .judge-avatar .avatar-wrap,
+        .winner-avatar .avatar-wrap,
+        .target-avatar .avatar-wrap {
+            width: 1.35em;
+            height: 1.35em;
         }
 
         .player-list .player-name {
