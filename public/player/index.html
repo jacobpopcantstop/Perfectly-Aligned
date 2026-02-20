@@ -324,8 +324,8 @@
         }
 
         .avatar-img {
-            width: 1em;
-            height: 1em;
+            width: 1.15em;
+            height: 1.15em;
             object-fit: contain;
             vertical-align: middle;
             image-rendering: pixelated;
@@ -335,8 +335,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 1em;
-            height: 1em;
+            width: 1.15em;
+            height: 1.15em;
             vertical-align: middle;
         }
 
@@ -366,9 +366,9 @@
         }
 
         .avatar-selector .avatar-display {
-            font-size: 3rem;
-            width: 80px;
-            height: 80px;
+            font-size: clamp(6rem, 14vw, 8rem);
+            width: clamp(140px, 30vw, 200px);
+            height: clamp(140px, 30vw, 200px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -421,7 +421,11 @@
         }
 
         .player-list .player-avatar {
-            font-size: 1.4rem;
+            font-size: 2rem;
+        }
+
+        .lobby-player-avatar {
+            font-size: 2.2rem;
         }
 
         .player-list .player-name {
@@ -548,7 +552,7 @@
         }
 
         .judge-display .judge-avatar {
-            font-size: 2rem;
+            font-size: 2.8rem;
         }
 
         .judge-display .judge-info {
@@ -918,7 +922,7 @@
         }
 
         .winner-display .winner-avatar {
-            font-size: 3rem;
+            font-size: 4.4rem;
         }
 
         .winner-display .winner-name {
@@ -993,7 +997,7 @@
         }
 
         .score-row .score-avatar {
-            font-size: 1.2rem;
+            font-size: 1.9rem;
         }
 
         .score-row .score-name {
@@ -1085,7 +1089,7 @@
         }
 
         .steal-target-btn .target-avatar {
-            font-size: 1.8rem;
+            font-size: 2.4rem;
         }
 
         .steal-target-btn .target-name {
@@ -1581,9 +1585,9 @@
             }
 
             .avatar-selector .avatar-display {
-                font-size: 2.4rem;
-                width: 64px;
-                height: 64px;
+                font-size: clamp(4.8rem, 12vw, 6rem);
+                width: clamp(120px, 26vw, 150px);
+                height: clamp(120px, 26vw, 150px);
             }
 
             .prompt-display {
