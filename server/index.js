@@ -11,6 +11,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import GameManager from './game/GameManager.js';
@@ -26,14 +27,28 @@ const __dirname = path.dirname(__filename);
 // ---------------------------------------------------------------------------
 const app = express();
 const httpServer = createServer(app);
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
 const io = new Server(httpServer, {
     cors: {
-        origin: "*",
+        origin: (origin, callback) => {
+            if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+            return callback(new Error('Socket origin not allowed by ALLOWED_ORIGINS'));
+        },
         methods: ["GET", "POST"]
     }
 });
 
 const PORT = process.env.PORT || 3000;
+const MAX_DRAWING_DATA_URL_LENGTH = Number(process.env.MAX_DRAWING_DATA_URL_LENGTH || 1_500_000);
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 10_000);
+const JOIN_RATE_LIMIT = Number(process.env.JOIN_RATE_LIMIT || 8);
+const RECONNECT_RATE_LIMIT = Number(process.env.RECONNECT_RATE_LIMIT || 12);
+const SUBMIT_RATE_LIMIT = Number(process.env.SUBMIT_RATE_LIMIT || 6);
 const gameManager = new GameManager();
 
 // ---------------------------------------------------------------------------
@@ -77,6 +92,14 @@ app.get('/api/room/:code', (req, res) => {
     }
 });
 
+app.get('/healthz', (req, res) => {
+    res.status(200).json({
+        ok: true,
+        uptimeSeconds: Math.floor(process.uptime()),
+        roomStats: gameManager.getStats()
+    });
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -109,6 +132,39 @@ function getRoom(socket, callback) {
         return null;
     }
     return room;
+}
+
+function generateReconnectToken() {
+    return crypto.randomBytes(24).toString('hex');
+}
+
+function isValidDrawingPayload(drawingData) {
+    if (typeof drawingData !== 'string') return false;
+    if (!drawingData.startsWith('data:image/png;base64,')) return false;
+    if (drawingData.length > MAX_DRAWING_DATA_URL_LENGTH) return false;
+    return true;
+}
+
+function checkSocketRateLimit(socket, eventKey, maxRequests, callback) {
+    if (!socket._rateLimitBuckets) {
+        socket._rateLimitBuckets = new Map();
+    }
+
+    const now = Date.now();
+    const bucket = socket._rateLimitBuckets.get(eventKey) || [];
+    const recent = bucket.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+
+    if (recent.length >= maxRequests) {
+        callback({
+            success: false,
+            error: `Too many requests for ${eventKey}. Please wait a moment and try again.`
+        });
+        return false;
+    }
+
+    recent.push(now);
+    socket._rateLimitBuckets.set(eventKey, recent);
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -616,6 +672,7 @@ io.on('connection', (socket) => {
      */
     socket.on('player:joinRoom', (data, callback) => {
         if (typeof callback !== 'function') return;
+        if (!checkSocketRateLimit(socket, 'player:joinRoom', JOIN_RATE_LIMIT, callback)) return;
         if (!data || typeof data !== 'object') {
             return callback({ success: false, error: 'Invalid request data' });
         }
@@ -636,7 +693,8 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Room is full or game has already started' });
         }
 
-        const result = room.addPlayer(socket.id, playerName, avatar);
+        const reconnectToken = generateReconnectToken();
+        const result = room.addPlayer(socket.id, playerName, avatar, reconnectToken);
         if (result.success) {
             socket.join(room.code);
             socket.roomCode = room.code;
@@ -646,13 +704,18 @@ io.on('connection', (socket) => {
             console.log(`[Room ${room.code}] Player joined: ${playerName} (${socket.id})`);
 
             io.to(room.code).emit('room:playerJoined', {
-                player: result.player,
+                player: {
+                    id: result.player.id,
+                    name: result.player.name,
+                    avatar: result.player.avatar
+                },
                 players: room.getPlayersPublicData()
             });
 
             callback({
                 success: true,
                 playerId: socket.id,
+                reconnectToken,
                 gameState: room.getState()
             });
         } else {
@@ -691,6 +754,7 @@ io.on('connection', (socket) => {
      */
     socket.on('player:submitDrawing', (data, callback) => {
         if (typeof callback !== 'function') return;
+        if (!checkSocketRateLimit(socket, 'player:submitDrawing', SUBMIT_RATE_LIMIT, callback)) return;
         const room = getRoom(socket, callback);
         if (!room) return;
 
@@ -698,13 +762,8 @@ io.on('connection', (socket) => {
         const drawing = data && data.drawing ? data.drawing : data;
         const caption = data && data.caption ? data.caption : '';
 
-        // Validate drawing data to prevent XSS via img src
-        if (typeof drawing !== 'string' || !drawing.startsWith('data:image/')) {
+        if (!isValidDrawingPayload(drawing)) {
             return callback({ success: false, error: 'Invalid drawing data' });
-        }
-        // Limit drawing size to 5MB
-        if (drawing.length > 5 * 1024 * 1024) {
-            return callback({ success: false, error: 'Drawing data too large' });
         }
 
         const result = room.submitDrawing(socket.id, drawing, caption);
@@ -908,13 +967,14 @@ io.on('connection', (socket) => {
      */
     socket.on('player:reconnect', (data, callback) => {
         if (typeof callback !== 'function') return;
+        if (!checkSocketRateLimit(socket, 'player:reconnect', RECONNECT_RATE_LIMIT, callback)) return;
         if (!data || typeof data !== 'object') {
             return callback({ success: false, error: 'Invalid request data' });
         }
-        const { roomCode, playerName } = data;
+        const { roomCode, playerName, reconnectToken } = data;
 
-        if (!roomCode || !playerName) {
-            return callback({ success: false, error: 'Room code and player name are required' });
+        if (!roomCode || !playerName || !reconnectToken) {
+            return callback({ success: false, error: 'Room code, player name, and reconnect token are required' });
         }
 
         const room = gameManager.getRoom(roomCode.toUpperCase());
@@ -922,7 +982,8 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Room not found' });
         }
 
-        const result = room.reconnectPlayer(null, socket.id, playerName);
+        const nextReconnectToken = generateReconnectToken();
+        const result = room.reconnectPlayer(socket.id, playerName, reconnectToken, nextReconnectToken);
         if (result.success) {
             socket.join(room.code);
             socket.roomCode = room.code;
@@ -938,6 +999,7 @@ io.on('connection', (socket) => {
 
             callback({
                 success: true,
+                reconnectToken: nextReconnectToken,
                 gameState: room.getState()
             });
         } else {
@@ -1128,5 +1190,13 @@ httpServer.listen(PORT, () => {
   └─────────────────────────────────────────────────────────────┘
     `);
 });
+
+function shutdown() {
+    gameManager.shutdown();
+    httpServer.close(() => process.exit(0));
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 export { app, io };
