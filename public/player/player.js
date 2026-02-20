@@ -14,7 +14,24 @@
 // CONSTANTS
 // =============================================================================
 
-const AVATARS = ['🎨','🎭','🎪','🎯','🎲','🎸','🌟','⚡','🔥','💎','🎩','👑'];
+const AVATARS = [
+    '/assets/images/avatars/alienlady.png',
+    '/assets/images/avatars/cowboy.png',
+    '/assets/images/avatars/cyberdude.png',
+    '/assets/images/avatars/cyberlady.png',
+    '/assets/images/avatars/dadskeleton.png',
+    '/assets/images/avatars/elfgirl.png',
+    '/assets/images/avatars/king.png',
+    '/assets/images/avatars/lionguy.png',
+    '/assets/images/avatars/lizardguy.png',
+    '/assets/images/avatars/monster.png',
+    '/assets/images/avatars/mushroomgunner.png',
+    '/assets/images/avatars/sleepybuddy.png',
+    '/assets/images/avatars/vampiregirl.png',
+    '/assets/images/avatars/warriorqueen.png'
+];
+const DEFAULT_AVATAR = AVATARS[0];
+const DEFAULT_AVATAR_FALLBACK = '?';
 
 const RECONNECT_DELAY_MS = 3000;
 const NOTIFICATION_DURATION_MS = 3000;
@@ -43,7 +60,8 @@ let playerState = {
     currentPhase: 'join',
     activeModifiers: [],
     heldCurse: null,
-    isCurser: false
+    isCurser: false,
+    pendingAvatarSync: null
 };
 
 let currentAvatarIndex = 0;
@@ -514,8 +532,11 @@ function setupSocketListeners() {
         }
 
         // If we were in a game, attempt rejoin
-        if (playerState.roomCode && playerState.playerName && playerState.currentPhase !== 'join') {
+        const shouldRejoin = playerState.roomCode && playerState.playerName && playerState.currentPhase !== 'join';
+        if (shouldRejoin) {
             attemptRejoin();
+        } else if (playerState.pendingAvatarSync) {
+            syncAvatarSelection(playerState.pendingAvatarSync);
         }
     });
 
@@ -541,7 +562,7 @@ function setupSocketListeners() {
     socket.on('room:playerJoined', (data) => {
         updateLobbyPlayerList(data.players);
         if (data.player && data.player.id !== playerState.playerId) {
-            showNotification(`${data.player.avatar || ''} ${data.player.name} joined!`);
+            showNotification(`${data.player.name} joined!`);
         }
     });
 
@@ -920,7 +941,7 @@ function setupSocketListeners() {
                 elements.gameoverWinner.textContent = 'You win the game!';
                 elements.gameoverWinner.classList.add('winner');
             } else {
-                elements.gameoverWinner.textContent = `${winner.avatar || ''} ${winner.name} wins the game!`;
+                elements.gameoverWinner.innerHTML = `${renderAvatarHtml(winner.avatar || DEFAULT_AVATAR, `${winner.name} avatar`)} ${escapeHtml(winner.name)} wins the game!`;
                 elements.gameoverWinner.classList.remove('winner');
             }
         }
@@ -943,7 +964,7 @@ function setupSocketListeners() {
                 const meClass = isMe ? 'is-me' : '';
                 return `<div class="score-row ${rankClass} ${meClass}">
                     <span class="score-rank">${getOrdinal(i + 1)}</span>
-                    <span class="score-avatar">${s.avatar || ''}</span>
+                    <span class="score-avatar">${renderAvatarHtml(s.avatar || DEFAULT_AVATAR, `${s.name} avatar`)}</span>
                     <span class="score-name">${escapeHtml(s.name)}</span>
                     <span class="score-value">${s.score}</span>
                 </div>`;
@@ -1037,8 +1058,34 @@ function fetchUsedAvatars(roomCode) {
         .catch(() => { /* ignore fetch errors */ });
 }
 
+function isAvatarImagePath(avatar) {
+    return typeof avatar === 'string' && avatar.startsWith('/assets/images/avatars/');
+}
+
+function renderAvatarHtml(avatar, altText) {
+    if (isAvatarImagePath(avatar)) {
+        return `<span class="avatar-wrap"><img class="avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(altText || 'Avatar')}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" /><span class="avatar-fallback-badge" style="display:none;">${DEFAULT_AVATAR_FALLBACK}</span></span>`;
+    }
+    return escapeHtml(avatar || DEFAULT_AVATAR_FALLBACK);
+}
+
+function syncAvatarSelection(avatar, onFailure) {
+    if (!avatar || !socket || !socket.connected || !playerState.roomCode) return;
+    socket.emit('player:selectAvatar', { avatar }, (response) => {
+        if (response && response.success) {
+            playerState.playerAvatar = avatar;
+            playerState.pendingAvatarSync = null;
+            saveToLocalStorage();
+            fetchUsedAvatars(playerState.roomCode);
+        } else if (typeof onFailure === 'function') {
+            onFailure(response);
+        }
+    });
+}
+
 function cycleAvatar(direction) {
     const startIndex = currentAvatarIndex;
+    const previousAvatar = AVATARS[startIndex];
     let attempts = 0;
     do {
         currentAvatarIndex = (currentAvatarIndex + direction + AVATARS.length) % AVATARS.length;
@@ -1046,22 +1093,28 @@ function cycleAvatar(direction) {
     } while (usedAvatars.includes(AVATARS[currentAvatarIndex]) && AVATARS[currentAvatarIndex] !== playerState.playerAvatar && attempts < AVATARS.length);
     updateAvatarPreview();
 
-    // If we're in the lobby (already joined), emit avatar change to server
-    if (playerState.roomCode && socket && socket.connected) {
-        const newAvatar = AVATARS[currentAvatarIndex];
-        socket.emit('player:selectAvatar', { avatar: newAvatar }, (response) => {
-            if (response && response.success) {
-                playerState.playerAvatar = newAvatar;
+    const newAvatar = AVATARS[currentAvatarIndex];
+    playerState.playerAvatar = newAvatar;
+    saveToLocalStorage();
+
+    // In lobby, sync immediately when online, otherwise queue for reconnect.
+    if (playerState.roomCode) {
+        if (socket && socket.connected) {
+            syncAvatarSelection(newAvatar, (response) => {
+                currentAvatarIndex = AVATARS.indexOf(previousAvatar);
+                if (currentAvatarIndex < 0) currentAvatarIndex = 0;
+                playerState.playerAvatar = AVATARS[currentAvatarIndex];
+                playerState.pendingAvatarSync = null;
                 saveToLocalStorage();
-            } else {
-                // Revert to previous avatar on failure
-                currentAvatarIndex = AVATARS.indexOf(playerState.playerAvatar) || 0;
                 updateAvatarPreview();
                 if (response && response.error) {
                     showNotification(response.error);
                 }
-            }
-        });
+            });
+        } else {
+            playerState.pendingAvatarSync = newAvatar;
+            saveToLocalStorage();
+        }
     }
 }
 
@@ -1069,7 +1122,7 @@ function updateAvatarPreview() {
     if (elements.avatarPreview) {
         const avatar = AVATARS[currentAvatarIndex];
         const isTaken = usedAvatars.includes(avatar);
-        elements.avatarPreview.textContent = avatar;
+        elements.avatarPreview.innerHTML = renderAvatarHtml(avatar, 'Selected avatar');
         elements.avatarPreview.style.opacity = isTaken ? '0.3' : '1';
     }
 }
@@ -1187,7 +1240,7 @@ function updateLobbyPlayerList(players) {
         const disconnectedClass = p.connected === false ? 'disconnected' : '';
         const meClass = isMe ? 'is-me' : '';
         return `<div class="lobby-player ${disconnectedClass} ${meClass}">
-            <span class="lobby-player-avatar">${p.avatar || ''}</span>
+            <span class="lobby-player-avatar">${renderAvatarHtml(p.avatar || DEFAULT_AVATAR, `${p.name} avatar`)}</span>
             <span class="lobby-player-name">${escapeHtml(p.name)}${isMe ? ' (you)' : ''}</span>
             ${p.connected === false ? '<span class="lobby-player-status">disconnected</span>' : ''}
         </div>`;
@@ -1984,7 +2037,7 @@ function renderJudgeSubmissions(submissions) {
         card.innerHTML = `
             <img src="${sub.drawing}" alt="Drawing by ${escapeHtml(sub.playerName)}">
             <div class="sub-player-info">
-                <span>${sub.playerAvatar || ''}</span>
+                <span>${renderAvatarHtml(sub.playerAvatar || DEFAULT_AVATAR, `${sub.playerName} avatar`)}</span>
                 <span>${escapeHtml(sub.playerName)}</span>
             </div>
             <button class="expand-btn" title="Expand image">&#x1F50D;</button>
@@ -2074,7 +2127,7 @@ function showStealModal(players) {
 
     elements.stealTargetList.innerHTML = targets.map(t =>
         `<li><button class="steal-target-btn" data-target-id="${t.id}">
-            <span class="target-avatar">${t.avatar || ''}</span>
+            <span class="target-avatar">${renderAvatarHtml(t.avatar || DEFAULT_AVATAR, `${t.name} avatar`)}</span>
             <span class="target-name">${escapeHtml(t.name)}</span>
             <span class="target-score">Score: ${t.score}</span>
         </button></li>`
@@ -2170,7 +2223,7 @@ function showPlayerCurseTargets() {
         const btn = document.createElement('button');
         btn.className = 'btn btn-secondary';
         btn.style.cssText = 'padding:8px 14px; font-size:0.95em;';
-        btn.innerHTML = `<span>${player.avatar || ''}</span> ${escapeHtml(player.name)}`;
+        btn.innerHTML = `${renderAvatarHtml(player.avatar || DEFAULT_AVATAR, `${player.name} avatar`)} ${escapeHtml(player.name)}`;
         btn.addEventListener('click', () => {
             elements.playerCurseTargetList.querySelectorAll('button').forEach(b => {
                 b.style.borderColor = '';
@@ -2262,13 +2315,17 @@ function attemptRejoin() {
             // Update localStorage with new socket ID
             saveToLocalStorage();
 
-            if (response.gameState) {
-                handleGameState(response.gameState);
-            } else {
-                showScreen('lobby');
-            }
+        if (response.gameState) {
+            handleGameState(response.gameState);
+        } else {
+            showScreen('lobby');
+        }
 
-            showNotification('Reconnected!');
+        if (playerState.pendingAvatarSync) {
+            syncAvatarSelection(playerState.pendingAvatarSync);
+        }
+
+        showNotification('Reconnected!');
         } else {
             clearLocalStorage();
             // Reset state
@@ -2294,11 +2351,17 @@ function handleGameState(state) {
 
     if (me) {
         playerState.playerId = me.id;
+        playerState.playerAvatar = me.avatar || playerState.playerAvatar;
         playerState.isJudge = me.isJudge;
         playerState.score = me.score;
         playerState.tokens = { ...me.tokens };
         playerState.activeModifiers = me.activeModifiers || [];
         playerState.heldCurse = me.heldCurse || null;
+
+        const idx = AVATARS.indexOf(playerState.playerAvatar);
+        if (idx !== -1) {
+            currentAvatarIndex = idx;
+        }
     }
 
     playerState.currentAlignment = state.currentAlignment;
@@ -2491,7 +2554,7 @@ function updateJudgeDisplay(judge) {
         elements.waitingJudgeName.textContent = judge.name || '';
     }
     if (elements.waitingJudgeAvatar && judge) {
-        elements.waitingJudgeAvatar.textContent = judge.avatar || '\uD83D\uDC51';
+        elements.waitingJudgeAvatar.innerHTML = renderAvatarHtml(judge.avatar || DEFAULT_AVATAR, `${judge.name || 'Judge'} avatar`);
     }
 }
 

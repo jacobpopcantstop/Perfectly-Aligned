@@ -37,6 +37,8 @@ const TOKEN_TYPES = {
 };
 
 const TOKEN_TYPE_KEYS = Object.keys(TOKEN_TYPES);
+const DEFAULT_AVATAR = '/assets/images/avatars/alienlady.png';
+const DEFAULT_AVATAR_FALLBACK = '?';
 
 // =============================================================================
 // GAME STATE
@@ -780,7 +782,7 @@ function updateLobbyPlayers() {
 
         const isOfflinePlayer = player.id && player.id.startsWith('offline_');
         card.innerHTML = `
-            <div class="player-lobby-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
+            <div class="player-lobby-avatar">${renderAvatarHtml(player.avatar || DEFAULT_AVATAR, `${player.name} avatar`)}</div>
             <div class="player-lobby-name">${escapeHtml(player.name)}</div>
             ${!player.connected && !isOfflinePlayer ? '<div class="player-status">Disconnected</div>' : ''}
             ${isOfflinePlayer && !gameState.gameStarted ? '<button class="remove-offline-btn" data-player-id="' + player.id + '">Remove</button>' : ''}
@@ -920,7 +922,7 @@ function updateGameUI() {
     const judge = gameState.judge || gameState.players.find(p => p.isJudge);
     if (judge) {
         if (dom.judgeAvatarDisplay) {
-            dom.judgeAvatarDisplay.textContent = judge.avatar || '\uD83C\uDFA8';
+            dom.judgeAvatarDisplay.innerHTML = renderAvatarHtml(judge.avatar || DEFAULT_AVATAR, `${judge.name} avatar`);
         }
         if (dom.judgeNameDisplay) {
             dom.judgeNameDisplay.textContent = escapeHtml(judge.name);
@@ -1384,10 +1386,10 @@ function renderSubmissionGallery(submissions) {
             // Offline mode: show player name card (no drawing image)
             card.innerHTML = `
                 <div class="submission-drawing" style="min-height:120px; display:flex; align-items:center; justify-content:center; background:rgba(255,105,180,0.08);">
-                    <span style="font-size:3em;">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                    <span style="font-size:3em;">${renderAvatarHtml(sub.playerAvatar || DEFAULT_AVATAR, `${sub.playerName} avatar`)}</span>
                 </div>
                 <div class="submission-info">
-                    <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                    <span class="submission-avatar">${renderAvatarHtml(sub.playerAvatar || DEFAULT_AVATAR, `${sub.playerName} avatar`)}</span>
                     <span class="submission-name">${escapeHtml(sub.playerName)}</span>
                 </div>
             `;
@@ -1398,7 +1400,7 @@ function renderSubmissionGallery(submissions) {
                     <button class="expand-btn" title="Expand image">&#x1F50D;</button>
                 </div>
                 <div class="submission-info">
-                    <span class="submission-avatar">${sub.playerAvatar || '\uD83C\uDFA8'}</span>
+                    <span class="submission-avatar">${renderAvatarHtml(sub.playerAvatar || DEFAULT_AVATAR, `${sub.playerName} avatar`)}</span>
                     <span class="submission-name">${escapeHtml(sub.playerName)}</span>
                 </div>
             `;
@@ -1487,7 +1489,9 @@ function showResultsPhase(data) {
     // Show winner announcement
     const winner = gameState.players.find(p => p.id === data.winnerId);
     if (dom.winnerAvatar) {
-        dom.winnerAvatar.textContent = winner ? (winner.avatar || '\uD83C\uDFA8') : '\uD83C\uDFC6';
+        dom.winnerAvatar.innerHTML = winner
+            ? renderAvatarHtml(winner.avatar || DEFAULT_AVATAR, `${winner.name} avatar`)
+            : DEFAULT_AVATAR_FALLBACK;
     }
     if (dom.winnerName) {
         dom.winnerName.textContent = escapeHtml(data.winnerName);
@@ -1535,7 +1539,7 @@ function renderTokenAwards() {
 
         playerRow.innerHTML = `
             <div class="token-player-info">
-                <span class="token-player-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+                <span class="token-player-avatar">${renderAvatarHtml(player.avatar || DEFAULT_AVATAR, `${player.name} avatar`)}</span>
                 <span class="token-player-name">${escapeHtml(player.name)}</span>
             </div>
             <div class="token-buttons">
@@ -1674,7 +1678,7 @@ function resetRoundUI() {
     if (dom.submissionGallery) dom.submissionGallery.innerHTML = '';
 
     // Reset results
-    if (dom.winnerAvatar) dom.winnerAvatar.textContent = '\uD83C\uDFA8';
+    if (dom.winnerAvatar) dom.winnerAvatar.innerHTML = renderAvatarHtml(DEFAULT_AVATAR, 'Winner avatar');
     if (dom.winnerName) dom.winnerName.textContent = '---';
     if (dom.tokenAwards) dom.tokenAwards.innerHTML = '';
 
@@ -1699,7 +1703,7 @@ function showModifierPhase(data) {
 
     const curser = data.curser;
     if (dom.curserAvatar) {
-        dom.curserAvatar.textContent = curser.avatar || '\uD83D\uDE08';
+        dom.curserAvatar.innerHTML = renderAvatarHtml(curser.avatar || DEFAULT_AVATAR, `${curser.name} avatar`);
     }
     if (dom.curserName) {
         dom.curserName.textContent = escapeHtml(curser.name);
@@ -1783,7 +1787,7 @@ function showCurseTargetSelection(modifier) {
         const targetBtn = document.createElement('button');
         targetBtn.classList.add('curse-target-card');
         targetBtn.innerHTML = `
-            <span class="target-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+            <span class="target-avatar">${renderAvatarHtml(player.avatar || DEFAULT_AVATAR, `${player.name} avatar`)}</span>
             <span class="target-name">${escapeHtml(player.name)}</span>
         `;
 
@@ -1899,7 +1903,7 @@ function _renderScoreboard() {
 
         entry.innerHTML = `
             <div class="score-rank">${rank + 1}</div>
-            <div class="score-avatar">${player.avatar || '\uD83C\uDFA8'}</div>
+            <div class="score-avatar">${renderAvatarHtml(player.avatar || DEFAULT_AVATAR, `${player.name} avatar`)}</div>
             <div class="score-details">
                 <div class="score-player-name">
                     ${escapeHtml(player.name)}
@@ -1968,7 +1972,7 @@ function openStealModal(stealerPlayerId) {
             const targetBtn = document.createElement('button');
             targetBtn.classList.add('steal-target-option');
             targetBtn.innerHTML = `
-                <span class="target-avatar">${target.avatar || '\uD83C\uDFA8'}</span>
+                <span class="target-avatar">${renderAvatarHtml(target.avatar || DEFAULT_AVATAR, `${target.name} avatar`)}</span>
                 <span class="target-name">${escapeHtml(target.name)}</span>
                 <span class="target-score">Score: ${target.score}</span>
             `;
@@ -2009,7 +2013,7 @@ function showGameOver(data) {
 
     // Display winner
     if (dom.gameOverWinner && data.winner) {
-        dom.gameOverWinner.textContent = `${data.winner.avatar || '\uD83D\uDC51'} ${escapeHtml(data.winner.name)} Wins!`;
+        dom.gameOverWinner.innerHTML = `${renderAvatarHtml(data.winner.avatar || DEFAULT_AVATAR, `${data.winner.name} avatar`)} ${escapeHtml(data.winner.name)} Wins!`;
     }
 
     // Display final rankings with medals
@@ -2040,7 +2044,7 @@ function showGameOver(data) {
 
             row.innerHTML = `
                 <span class="final-rank ${rankClass}">${medal}</span>
-                <span class="final-player-avatar">${player.avatar || '\uD83C\uDFA8'}</span>
+                <span class="final-player-avatar">${renderAvatarHtml(player.avatar || DEFAULT_AVATAR, `${player.name} avatar`)}</span>
                 <span class="final-player-name">${escapeHtml(player.name)}</span>
                 <span class="final-player-score">${player.score} pts</span>
                 <span class="final-player-tokens">${totalTokens} tokens</span>
@@ -2080,7 +2084,7 @@ function renderWinningGallery(drawings) {
                 <img class="winning-card-img" src="${drawing.drawing}" alt="Winning drawing by ${escapeHtml(drawing.playerName)}" />
                 <div class="winning-card-info">
                     <div class="winning-card-round">Round ${drawing.round}${alignText ? ' \u2022 ' + alignText : ''}</div>
-                    <div class="winning-card-player">${drawing.playerAvatar || '\uD83C\uDFA8'} ${escapeHtml(drawing.playerName)}</div>
+                    <div class="winning-card-player">${renderAvatarHtml(drawing.playerAvatar || DEFAULT_AVATAR, `${drawing.playerName} avatar`)} ${escapeHtml(drawing.playerName)}</div>
                     ${promptText ? `<div class="winning-card-prompt">"${promptText}"</div>` : ''}
                 </div>
             `;
@@ -2091,11 +2095,11 @@ function renderWinningGallery(drawings) {
             // Offline mode: no drawing image, show avatar + name
             card.innerHTML = `
                 <div style="min-height:120px; display:flex; align-items:center; justify-content:center; font-size:3em;">
-                    ${drawing.playerAvatar || '\uD83C\uDFA8'}
+                    ${renderAvatarHtml(drawing.playerAvatar || DEFAULT_AVATAR, `${drawing.playerName} avatar`)}
                 </div>
                 <div class="winning-card-info">
                     <div class="winning-card-round">Round ${drawing.round}${alignText ? ' \u2022 ' + alignText : ''}</div>
-                    <div class="winning-card-player">${drawing.playerAvatar || '\uD83C\uDFA8'} ${escapeHtml(drawing.playerName)}</div>
+                    <div class="winning-card-player">${renderAvatarHtml(drawing.playerAvatar || DEFAULT_AVATAR, `${drawing.playerName} avatar`)} ${escapeHtml(drawing.playerName)}</div>
                     ${promptText ? `<div class="winning-card-prompt">"${promptText}"</div>` : ''}
                 </div>
             `;
@@ -2232,6 +2236,17 @@ function openImageLightbox(imageSrc, playerName) {
     if (closeBtn) closeBtn.onclick = closeLightbox;
     if (backdrop) backdrop.onclick = closeLightbox;
     lightbox.onkeydown = (e) => { if (e.key === 'Escape') closeLightbox(); };
+}
+
+function isAvatarImagePath(avatar) {
+    return typeof avatar === 'string' && avatar.startsWith('/assets/images/avatars/');
+}
+
+function renderAvatarHtml(avatar, altText) {
+    if (isAvatarImagePath(avatar)) {
+        return `<span class="avatar-wrap"><img class="avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(altText || 'Avatar')}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" /><span class="avatar-fallback-badge" style="display:none;">${DEFAULT_AVATAR_FALLBACK}</span></span>`;
+    }
+    return escapeHtml(avatar || DEFAULT_AVATAR_FALLBACK);
 }
 
 function escapeHtml(str) {

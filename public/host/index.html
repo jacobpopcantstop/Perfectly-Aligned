@@ -563,6 +563,37 @@
             text-align: center;
         }
 
+        .avatar-img {
+            width: 1em;
+            height: 1em;
+            object-fit: contain;
+            vertical-align: middle;
+            image-rendering: pixelated;
+        }
+
+        .avatar-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1em;
+            height: 1em;
+            vertical-align: middle;
+        }
+
+        .avatar-fallback-badge {
+            width: 1em;
+            height: 1em;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 20, 147, 0.35);
+            color: #fff;
+            font-size: 0.72em;
+            font-weight: bold;
+            line-height: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
         .score-avatar {
             font-size: 1.8em;
         }
@@ -2425,7 +2456,7 @@
             <!-- Judge Indicator -->
             <div class="judge-indicator">
                 <span class="judge-indicator-label">Judge:</span>
-                <span class="judge-indicator-avatar" id="judge-avatar">&#x1F451;</span>
+                <span class="judge-indicator-avatar" id="judge-avatar"></span>
                 <span class="judge-indicator-name" id="judge-name">---</span>
             </div>
 
@@ -2573,7 +2604,7 @@
             <div id="results-phase" class="phase-section">
                 <div class="winner-announcement" id="winner-announcement">
                     <div class="winner-announcement-label">Round Winner</div>
-                    <div class="winner-announcement-avatar" id="winner-avatar">&#x1F3A8;</div>
+                    <div class="winner-announcement-avatar" id="winner-avatar"></div>
                     <div class="winner-announcement-name" id="winner-name">---</div>
                     <div class="winner-announcement-points">+1 Point!</div>
                 </div>
@@ -2603,7 +2634,7 @@
 
                     <!-- Curser Display -->
                     <div id="curser-display" class="curser-display">
-                        <div class="curser-avatar" id="curser-avatar">&#x1F608;</div>
+                        <div class="curser-avatar" id="curser-avatar"></div>
                         <div class="curser-info">
                             <div class="curser-label">Round Loser - Draws a Curse!</div>
                             <div class="curser-name" id="curser-name">---</div>
