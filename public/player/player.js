@@ -1048,7 +1048,9 @@ function fetchUsedAvatars(roomCode) {
             if (data.exists && data.usedAvatars) {
                 usedAvatars = data.usedAvatars;
                 // If current avatar is taken, auto-skip to next available
-                if (usedAvatars.includes(AVATARS[currentAvatarIndex])) {
+                const currentAvatar = AVATARS[currentAvatarIndex];
+                const currentIsMine = playerState.playerAvatar === currentAvatar;
+                if (usedAvatars.includes(currentAvatar) && !currentIsMine) {
                     cycleAvatar(1);
                 } else {
                     updateAvatarPreview();
