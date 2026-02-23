@@ -105,6 +105,7 @@ let timerRemaining = 0;
 let currentSubmissions = [];
 let pendingModifierData = null;
 let scoreboardDebounceTimer = null;
+let isScoreboardOpen = false;
 let hostInitiatedRoll = false;
 let currentOfflineAvatarIndex = 0;
 
@@ -213,6 +214,7 @@ function cacheDomElements() {
     dom.scoreboard = document.getElementById('scoreboard-content');
     dom.scoreboardList = document.getElementById('scoreboard-grid');
     dom.scoreboardToggle = document.getElementById('scoreboard-toggle');
+    dom.scoreboardArrow = document.getElementById('scoreboard-arrow');
 
     // Game info elements
     dom.roundDisplay = document.getElementById('round-number');
@@ -386,14 +388,10 @@ function setupEventListeners() {
 
     // Scoreboard toggle
     if (dom.scoreboardToggle) {
-        dom.scoreboardToggle.addEventListener('click', () => {
-            if (dom.scoreboard) {
-                dom.scoreboard.classList.toggle('open');
-            }
-            const arrow = document.getElementById('scoreboard-arrow');
-            if (arrow) {
-                arrow.classList.toggle('open');
-            }
+        dom.scoreboardToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setScoreboardOpen(!isScoreboardOpen);
         });
     }
 
@@ -2015,6 +2013,19 @@ function _renderScoreboard() {
     });
 
     applyGlobalTooltips(dom.scoreboardList || document);
+}
+
+function setScoreboardOpen(open) {
+    isScoreboardOpen = !!open;
+    if (dom.scoreboard) {
+        dom.scoreboard.classList.toggle('open', isScoreboardOpen);
+    }
+    if (dom.scoreboardArrow) {
+        dom.scoreboardArrow.classList.toggle('open', isScoreboardOpen);
+    }
+    if (dom.scoreboardToggle) {
+        dom.scoreboardToggle.setAttribute('aria-expanded', isScoreboardOpen ? 'true' : 'false');
+    }
 }
 
 function getTotalTokens(player) {

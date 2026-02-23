@@ -513,6 +513,8 @@
 
         /* Scoreboard */
         .scoreboard-toggle {
+            width: 100%;
+            appearance: none;
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -523,6 +525,8 @@
             border-radius: 10px;
             margin-bottom: 5px;
             transition: background 0.3s;
+            color: #FFB6C1;
+            text-align: left;
         }
 
         .scoreboard-toggle:hover {
@@ -2554,10 +2558,10 @@
             </div>
 
             <!-- Collapsible Scoreboard -->
-            <div class="scoreboard-toggle" id="scoreboard-toggle">
+            <button class="scoreboard-toggle" id="scoreboard-toggle" type="button" aria-expanded="false" aria-controls="scoreboard-content">
                 <h3>Scoreboard</h3>
                 <span class="scoreboard-arrow" id="scoreboard-arrow">&#x25BC;</span>
-            </div>
+            </button>
             <div class="scoreboard-content" id="scoreboard-content">
                 <div class="scoreboard-grid" id="scoreboard-grid">
                     <!-- Score cards injected by JS -->
