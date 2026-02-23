@@ -583,9 +583,11 @@
         .avatar-img {
             width: 1.15em;
             height: 1.15em;
-            object-fit: contain;
+            object-fit: cover;
             vertical-align: middle;
             image-rendering: pixelated;
+            border-radius: 50%;
+            display: block;
         }
 
         .avatar-wrap {
@@ -595,6 +597,9 @@
             width: 1.15em;
             height: 1.15em;
             vertical-align: middle;
+            border-radius: 50%;
+            overflow: hidden;
+            line-height: 0;
         }
 
         .avatar-fallback-badge {

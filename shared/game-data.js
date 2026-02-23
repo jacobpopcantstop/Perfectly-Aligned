@@ -12,20 +12,23 @@
 // AVATARS - Player avatar options (pixel-art image assets)
 // =============================================================================
 export const AVATARS = [
-    '/assets/images/avatars/alienlady.png',
-    '/assets/images/avatars/cowboy.png',
-    '/assets/images/avatars/cyberdude.png',
-    '/assets/images/avatars/cyberlady.png',
+    '/assets/images/avatars/banana8-bit.png',
+    '/assets/images/avatars/bass8-bit.png',
+    '/assets/images/avatars/boot8-bit.png',
+    '/assets/images/avatars/cowboy8-bit.png',
+    '/assets/images/avatars/cyberdude8-bit.png',
+    '/assets/images/avatars/cyberlady8-bit.png',
     '/assets/images/avatars/dadskeleton.png',
-    '/assets/images/avatars/elfgirl.png',
-    '/assets/images/avatars/king.png',
-    '/assets/images/avatars/lionguy.png',
+    '/assets/images/avatars/elfgirl8-bit.png',
+    '/assets/images/avatars/king8-bit.png',
+    '/assets/images/avatars/kittycat8-bit.png',
     '/assets/images/avatars/lizardguy.png',
     '/assets/images/avatars/monster.png',
     '/assets/images/avatars/mushroomgunner.png',
+    '/assets/images/avatars/pinup8-bit.png',
     '/assets/images/avatars/sleepybuddy.png',
     '/assets/images/avatars/vampiregirl.png',
-    '/assets/images/avatars/warriorqueen.png'
+    '/assets/images/avatars/warriorqueen8-bit.png'
 ];
 
 // =============================================================================
