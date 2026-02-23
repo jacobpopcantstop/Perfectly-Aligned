@@ -317,6 +317,24 @@
             background: rgba(255,105,180,0.25);
         }
 
+        .support-links {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .support-links .btn {
+            flex: 1 1 160px;
+            min-height: 40px;
+            min-width: 0;
+            padding: 10px 12px;
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            text-decoration: none;
+        }
+
         .btn-small {
             padding: 10px 16px;
             font-size: 0.75rem;
@@ -1681,6 +1699,10 @@
             </div>
 
             <button class="btn btn-primary" id="join-btn">Join Game</button>
+            <div class="support-links">
+                <a class="btn btn-secondary" data-pa-link="interestFormUrl" href="#" title="Join the waitlist for the physical card game set">Buy the Card Game!</a>
+                <a class="btn btn-gold" data-pa-link="donateUrl" href="#" title="Support development via PayPal">Donate</a>
+            </div>
             <div class="error-message" id="join-error"></div>
         </div>
     </div>
@@ -2026,6 +2048,29 @@
     if (typeof io === 'undefined') {
         document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
     }
+    </script>
+    <script src="/assets/config/links.js"></script>
+    <script>
+    (function applyPromoLinks() {
+        const links = window.PA_LINKS || {};
+        const map = {
+            interestFormUrl: links.interestFormUrl,
+            donateUrl: links.donateUrl
+        };
+        document.querySelectorAll('[data-pa-link]').forEach((el) => {
+            const key = el.getAttribute('data-pa-link');
+            const href = map[key];
+            if (href && !href.includes('REPLACE_WITH_YOUR')) {
+                el.href = href;
+                el.target = '_blank';
+                el.rel = 'noopener noreferrer';
+            } else {
+                el.href = '#';
+                el.title = 'Set this URL in public/assets/config/links.js';
+                el.addEventListener('click', (e) => e.preventDefault());
+            }
+        });
+    })();
     </script>
     <script src="/player/player.js"></script>
 </body>

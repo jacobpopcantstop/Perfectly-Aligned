@@ -120,6 +120,21 @@
             letter-spacing: 1px;
         }
 
+        .support-links {
+            margin: 14px 0 10px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .support-links .btn {
+            padding: 10px 16px;
+            font-size: 0.75em;
+            min-width: 0;
+            text-decoration: none;
+        }
+
         .btn-gold {
             background: linear-gradient(135deg, #FFD700, #FFA500);
             border-color: #FFD700;
@@ -2424,6 +2439,10 @@
             <div class="center-actions">
                 <button class="btn" id="create-room-btn">Create Room</button>
             </div>
+            <div class="support-links">
+                <a class="btn btn-small" data-pa-link="interestFormUrl" href="#" title="Join the waitlist for the physical edition">Buy the Card Game!</a>
+                <a class="btn btn-small btn-gold" data-pa-link="donateUrl" href="#" title="Support development via PayPal">Donate</a>
+            </div>
 
             <!-- Room Code Display (hidden until room created) -->
             <div id="room-code-display" class="room-code-display">
@@ -2831,6 +2850,29 @@
     if (typeof io === 'undefined') {
         document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
     }
+    </script>
+    <script src="/assets/config/links.js"></script>
+    <script>
+    (function applyPromoLinks() {
+        const links = window.PA_LINKS || {};
+        const map = {
+            interestFormUrl: links.interestFormUrl,
+            donateUrl: links.donateUrl
+        };
+        document.querySelectorAll('[data-pa-link]').forEach((el) => {
+            const key = el.getAttribute('data-pa-link');
+            const href = map[key];
+            if (href && !href.includes('REPLACE_WITH_YOUR')) {
+                el.href = href;
+                el.target = '_blank';
+                el.rel = 'noopener noreferrer';
+            } else {
+                el.href = '#';
+                el.title = 'Set this URL in public/assets/config/links.js';
+                el.addEventListener('click', (e) => e.preventDefault());
+            }
+        });
+    })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script src="/host/host.js"></script>

@@ -102,6 +102,13 @@ Copy `.env.example` and configure as needed:
 
 - A Render Blueprint file is included at `render.yaml`.
 
+### Support Links (Buy + Donate)
+
+- Edit `public/assets/config/links.js` to set:
+  - `interestFormUrl` (your physical card game interest form)
+  - `donateUrl` (your PayPal donation URL)
+- These links are shown on the landing page, host lobby, and player join screen.
+
 ## Card Decks
 
 - **Core Mix:** General scenarios, dilemmas, historical events

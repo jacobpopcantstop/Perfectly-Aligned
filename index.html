@@ -84,6 +84,12 @@
             flex-wrap: wrap;
         }
 
+        .support-note {
+            margin-top: 16px;
+            color: #a0a0c0;
+            font-size: 0.92rem;
+        }
+
         .btn {
             display: inline-block;
             padding: 14px 32px;
@@ -333,7 +339,10 @@
     <div class="cta-group">
         <a class="btn btn-primary" href="https://github.com/jacobpopcantstop/Perfectly-Aligned">View on GitHub</a>
         <a class="btn btn-secondary" href="#self-host">Host Your Own</a>
+        <a class="btn btn-secondary" data-pa-link="interestFormUrl" href="#" title="Join the waitlist for the physical card game set">Buy the Card Game!</a>
+        <a class="btn btn-secondary" data-pa-link="donateUrl" href="#" title="Support development via PayPal">Donate</a>
     </div>
+    <p class="support-note">Physical set plan: 3D printed card box, physical cards, a d10, and a paper pad.</p>
 </div>
 
 <div class="section">
@@ -451,5 +460,28 @@ cd Perfectly-Aligned</code></pre>
     </p>
 </footer>
 
+<script src="/assets/config/links.js"></script>
+<script>
+    (function applyPromoLinks() {
+        const links = window.PA_LINKS || {};
+        const map = {
+            interestFormUrl: links.interestFormUrl,
+            donateUrl: links.donateUrl
+        };
+        document.querySelectorAll('[data-pa-link]').forEach((el) => {
+            const key = el.getAttribute('data-pa-link');
+            const href = map[key];
+            if (href && !href.includes('REPLACE_WITH_YOUR')) {
+                el.href = href;
+                el.target = '_blank';
+                el.rel = 'noopener noreferrer';
+            } else {
+                el.href = '#';
+                el.title = 'Set this URL in public/assets/config/links.js';
+                el.addEventListener('click', (e) => e.preventDefault());
+            }
+        });
+    })();
+</script>
 </body>
 </html>
