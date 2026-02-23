@@ -76,6 +76,10 @@ app.get('/play/:roomCode', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/player/index.html'));
 });
 
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end();
+});
+
 app.get('/api/room/:code', (req, res) => {
     const room = gameManager.getRoom(req.params.code.toUpperCase());
     if (room) {

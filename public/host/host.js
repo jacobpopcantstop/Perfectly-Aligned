@@ -71,6 +71,7 @@ const AVATARS = [
     '/assets/images/avatars/warriorqueen8-bit.png'
 ];
 const DEFAULT_AVATAR = AVATARS[0];
+const avatarPreloadCache = new Map();
 
 // =============================================================================
 // GAME STATE
@@ -280,12 +281,32 @@ function playSound(name) {
     }
 }
 
+function preloadAvatars() {
+    AVATARS.forEach((src) => {
+        if (!src || avatarPreloadCache.has(src)) return;
+        const img = new Image();
+        img.decoding = 'async';
+        img.loading = 'eager';
+        img.src = src;
+
+        const ready = (typeof img.decode === 'function')
+            ? img.decode().catch(() => {})
+            : new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+            });
+
+        avatarPreloadCache.set(src, { img, ready });
+    });
+}
+
 // =============================================================================
 // INITIALIZATION
 // =============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
     cacheDomElements();
+    preloadAvatars();
     loadSounds();
     updateOfflineAvatarPreview();
     setupJudgeChoiceGrid();
@@ -2214,6 +2235,21 @@ function renderWinningGallery(drawings) {
 // QR CODE
 // =============================================================================
 
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
 function generateRoomQR(roomCode) {
     const container = dom.roomCodeQR;
     if (!container) return;
@@ -2227,21 +2263,50 @@ function generateRoomQR(roomCode) {
         qr.addData(url);
         qr.make();
 
-        const cellSize = 4;
+        const cellSize = 8;
+        const quietZoneModules = 4;
         const moduleCount = qr.getModuleCount();
-        const size = moduleCount * cellSize;
+        const totalModules = moduleCount + quietZoneModules * 2;
+        const size = totalModules * cellSize;
 
         const canvas = document.createElement('canvas');
         canvas.width = size;
         canvas.height = size;
+        canvas.className = 'room-qr-canvas';
         const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
+        // Light paper tone background for a themed look while preserving scan contrast.
+        const background = ctx.createLinearGradient(0, 0, size, size);
+        background.addColorStop(0, '#fffdfd');
+        background.addColorStop(1, '#fff7fb');
+        ctx.fillStyle = background;
+        ctx.fillRect(0, 0, size, size);
+
+        const darkModule = '#171427';
         for (let row = 0; row < moduleCount; row++) {
             for (let col = 0; col < moduleCount; col++) {
-                ctx.fillStyle = qr.isDark(row, col) ? '#1a1a2e' : '#ffffff';
-                ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                if (!qr.isDark(row, col)) continue;
+                const x = (col + quietZoneModules) * cellSize;
+                const y = (row + quietZoneModules) * cellSize;
+                ctx.fillStyle = darkModule;
+                ctx.fillRect(x, y, cellSize, cellSize);
             }
         }
+
+        // Decorative finder accents drawn around finder zones (outside module edges).
+        const finderSize = 7 * cellSize;
+        const finderOrigins = [
+            [quietZoneModules * cellSize, quietZoneModules * cellSize],
+            [quietZoneModules * cellSize, (quietZoneModules + moduleCount - 7) * cellSize],
+            [(quietZoneModules + moduleCount - 7) * cellSize, quietZoneModules * cellSize]
+        ];
+        ctx.lineWidth = Math.max(2, Math.floor(cellSize / 2));
+        ctx.strokeStyle = '#ff5eb2';
+        finderOrigins.forEach(([fx, fy]) => {
+            drawRoundedRect(ctx, fx - 2, fy - 2, finderSize + 4, finderSize + 4, cellSize * 1.2);
+            ctx.stroke();
+        });
 
         container.appendChild(canvas);
     } else {

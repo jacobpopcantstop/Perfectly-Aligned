@@ -35,6 +35,7 @@ const AVATARS = [
 ];
 const DEFAULT_AVATAR = AVATARS[0];
 const DEFAULT_AVATAR_FALLBACK = '?';
+const avatarPreloadCache = new Map();
 
 const RECONNECT_DELAY_MS = 3000;
 const NOTIFICATION_DURATION_MS = 3000;
@@ -94,6 +95,25 @@ let disconnectTimer = null;
 // =============================================================================
 
 let elements = {};
+
+function preloadAvatars() {
+    AVATARS.forEach((src) => {
+        if (!src || avatarPreloadCache.has(src)) return;
+        const img = new Image();
+        img.decoding = 'async';
+        img.loading = 'eager';
+        img.src = src;
+
+        const ready = (typeof img.decode === 'function')
+            ? img.decode().catch(() => {})
+            : new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+            });
+
+        avatarPreloadCache.set(src, { img, ready });
+    });
+}
 
 function cacheElements() {
     elements = {
@@ -210,6 +230,7 @@ function cacheElements() {
 
 document.addEventListener('DOMContentLoaded', () => {
     cacheElements();
+    preloadAvatars();
 
     // Check URL for room code: /play/XXXX
     const pathParts = window.location.pathname.split('/');
@@ -393,6 +414,12 @@ function setupEventListeners() {
     if (fullscreenBtn) {
         fullscreenBtn.addEventListener('click', enterFullscreen);
     }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isFullscreen) {
+            e.preventDefault();
+            exitFullscreen();
+        }
+    });
 
     // Judge end timer
     if (elements.judgeEndTimerBtn) {
@@ -2874,3 +2901,45 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+function renderGameToText() {
+    const getText = (el) => {
+        if (!el || typeof el.textContent !== 'string') return '';
+        return el.textContent.replace(/\s+/g, ' ').trim();
+    };
+
+    const payload = {
+        mode: playerState.currentPhase || 'unknown',
+        roomCode: playerState.roomCode || null,
+        player: {
+            id: playerState.playerId || null,
+            name: playerState.playerName || null,
+            isJudge: !!playerState.isJudge,
+            hasSubmitted: !!playerState.hasSubmitted,
+            score: Number(playerState.score || 0),
+            tokens: { ...playerState.tokens }
+        },
+        drawing: {
+            width: canvas ? canvas.width : CANVAS_WIDTH,
+            height: canvas ? canvas.height : CANVAS_HEIGHT,
+            strokeCount: drawingHistory.length,
+            isFullscreen: !!isFullscreen
+        },
+        ui: {
+            alignment: getText(elements.drawingAlignment),
+            prompt: getText(elements.drawingPrompt),
+            timer: getText(elements.drawingTimer),
+            waitingMessage: getText(elements.waitingMessage)
+        },
+        coordinateSystem: {
+            origin: 'top-left',
+            xDirection: 'right',
+            yDirection: 'down',
+            units: 'canvas pixels'
+        }
+    };
+
+    return JSON.stringify(payload);
+}
+
+window.render_game_to_text = renderGameToText;

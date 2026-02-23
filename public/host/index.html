@@ -278,14 +278,20 @@
 
         .room-code-qr {
             margin: 12px auto;
-            padding: 10px;
-            background: #fff;
-            border-radius: 10px;
+            padding: 12px;
+            background: linear-gradient(135deg, #fff8fc, #ffeef8);
+            border: 2px solid #FFB6C1;
+            border-radius: 14px;
             display: inline-block;
-            box-shadow: 0 0 20px rgba(255,105,180,0.4);
+            box-shadow:
+                0 0 20px rgba(255,105,180,0.4),
+                inset 0 0 0 1px rgba(255,20,147,0.12);
         }
         .room-code-qr canvas {
             display: block;
+            border-radius: 10px;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
         }
 
         /* Player Lobby Grid */
