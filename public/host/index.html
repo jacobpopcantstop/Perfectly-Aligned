@@ -152,6 +152,18 @@
             box-shadow: 0 8px 25px rgba(255,0,0,0.4);
         }
 
+        /* Stabilize the curse CTA on hover to prevent jitter/flicker */
+        #draw-curse-btn {
+            will-change: transform;
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+
+        #draw-curse-btn:hover {
+            transform: translateY(-1px) scale(1.01);
+            box-shadow: 0 4px 14px rgba(255, 0, 0, 0.35);
+        }
+
         /* ================================================================
            INPUTS & SELECTS
            ================================================================ */

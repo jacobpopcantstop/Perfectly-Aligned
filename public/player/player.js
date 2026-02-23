@@ -227,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupSocketConnection();
     setupSocketListeners();
+    applyGlobalTooltips();
 
     // Auto-reconnect: if there's a stored session from a previous page load,
     // pre-populate state so the socket connect handler triggers attemptRejoin
@@ -1252,6 +1253,8 @@ function updateLobbyPlayerList(players) {
     if (elements.lobbyWaiting) {
         elements.lobbyWaiting.textContent = `${players.length} player(s) in lobby - Waiting for host to start...`;
     }
+
+    applyGlobalTooltips(elements.lobbyPlayerList || document);
 }
 
 // =============================================================================
@@ -2068,6 +2071,8 @@ function renderJudgeSubmissions(submissions) {
         elements.judgeSubmissionsList.appendChild(card);
     });
 
+    applyGlobalTooltips(elements.judgeSubmissionsList || document);
+
     // Setup confirm button
     if (elements.judgeConfirmWinnerBtn) {
         elements.judgeConfirmWinnerBtn.disabled = true;
@@ -2147,6 +2152,7 @@ function showStealModal(players) {
 
     elements.stealModal.classList.add('active');
     elements.stealModal.style.display = 'flex';
+    applyGlobalTooltips(elements.stealTargetList || document);
 }
 
 function hideStealModal() {
@@ -2240,6 +2246,8 @@ function showPlayerCurseTargets() {
 
         elements.playerCurseTargetList.appendChild(btn);
     });
+
+    applyGlobalTooltips(elements.playerCurseTargetList || document);
 }
 
 function executeSteal(targetId) {
@@ -2552,6 +2560,18 @@ const ALIGNMENT_NAMES = {
     LE: "Lawful Evil", NE: "Neutral Evil", CE: "Chaotic Evil"
 };
 
+const ALIGNMENT_GOALS = {
+    LG: "Do the right thing through duty, principles, and consistency.",
+    NG: "Do the most good for others, even if rules bend.",
+    CG: "Do good in rebellious, spontaneous, unconventional ways.",
+    LN: "Prioritize order, law, and process over emotion.",
+    TN: "Stay balanced, practical, and non-committal between extremes.",
+    CN: "Follow personal freedom and impulse over structure.",
+    LE: "Use structure and control to dominate or exploit.",
+    NE: "Pursue self-interest with little loyalty or remorse.",
+    CE: "Embrace chaos, destruction, and unpredictability."
+};
+
 function updateJudgeDisplay(judge) {
     if (elements.waitingJudgeName && judge) {
         elements.waitingJudgeName.textContent = judge.name || '';
@@ -2605,6 +2625,7 @@ function showJudgeChoiceGrid() {
             const btn = document.createElement('button');
             btn.className = 'judge-choice-btn';
             btn.textContent = ALIGNMENT_NAMES[code];
+            btn.title = ALIGNMENT_GOALS[code] || ALIGNMENT_NAMES[code];
             btn.addEventListener('click', () => {
                 elements.judgeChoiceGrid.querySelectorAll('.judge-choice-btn').forEach(b => {
                     b.disabled = true;
@@ -2622,6 +2643,7 @@ function showJudgeChoiceGrid() {
             });
             elements.judgeChoiceGrid.appendChild(btn);
         });
+        applyGlobalTooltips(elements.judgeChoiceGrid || document);
     }
 }
 
@@ -2656,6 +2678,7 @@ function showJudgePromptCards(prompts) {
             const btn = document.createElement('button');
             btn.className = 'judge-prompt-btn';
             btn.textContent = prompt;
+            btn.title = prompt;
             btn.addEventListener('click', () => {
                 elements.judgePromptCards.querySelectorAll('.judge-prompt-btn').forEach(b => {
                     b.disabled = true;
@@ -2676,12 +2699,25 @@ function showJudgePromptCards(prompts) {
             });
             elements.judgePromptCards.appendChild(btn);
         });
+        applyGlobalTooltips(elements.judgePromptCards || document);
     }
 }
 
 // =============================================================================
 // UTILITY
 // =============================================================================
+
+function applyGlobalTooltips(root) {
+    const scope = root || document;
+    const targets = scope.querySelectorAll('button, .btn, .judge-choice-btn, .judge-prompt-btn, .steal-target-btn, .lobby-player, .score-row');
+    targets.forEach(el => {
+        if (el.title) return;
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) {
+            el.title = text;
+        }
+    });
+}
 
 function spawnConfetti(count) {
     count = count || 35;

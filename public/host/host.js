@@ -27,6 +27,19 @@ const ALIGNMENT_EXAMPLES = {
     CE: "The Joker, Cthulhu", U: "The Judge picks any alignment!"
 };
 
+const ALIGNMENT_GOALS = {
+    LG: "Do the right thing through duty, principles, and consistency.",
+    NG: "Do the most good for others, even if rules bend.",
+    CG: "Do good in rebellious, spontaneous, unconventional ways.",
+    LN: "Prioritize order, law, and process over emotion.",
+    TN: "Stay balanced, practical, and non-committal between extremes.",
+    CN: "Follow personal freedom and impulse over structure.",
+    LE: "Use structure and control to dominate or exploit.",
+    NE: "Pursue self-interest with little loyalty or remorse.",
+    CE: "Embrace chaos, destruction, and unpredictability.",
+    U: "Judge chooses any style that best fits the prompt."
+};
+
 const ALIGNMENT_GRID_ORDER = ['LG', 'NG', 'CG', 'LN', 'TN', 'CN', 'LE', 'NE', 'CE'];
 
 const TOKEN_TYPES = {
@@ -273,6 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupJudgeChoiceGrid();
     setupEventListeners();
     setupSocketListeners();
+    applyGlobalTooltips();
 });
 
 function setupJudgeChoiceGrid() {
@@ -860,6 +874,7 @@ function updateLobbyPlayers() {
     }
 
     updateOfflineAvatarPreview();
+    applyGlobalTooltips(dom.lobbyPlayerGrid || document);
 }
 
 function updateStartButtonState() {
@@ -1088,7 +1103,7 @@ function showAlignmentResult(alignment, fullName, isJudgeChoice) {
             dom.alignmentGrid.classList.add('judges-choice');
         }
 
-        updateAlignmentResult("Judge's Choice!", "The Judge picks any alignment!");
+        updateAlignmentResult("Judge's Choice!", ALIGNMENT_GOALS.U);
 
         // Show judge choice phase (inside alignment phase) using class instead of inline style
         setTimeout(() => {
@@ -1104,7 +1119,10 @@ function showAlignmentResult(alignment, fullName, isJudgeChoice) {
             }
         });
 
-        updateAlignmentResult(fullName, ALIGNMENT_EXAMPLES[alignment] || '');
+        updateAlignmentResult(
+            fullName,
+            `${ALIGNMENT_GOALS[alignment] || ''} Example: ${ALIGNMENT_EXAMPLES[alignment] || ''}`.trim()
+        );
         updateAlignmentDisplay(alignment, fullName);
 
         // Enable draw prompts after delay
@@ -1201,6 +1219,7 @@ function handlePromptsDrawn(data) {
     });
 
     playSound('draw');
+    applyGlobalTooltips(dom.promptCards || document);
 }
 
 function selectPrompt(index) {
@@ -1486,6 +1505,8 @@ function renderSubmissionGallery(submissions) {
 
         dom.submissionGallery.appendChild(card);
     });
+
+    applyGlobalTooltips(dom.submissionGallery || document);
 }
 
 function selectWinner(playerId) {
@@ -1615,6 +1636,8 @@ function renderTokenAwards() {
             awardToken(playerId, tokenType, btn);
         });
     });
+
+    applyGlobalTooltips(dom.tokenAwards || document);
 }
 
 function awardToken(playerId, tokenType, buttonEl) {
@@ -1859,6 +1882,8 @@ function showCurseTargetSelection(modifier) {
         dom.curseTargetSelection.appendChild(targetBtn);
     });
 
+    applyGlobalTooltips(dom.curseTargetSelection || document);
+
     // Setup apply curse button
     if (dom.applyCurseBtn) {
         dom.applyCurseBtn.onclick = () => {
@@ -1985,6 +2010,8 @@ function _renderScoreboard() {
             openStealModal(btn.dataset.playerId);
         });
     });
+
+    applyGlobalTooltips(dom.scoreboardList || document);
 }
 
 function getTotalTokens(player) {
@@ -2042,6 +2069,7 @@ function openStealModal(stealerPlayerId) {
     }
 
     dom.stealModal.classList.add('visible');
+    applyGlobalTooltips(dom.stealTargetList || document);
 }
 
 function closeStealModal() {
@@ -2164,6 +2192,8 @@ function renderWinningGallery(drawings) {
 
         gallery.appendChild(card);
     });
+
+    applyGlobalTooltips(gallery);
 }
 
 // =============================================================================
@@ -2246,6 +2276,18 @@ function showNotification(message, type, duration) {
             }
         }, 400);
     }, duration);
+}
+
+function applyGlobalTooltips(root) {
+    const scope = root || document;
+    const targets = scope.querySelectorAll('button, .btn, .deck-card, .alignment-cell, .judges-choice-cell, .prompt-card, .submission-card, .steal-target-option, .curse-target-card, .score-card');
+    targets.forEach(el => {
+        if (el.title) return;
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) {
+            el.title = text;
+        }
+    });
 }
 
 // =============================================================================

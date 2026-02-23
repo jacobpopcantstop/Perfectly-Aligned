@@ -52,6 +52,20 @@ export const ALIGNMENT_NAMES = {
     U: "Judge's Choice"
 };
 
+// Practical goals for each alignment to guide how players should frame drawings.
+export const ALIGNMENT_DESCRIPTIONS = {
+    LG: "Do the right thing through duty, principles, and consistency.",
+    NG: "Do the most good for others, even if rules bend.",
+    CG: "Do good in rebellious, spontaneous, unconventional ways.",
+    LN: "Prioritize order, law, and process over emotion.",
+    TN: "Stay balanced, practical, and non-committal between extremes.",
+    CN: "Follow personal freedom and impulse over structure.",
+    LE: "Use structure and control to dominate or exploit.",
+    NE: "Pursue self-interest with little loyalty or remorse.",
+    CE: "Embrace chaos, destruction, and unpredictability.",
+    U: "Judge chooses any style that best fits the prompt."
+};
+
 // Example characters for each alignment to help players understand
 export const ALIGNMENT_EXAMPLES = {
     LG: "Superman, Captain America, Brienne of Tarth",
