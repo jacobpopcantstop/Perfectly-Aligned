@@ -651,13 +651,14 @@ function setupSocketListeners() {
         }
     });
 
-    socket.on('game:alignmentRolled', (data) => {
+socket.on('game:alignmentRolled', (data) => {
         // Store alignment info
         playerState.currentAlignment = data.alignment;
         playerState.currentAlignmentFullName = data.fullName;
+        const alignmentDetail = formatAlignmentDetails(data.alignment, data.fullName);
 
         if (playerState.isJudge) {
-            updateWaitingMessage(`Alignment rolled: ${data.fullName}`);
+            updateWaitingMessage(`Alignment rolled: ${alignmentDetail}`);
             // If judge's choice, show the choice grid
             if (data.isJudgeChoice) {
                 showJudgeChoiceGrid();
@@ -670,7 +671,7 @@ function setupSocketListeners() {
             // Delay showing the result to match the host dice animation (adds suspense)
             updateWaitingMessage('Rolling alignment...');
             setTimeout(() => {
-                updateWaitingMessage(`Alignment: ${data.fullName}`);
+                updateWaitingMessage(`Alignment: ${alignmentDetail}`);
             }, 2800);
         }
     });
@@ -678,7 +679,7 @@ function setupSocketListeners() {
     socket.on('game:judgeAlignmentSelected', (data) => {
         playerState.currentAlignment = data.alignment;
         playerState.currentAlignmentFullName = data.fullName;
-        updateWaitingMessage(`Judge chose: ${data.fullName}`);
+        updateWaitingMessage(`Judge chose: ${formatAlignmentDetails(data.alignment, data.fullName)}`);
         if (playerState.isJudge) {
             hideJudgeControls();
             showJudgeDrawPrompts();
@@ -702,7 +703,7 @@ function setupSocketListeners() {
     socket.on('game:startDrawing', (data) => {
         if (playerState.isJudge) {
             showScreen('waiting');
-            updateWaitingMessage('Players are drawing... Sit tight, Judge!');
+            updateWaitingMessage(`Players are drawing "${data.prompt}" as ${formatAlignmentDetails(data.alignment, data.alignmentFullName)}.`);
             hideJudgeControls();
             // Show the end timer section for the judge to track submissions
             if (elements.judgeEndTimerSection) {
@@ -732,7 +733,7 @@ function setupSocketListeners() {
             elements.drawingPrompt.textContent = data.prompt;
         }
         if (elements.drawingAlignment) {
-            elements.drawingAlignment.textContent = data.alignmentFullName || data.alignment;
+            elements.drawingAlignment.textContent = formatAlignmentDetails(data.alignment, data.alignmentFullName);
         }
 
         // Show active modifiers
@@ -1042,6 +1043,9 @@ function setupSocketListeners() {
     socket.on('game:curseCardDrawn', (data) => {
         if (data.modifier) {
             showNotification(`Curse drawn: ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
+            if (!playerState.isCurser) {
+                updateWaitingMessage(`${data.curserName || 'Curser'} drew: ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
+            }
             // If we are the curser, update our curse card display
             if (playerState.isCurser) {
                 showPlayerCurseCard(data.modifier);
@@ -1062,8 +1066,10 @@ function setupSocketListeners() {
         if (me && me.activeModifiers && me.activeModifiers.length > 0) {
             const latestMod = me.activeModifiers[me.activeModifiers.length - 1];
             showNotification(`You were cursed! ${latestMod.icon || ''} ${latestMod.name}: ${latestMod.description}`);
+            updateWaitingMessage(`You were cursed: ${latestMod.icon || ''} ${latestMod.name} — ${latestMod.description}`);
         } else {
             showNotification(`${data.targetName} was cursed with ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
+            updateWaitingMessage(`${data.targetName} was cursed with ${data.modifier.icon || ''} ${data.modifier.name} — ${data.modifier.description}`);
         }
     });
 
@@ -2858,6 +2864,12 @@ function updateWaitingRole(role) {
 
 function getTotalTokens() {
     return Object.values(playerState.tokens).reduce((sum, count) => sum + count, 0);
+}
+
+function formatAlignmentDetails(code, fullName) {
+    const name = fullName || ALIGNMENT_NAMES[code] || code || 'Unknown alignment';
+    const goal = ALIGNMENT_GOALS[code];
+    return goal ? `${name} — ${goal}` : name;
 }
 
 function formatTime(seconds) {

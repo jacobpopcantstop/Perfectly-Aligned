@@ -527,7 +527,7 @@ function setupSocketListeners() {
         setTimeout(() => {
             showPhase('prompt');
             if (dom.promptsAlignmentDisplay) {
-                dom.promptsAlignmentDisplay.textContent = data.fullName;
+                dom.promptsAlignmentDisplay.textContent = getPersistentAlignmentLabel(data.alignment, data.fullName);
             }
             if (dom.drawPromptsBtn) {
                 dom.drawPromptsBtn.disabled = false;
@@ -1151,7 +1151,7 @@ function showAlignmentResult(alignment, fullName, isJudgeChoice) {
         setTimeout(() => {
             showPhase('prompt');
             if (dom.promptsAlignmentDisplay) {
-                dom.promptsAlignmentDisplay.textContent = fullName;
+                dom.promptsAlignmentDisplay.textContent = getPersistentAlignmentLabel(alignment, fullName);
             }
             if (dom.drawPromptsBtn) {
                 dom.drawPromptsBtn.disabled = false;
@@ -1175,6 +1175,16 @@ function updateAlignmentResult(title, description) {
 function updateAlignmentDisplay(alignment, fullName) {
     gameState.alignment = alignment;
     gameState.alignmentName = fullName;
+}
+
+function getAlignmentGoalText(alignment) {
+    return ALIGNMENT_GOALS[alignment] || '';
+}
+
+function getPersistentAlignmentLabel(alignment, fullName) {
+    const name = fullName || alignment || '---';
+    const goal = getAlignmentGoalText(alignment);
+    return goal ? `${name} — ${goal}` : name;
 }
 
 function handleJudgeAlignmentClick(alignment, cell) {
@@ -1290,7 +1300,7 @@ function startDrawingPhase(data) {
         dom.drawingPromptDisplay.textContent = data.prompt;
     }
     if (dom.drawingAlignmentDisplay) {
-        dom.drawingAlignmentDisplay.textContent = data.alignmentFullName;
+        dom.drawingAlignmentDisplay.textContent = getPersistentAlignmentLabel(data.alignment, data.alignmentFullName);
     }
 
     // Update drawing instruction for offline mode
@@ -1437,7 +1447,7 @@ function handleSubmissionsCollected(data) {
 
     // Populate alignment and prompt in judging phase
     if (dom.judgingAlignment) {
-        dom.judgingAlignment.textContent = gameState.alignmentName || gameState.alignment || '---';
+        dom.judgingAlignment.textContent = getPersistentAlignmentLabel(gameState.alignment, gameState.alignmentName);
     }
     if (dom.judgingPrompt) {
         dom.judgingPrompt.textContent = gameState.selectedPrompt || '---';
@@ -1858,6 +1868,10 @@ function handleCurseCardDrawn(data) {
     if (dom.curseCardIcon) dom.curseCardIcon.textContent = modifier.icon || '\u26A0\uFE0F';
     if (dom.curseCardName) dom.curseCardName.textContent = escapeHtml(modifier.name);
     if (dom.curseCardDesc) dom.curseCardDesc.textContent = escapeHtml(modifier.description);
+    const curseExplain = document.getElementById('curse-explanation');
+    if (curseExplain) {
+        curseExplain.textContent = `${modifier.icon || '\u26A0\uFE0F'} ${modifier.name}: ${modifier.description}`;
+    }
 
     // Hide draw button
     if (dom.drawCurseBtn) dom.drawCurseBtn.style.display = 'none';
@@ -1926,7 +1940,7 @@ function applyCurse(targetIndex, modifier) {
             // After applying, advance to next round
             setTimeout(() => {
                 advanceAfterModifiers();
-            }, 2000);
+            }, 4500);
         } else {
             showNotification(`Failed to apply curse: ${response.error}`, 'error');
             if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = false;
@@ -1947,7 +1961,7 @@ function holdCurse() {
             // Advance to next round
             setTimeout(() => {
                 advanceAfterModifiers();
-            }, 1500);
+            }, 3500);
         } else {
             showNotification(`Failed to hold curse: ${response.error}`, 'error');
             if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = false;
