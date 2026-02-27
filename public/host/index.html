@@ -135,6 +135,47 @@
             text-decoration: none;
         }
 
+        .account-panel {
+            margin: 12px auto 22px;
+            max-width: 780px;
+            border: 2px solid rgba(255, 182, 193, 0.45);
+            border-radius: 12px;
+            padding: 14px;
+            background: rgba(20, 0, 20, 0.55);
+        }
+
+        .account-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+            align-items: center;
+        }
+
+        .account-grid input {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .account-status {
+            margin-top: 8px;
+            font-size: 0.9em;
+            color: #FFD700;
+            min-height: 20px;
+        }
+
+        .account-tip {
+            margin-top: 6px;
+            font-size: 0.8em;
+            color: #FFB6C1;
+            opacity: 0.85;
+        }
+
+        @media (max-width: 860px) {
+            .account-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
         .btn-gold {
             background: linear-gradient(135deg, #FFD700, #FFA500);
             border-color: #FFD700;
@@ -391,6 +432,17 @@
             font-size: 1.5em;
             color: #00FF00;
             font-weight: bold;
+        }
+
+        .deck-card.locked {
+            cursor: not-allowed;
+            border-style: dashed;
+            box-shadow: none;
+        }
+
+        .deck-card.locked:hover {
+            transform: none;
+            box-shadow: none;
         }
 
         .deck-card-icon {
@@ -2429,6 +2481,22 @@
             <h1 class="game-title">PERFECTLY ALIGNED</h1>
             <p class="game-subtitle">~ The creative party game for the morally dubious ~</p>
 
+            <div class="account-panel">
+                <div class="account-grid">
+                    <input id="auth-email" type="email" placeholder="Email">
+                    <input id="auth-password" type="password" placeholder="Password">
+                    <button class="btn btn-small" id="auth-signup-btn">Create Account</button>
+                    <button class="btn btn-small" id="auth-login-btn">Sign In</button>
+                    <input id="promo-code-input" type="text" placeholder="Promo code (FOUNDERS)">
+                    <button class="btn btn-gold btn-small" id="upgrade-monthly-btn">Go Premium Monthly</button>
+                    <button class="btn btn-gold btn-small" id="upgrade-yearly-btn">Go Premium Yearly</button>
+                    <button class="btn btn-small" id="manage-billing-btn">Manage Billing</button>
+                    <button class="btn btn-small" id="auth-logout-btn">Sign Out</button>
+                </div>
+                <div class="account-status" id="account-status">Sign in to unlock premium host features.</div>
+                <div class="account-tip">Use promo code <strong>FOUNDERS</strong> for a founders premium pass.</div>
+            </div>
+
             <!-- Game Mode Selection -->
             <div id="game-mode-selection" class="game-mode-selection">
                 <h3 class="section-heading mb-10">Game Mode</h3>
@@ -2861,6 +2929,7 @@
         document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
     }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/assets/config/links.js"></script>
     <script>
     (function applyPromoLinks() {
@@ -2885,6 +2954,7 @@
     })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script src="/host/premium-auth.js"></script>
     <script src="/host/host.js"></script>
 
 </body>

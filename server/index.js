@@ -14,7 +14,30 @@ import { Server } from 'socket.io';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cookieParser from 'cookie-parser';
 import GameManager from './game/GameManager.js';
+import { getRequestAccessToken, getProfileFromAccessToken, requireAuth } from './services/auth.js';
+import {
+    getEntitlementsForProfile,
+    getFreeEntitlements,
+    isPremiumFeatureAllowed
+} from './services/entitlements.js';
+import {
+    createCheckoutSession,
+    createPortalSession,
+    getBillingPublicConfig,
+    parseStripeEvent,
+    syncEntitlementFromCheckoutSession
+} from './services/billing.js';
+import {
+    finalizeSession,
+    getHistoryItemForHost,
+    listHistoryForHost,
+    recordRoundResult,
+    removeSession,
+    startSession
+} from './services/history.js';
+import { getPublicSupabaseConfig } from './services/supabase.js';
 
 // ---------------------------------------------------------------------------
 // ES Module __dirname equivalent
@@ -49,7 +72,14 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 10_000);
 const JOIN_RATE_LIMIT = Number(process.env.JOIN_RATE_LIMIT || 8);
 const RECONNECT_RATE_LIMIT = Number(process.env.RECONNECT_RATE_LIMIT || 12);
 const SUBMIT_RATE_LIMIT = Number(process.env.SUBMIT_RATE_LIMIT || 6);
+const CORE_DECK_KEY = 'core_white';
 const gameManager = new GameManager();
+
+app.use(cookieParser());
+app.use((req, res, next) => {
+    if (req.path === '/api/billing/webhook') return next();
+    return express.json({ limit: '1mb' })(req, res, next);
+});
 
 // ---------------------------------------------------------------------------
 // Static File Serving
@@ -102,6 +132,111 @@ app.get('/healthz', (req, res) => {
         uptimeSeconds: Math.floor(process.uptime()),
         roomStats: gameManager.getStats()
     });
+});
+
+app.get('/api/public-config', (req, res) => {
+    res.json({
+        success: true,
+        auth: getPublicSupabaseConfig(),
+        billing: getBillingPublicConfig()
+    });
+});
+
+app.get('/api/me', requireAuth, async (req, res) => {
+    const entitlements = await getEntitlementsForProfile(req.auth.id);
+    res.json({
+        success: true,
+        profile: {
+            id: req.auth.id,
+            email: req.auth.email
+        },
+        entitlements
+    });
+});
+
+app.get('/api/entitlements', requireAuth, async (req, res) => {
+    const entitlements = await getEntitlementsForProfile(req.auth.id);
+    res.json({ success: true, entitlements });
+});
+
+app.post('/api/billing/checkout-session', requireAuth, async (req, res) => {
+    const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
+    const result = await createCheckoutSession({
+        profile: req.auth,
+        priceCode: req.body?.priceCode || 'premium_monthly',
+        origin,
+        promoCode: req.body?.promoCode || ''
+    });
+
+    if (!result.success) {
+        return res.status(400).json(result);
+    }
+    return res.json(result);
+});
+
+app.post('/api/billing/portal-session', requireAuth, async (req, res) => {
+    const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
+    const result = await createPortalSession({
+        profile: req.auth,
+        origin
+    });
+    if (!result.success) {
+        return res.status(400).json(result);
+    }
+    return res.json(result);
+});
+
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature) return res.status(400).send('Missing signature');
+
+    let event;
+    try {
+        event = parseStripeEvent(req.body, signature);
+    } catch (err) {
+        return res.status(400).send(`Webhook error: ${err.message}`);
+    }
+    if (!event) {
+        return res.status(503).send('Stripe webhook is not configured');
+    }
+
+    if (event.type === 'checkout.session.completed') {
+        await syncEntitlementFromCheckoutSession(event.data.object);
+    }
+
+    return res.json({ received: true });
+});
+
+app.get('/api/history', requireAuth, async (req, res) => {
+    const entitlements = await getEntitlementsForProfile(req.auth.id);
+    if (!isPremiumFeatureAllowed(entitlements, 'history')) {
+        return res.status(403).json({
+            success: false,
+            code: 'PREMIUM_REQUIRED',
+            feature: 'history',
+            error: 'Premium subscription required for game history.'
+        });
+    }
+
+    const sessions = await listHistoryForHost(req.auth.id);
+    return res.json({ success: true, sessions });
+});
+
+app.get('/api/history/:sessionId', requireAuth, async (req, res) => {
+    const entitlements = await getEntitlementsForProfile(req.auth.id);
+    if (!isPremiumFeatureAllowed(entitlements, 'history')) {
+        return res.status(403).json({
+            success: false,
+            code: 'PREMIUM_REQUIRED',
+            feature: 'history',
+            error: 'Premium subscription required for game history.'
+        });
+    }
+    const session = await getHistoryItemForHost(req.auth.id, req.params.sessionId);
+    if (!session) {
+        return res.status(404).json({ success: false, error: 'History session not found' });
+    }
+    return res.json({ success: true, session });
 });
 
 // ---------------------------------------------------------------------------
@@ -171,6 +306,52 @@ function checkSocketRateLimit(socket, eventKey, maxRequests, callback) {
     return true;
 }
 
+function getUpgradeUrl() {
+    return '/host?upgrade=true';
+}
+
+function getPremiumRequiredError(featureKey, message) {
+    return {
+        success: false,
+        code: 'PREMIUM_REQUIRED',
+        feature: featureKey,
+        error: message || 'Premium subscription required.',
+        upgradeUrl: getUpgradeUrl()
+    };
+}
+
+async function resolveProfileAndEntitlementsFromAccessToken(accessToken) {
+    const profile = await getProfileFromAccessToken(accessToken);
+    if (!profile) {
+        return {
+            profile: null,
+            entitlements: getFreeEntitlements()
+        };
+    }
+    const entitlements = await getEntitlementsForProfile(profile.id);
+    return { profile, entitlements };
+}
+
+function requiresPremiumBySettings(room, settings = {}) {
+    const selectedDecks = Array.isArray(settings.selectedDecks) ? settings.selectedDecks : [];
+    const hasExpansionDeck = selectedDecks.some((deck) => deck && deck !== CORE_DECK_KEY);
+    const modifiersEnabled = settings.modifiersEnabled !== undefined
+        ? Boolean(settings.modifiersEnabled)
+        : Boolean(room?.modifiersEnabled);
+    const onlineMode = room ? !room.offlineMode : false;
+
+    if (onlineMode) {
+        return { required: true, feature: 'online_mode', message: 'Online mode is a premium feature.' };
+    }
+    if (hasExpansionDeck) {
+        return { required: true, feature: 'expansion_decks', message: 'Expansion decks require premium.' };
+    }
+    if (modifiersEnabled) {
+        return { required: true, feature: 'curse_cards', message: 'Curse cards require premium.' };
+    }
+    return { required: false };
+}
+
 // ---------------------------------------------------------------------------
 // Socket.IO Connection Handling
 // ---------------------------------------------------------------------------
@@ -185,7 +366,7 @@ io.on('connection', (socket) => {
      * host:createRoom
      * Creates a new game room and makes this socket the host.
      */
-    socket.on('host:createRoom', (data, callback) => {
+    socket.on('host:createRoom', async (data, callback) => {
         // Support both old callback-only and new data+callback signatures
         if (typeof data === 'function') {
             callback = data;
@@ -193,13 +374,26 @@ io.on('connection', (socket) => {
         }
         if (typeof callback !== 'function') return;
         try {
+            const accessToken = data?.accessToken || null;
+            const { profile, entitlements } = await resolveProfileAndEntitlementsFromAccessToken(accessToken);
+            const offlineMode = Boolean(data && data.offlineMode);
+
+            if (!offlineMode && !isPremiumFeatureAllowed(entitlements, 'onlineMode')) {
+                return callback(getPremiumRequiredError('online_mode', 'Online mode is a premium feature.'));
+            }
+
             const room = gameManager.createRoom(socket.id);
-            if (data && data.offlineMode) {
+            if (offlineMode) {
                 room.offlineMode = true;
             }
+            room._hostProfileId = profile?.id || null;
+            room._hostEntitlements = entitlements;
+
             socket.join(room.code);
             socket.roomCode = room.code;
             socket.isHost = true;
+            socket.hostProfileId = room._hostProfileId;
+            socket.hostEntitlements = entitlements;
 
             console.log(`[Room] Created: ${room.code} by host ${socket.id} (${room.offlineMode ? 'offline' : 'online'} mode)`);
 
@@ -218,17 +412,24 @@ io.on('connection', (socket) => {
      * host:reconnect
      * Allows a host to reclaim their room after a disconnect/reconnect.
      */
-    socket.on('host:reconnect', (roomCode, callback) => {
+    socket.on('host:reconnect', async (payload, callback) => {
         if (typeof callback !== 'function') return;
-        if (!roomCode) {
+        const reconnectRoomCode = typeof payload === 'string' ? payload : payload?.roomCode;
+        if (!reconnectRoomCode) {
             return callback({ success: false, error: 'Room code is required' });
         }
 
-        const room = gameManager.getRoom(roomCode.toUpperCase());
+        const room = gameManager.getRoom(reconnectRoomCode.toUpperCase());
         if (!room) {
-            console.log(`[Room] Reconnect failed — room ${roomCode} not found`);
+            console.log(`[Room] Reconnect failed — room ${reconnectRoomCode} not found`);
             return callback({ success: false, error: 'Room no longer exists' });
         }
+
+        const accessToken = typeof payload === 'object' ? payload?.accessToken : null;
+        const resolved = await resolveProfileAndEntitlementsFromAccessToken(accessToken);
+        const hostEntitlements = room._hostEntitlements || resolved.entitlements;
+        room._hostProfileId = room._hostProfileId || resolved.profile?.id || null;
+        room._hostEntitlements = hostEntitlements;
 
         // Clear the disconnect grace timer
         if (room._hostDisconnectTimer) {
@@ -242,6 +443,8 @@ io.on('connection', (socket) => {
         socket.join(room.code);
         socket.roomCode = room.code;
         socket.isHost = true;
+        socket.hostProfileId = room._hostProfileId;
+        socket.hostEntitlements = hostEntitlements;
 
         console.log(`[Room ${room.code}] Host reconnected with new socket ${socket.id}`);
 
@@ -260,8 +463,31 @@ io.on('connection', (socket) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
+        const entitlements = socket.hostEntitlements || room._hostEntitlements || getFreeEntitlements();
+        const premiumRequirement = requiresPremiumBySettings(room, settings || {});
+        if (premiumRequirement.required) {
+            const featureMap = {
+                online_mode: 'onlineMode',
+                expansion_decks: 'expansionDecks',
+                curse_cards: 'curseCards'
+            };
+            const entitlementFeature = featureMap[premiumRequirement.feature];
+            if (!isPremiumFeatureAllowed(entitlements, entitlementFeature)) {
+                return callback(getPremiumRequiredError(premiumRequirement.feature, premiumRequirement.message));
+            }
+        }
+
         const result = room.startGame(settings);
         if (result.success) {
+            startSession({
+                roomCode: room.code,
+                hostProfileId: room._hostProfileId || socket.hostProfileId || null,
+                mode: room.offlineMode ? 'offline' : 'online',
+                selectedDecks: room.settings.selectedDecks,
+                modifiersEnabled: room.modifiersEnabled,
+                targetScore: room.settings.targetScore,
+                timerDuration: room.settings.timerDuration
+            });
             io.to(room.code).emit('game:started', room.getState());
         }
         callback(result);
@@ -399,6 +625,14 @@ io.on('connection', (socket) => {
 
         const result = room.selectWinner(playerId);
         if (result.success) {
+            recordRoundResult(room.code, {
+                round: room.currentRound,
+                prompt: room.selectedPrompt,
+                alignment: room.currentAlignment,
+                winnerId: playerId,
+                winnerName: result.winnerName
+            });
+
             const scores = room.getScores();
             const winner = room.players.find(
                 (p) => p.score >= room.settings.targetScore
@@ -417,6 +651,13 @@ io.on('connection', (socket) => {
                     winner,
                     finalScores: scores,
                     winningDrawings: room.winningDrawings
+                });
+                finalizeSession(room.code, {
+                    winnerId: winner?.id || null,
+                    winnerName: winner?.name || result.winnerName,
+                    players: room.getPlayersPublicData()
+                }).catch((err) => {
+                    console.error(`[History] Failed to finalize session for room ${room.code}:`, err.message);
                 });
             }
         }
@@ -1152,6 +1393,7 @@ io.on('connection', (socket) => {
                         reason: 'Host disconnected'
                     });
                     gameManager.removeRoom(socket.roomCode);
+                    removeSession(socket.roomCode);
                 }
             }, 60_000);
         } else {
