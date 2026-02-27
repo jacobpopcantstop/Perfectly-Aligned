@@ -93,6 +93,48 @@ Copy `.env.example` and configure as needed:
 - `JOIN_RATE_LIMIT` - Max `player:joinRoom` calls per window per socket
 - `RECONNECT_RATE_LIMIT` - Max `player:reconnect` calls per window per socket
 - `SUBMIT_RATE_LIMIT` - Max `player:submitDrawing` calls per window per socket
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anon/public key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service-role key (server-only)
+- `STRIPE_SECRET_KEY` - Stripe secret API key
+- `STRIPE_WEBHOOK_SECRET` - Stripe webhook signing secret
+- `STRIPE_PRICE_MONTHLY` - Stripe monthly subscription price ID
+- `STRIPE_PRICE_YEARLY` - Stripe yearly subscription price ID
+- `STRIPE_FOUNDERS_PROMO_CODE_ID` - Stripe promotion code ID for `FOUNDERS` (optional)
+- `FOUNDERS_FREE_PASS_ENABLED` - `true|false` direct premium grant path for `FOUNDERS`
+- `PREMIUM_DEFAULT_FOR_ALL` - `true|false` emergency premium override for all authenticated users
+
+### Premium/Auth Setup (Required for Login + Paid Tier)
+
+If account creation or login is not working on deployment, Supabase is not configured yet.
+
+1. Create a Supabase project and enable Email auth provider.
+2. Run the schema SQL at `docs/supabase_schema.sql`.
+3. Add these Render env vars:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+4. Redeploy and verify:
+   - `GET /api/public-config` returns non-empty `auth.supabaseUrl` and `auth.supabaseAnonKey`.
+   - Host UI status no longer says "Auth is not configured on this deployment."
+
+### Stripe Setup (Required for Paid Checkout/Portal)
+
+1. Create recurring prices in Stripe (monthly + yearly).
+2. Add Render env vars:
+   - `STRIPE_SECRET_KEY`
+   - `STRIPE_WEBHOOK_SECRET`
+   - `STRIPE_PRICE_MONTHLY`
+   - `STRIPE_PRICE_YEARLY`
+3. Configure webhook endpoint:
+   - `POST https://<your-render-host>/api/billing/webhook`
+4. Subscribe webhook events:
+   - `checkout.session.completed`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
+   - `invoice.payment_failed`
+   - `invoice.payment_succeeded`
+5. Ensure Stripe subscriptions carry `metadata.profile_id` so entitlement sync can map users.
 
 ### Health Check
 
