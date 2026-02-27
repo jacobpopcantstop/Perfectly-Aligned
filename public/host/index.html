@@ -135,9 +135,80 @@
             text-decoration: none;
         }
 
+        .lobby-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+
+        .account-launch-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            font-size: 0.78em;
+        }
+
+        .account-pill {
+            display: inline-block;
+            border: 1px solid rgba(255, 182, 193, 0.6);
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 0.92em;
+            color: #FFD700;
+            background: rgba(0, 0, 0, 0.35);
+        }
+
+        .account-modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 1200;
+            padding: 20px;
+        }
+
+        .account-modal.visible {
+            display: flex;
+        }
+
+        .account-modal-content {
+            width: min(860px, 96vw);
+            border: 2px solid rgba(255, 182, 193, 0.65);
+            border-radius: 14px;
+            padding: 16px;
+            background: linear-gradient(135deg, rgba(28, 2, 26, 0.96), rgba(40, 0, 35, 0.92));
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+        }
+
+        .account-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .account-modal-title {
+            font-size: 1.1em;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .account-close-btn {
+            border: 0;
+            background: transparent;
+            color: #FFB6C1;
+            font-size: 1.8em;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0 6px;
+        }
+
         .account-panel {
-            margin: 12px auto 22px;
-            max-width: 780px;
+            margin: 0;
+            max-width: none;
             border: 2px solid rgba(255, 182, 193, 0.45);
             border-radius: 12px;
             padding: 14px;
@@ -2430,6 +2501,10 @@
                 font-size: 1.6em;
             }
 
+            .lobby-toolbar {
+                justify-content: center;
+            }
+
             .room-code-value {
                 font-size: 2.5em;
                 letter-spacing: 6px;
@@ -2471,16 +2546,12 @@
         </div>
     </div>
 
-    <div class="container">
-
-        <!-- ================================================================
-             LOBBY SCREEN
-             ================================================================ -->
-        <div id="lobby-screen" class="screen active">
-
-            <h1 class="game-title">PERFECTLY ALIGNED</h1>
-            <p class="game-subtitle">~ The creative party game for the morally dubious ~</p>
-
+    <div id="account-modal" class="account-modal">
+        <div class="account-modal-content">
+            <div class="account-modal-header">
+                <div class="account-modal-title">Account &amp; Premium</div>
+                <button id="account-close-btn" class="account-close-btn" aria-label="Close account panel">&times;</button>
+            </div>
             <div class="account-panel">
                 <div class="account-grid">
                     <input id="auth-email" type="email" placeholder="Email">
@@ -2495,6 +2566,25 @@
                 </div>
                 <div class="account-status" id="account-status">Sign in to unlock premium host features.</div>
                 <div class="account-tip">Use promo code <strong>FOUNDERS</strong> for a founders premium pass.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- ================================================================
+             LOBBY SCREEN
+             ================================================================ -->
+        <div id="lobby-screen" class="screen active">
+
+            <h1 class="game-title">PERFECTLY ALIGNED</h1>
+            <p class="game-subtitle">~ The creative party game for the morally dubious ~</p>
+
+            <div class="lobby-toolbar">
+                <button class="btn btn-small account-launch-btn" id="account-open-btn" type="button">
+                    Account / Premium
+                    <span class="account-pill" id="account-quick-status">Guest</span>
+                </button>
             </div>
 
             <!-- Game Mode Selection -->

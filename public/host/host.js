@@ -121,11 +121,36 @@ function canUsePremiumFeature(feature) {
 
 function showPremiumRequired(message, upgradeUrl) {
     showNotification(message || 'Premium subscription required.', 'error');
+    if (openAccountModal()) {
+        return;
+    }
     if (upgradeUrl) {
         setTimeout(() => {
             window.location.href = upgradeUrl;
         }, 500);
     }
+}
+
+function updateAccountQuickStatus() {
+    if (!dom.accountQuickStatus) return;
+    if (!authState.accessToken) {
+        dom.accountQuickStatus.textContent = 'Guest';
+    } else if (authState.entitlements?.isPremium) {
+        dom.accountQuickStatus.textContent = 'Premium';
+    } else {
+        dom.accountQuickStatus.textContent = 'Free';
+    }
+}
+
+function openAccountModal() {
+    if (!dom.accountModal) return false;
+    dom.accountModal.classList.add('visible');
+    return true;
+}
+
+function closeAccountModal() {
+    if (!dom.accountModal) return;
+    dom.accountModal.classList.remove('visible');
 }
 
 function applyPremiumLocks() {
@@ -296,6 +321,10 @@ function cacheDomElements() {
 
     // Notification container
     dom.notificationContainer = document.getElementById('notification-container');
+    dom.accountModal = document.getElementById('account-modal');
+    dom.accountOpenBtn = document.getElementById('account-open-btn');
+    dom.accountCloseBtn = document.getElementById('account-close-btn');
+    dom.accountQuickStatus = document.getElementById('account-quick-status');
 
     // Game mode toggle
     dom.gameModeSelection = document.getElementById('game-mode-selection');
@@ -382,6 +411,7 @@ function setupAuthStateListeners() {
         const detail = event?.detail || {};
         authState.accessToken = detail.accessToken || localStorage.getItem('pa_host_access_token') || '';
         authState.entitlements = detail.entitlements || authState.entitlements;
+        updateAccountQuickStatus();
         applyPremiumLocks();
         updateStartButtonState();
     });
@@ -392,6 +422,7 @@ async function refreshEntitlementsFromApi() {
     authState.accessToken = token;
     if (!token) {
         authState.entitlements = null;
+        updateAccountQuickStatus();
         applyPremiumLocks();
         return;
     }
@@ -410,6 +441,7 @@ async function refreshEntitlementsFromApi() {
     } catch {
         authState.entitlements = null;
     }
+    updateAccountQuickStatus();
     applyPremiumLocks();
     updateStartButtonState();
 }
@@ -432,6 +464,25 @@ function setupJudgeChoiceGrid() {
 // =============================================================================
 
 function setupEventListeners() {
+    if (dom.accountOpenBtn) {
+        dom.accountOpenBtn.addEventListener('click', () => openAccountModal());
+    }
+    if (dom.accountCloseBtn) {
+        dom.accountCloseBtn.addEventListener('click', () => closeAccountModal());
+    }
+    if (dom.accountModal) {
+        dom.accountModal.addEventListener('click', (e) => {
+            if (e.target === dom.accountModal) {
+                closeAccountModal();
+            }
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && dom.accountModal?.classList.contains('visible')) {
+            closeAccountModal();
+        }
+    });
+
     // Create room
     if (dom.createRoomBtn) {
         dom.createRoomBtn.addEventListener('click', createRoom);
