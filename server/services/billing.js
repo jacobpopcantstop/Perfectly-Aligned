@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { upsertPremiumEntitlement } from './entitlements.js';
+import { upsertFreeEntitlement, upsertPremiumEntitlement } from './entitlements.js';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -7,6 +7,7 @@ const stripeMonthlyPriceId = process.env.STRIPE_PRICE_MONTHLY || '';
 const stripeYearlyPriceId = process.env.STRIPE_PRICE_YEARLY || '';
 const foundersPromoCode = process.env.STRIPE_FOUNDERS_PROMO_CODE_ID || '';
 const foundersFreePassEnabled = process.env.FOUNDERS_FREE_PASS_ENABLED !== 'false';
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
 
 let stripeClient = null;
 
@@ -122,12 +123,83 @@ export function parseStripeEvent(rawBody, signatureHeader) {
 
 export async function syncEntitlementFromCheckoutSession(session) {
     const profileId = session?.metadata?.profile_id;
+    if (!profileId && !session?.subscription) return;
+
+    const subscriptionId = typeof session?.subscription === 'string'
+        ? session.subscription
+        : session?.subscription?.id;
+    if (subscriptionId) {
+        let subscription = await getSubscriptionById(subscriptionId);
+        if (subscription) {
+            if (!subscription.metadata?.profile_id && profileId) {
+                const stripe = getStripeClient();
+                if (stripe) {
+                    try {
+                        subscription = await stripe.subscriptions.update(subscriptionId, {
+                            metadata: {
+                                ...(subscription.metadata || {}),
+                                profile_id: profileId
+                            }
+                        });
+                    } catch {
+                        subscription.metadata = { ...(subscription.metadata || {}), profile_id: profileId };
+                    }
+                } else {
+                    subscription.metadata = { ...(subscription.metadata || {}), profile_id: profileId };
+                }
+            }
+            await syncEntitlementFromSubscription(subscription);
+            return;
+        }
+    }
+
     if (!profileId) return;
 
-    const subStatus = session?.subscription ? 'active' : 'trialing';
-    const source = subStatus === 'trialing' ? 'trial' : 'subscription';
     await upsertPremiumEntitlement(profileId, {
-        source,
+        source: 'subscription',
         effectiveTo: null
     });
+}
+
+export async function getSubscriptionById(subscriptionId) {
+    const stripe = getStripeClient();
+    if (!stripe || !subscriptionId) return null;
+
+    try {
+        return await stripe.subscriptions.retrieve(subscriptionId);
+    } catch {
+        return null;
+    }
+}
+
+export async function syncEntitlementFromSubscription(subscription) {
+    const profileId = subscription?.metadata?.profile_id;
+    if (!profileId) return { success: false, reason: 'missing_profile_id' };
+
+    const status = subscription?.status || 'unknown';
+    if (ACTIVE_SUBSCRIPTION_STATUSES.has(status)) {
+        const source = status === 'trialing' ? 'trial' : 'subscription';
+        const result = await upsertPremiumEntitlement(profileId, {
+            source,
+            effectiveTo: null
+        });
+        return { ...result, isPremium: true, status };
+    }
+
+    const result = await upsertFreeEntitlement(profileId, {
+        source: `stripe_${status}`,
+        effectiveTo: new Date().toISOString()
+    });
+    return { ...result, isPremium: false, status };
+}
+
+export async function syncEntitlementFromInvoice(invoice) {
+    const subscriptionId = typeof invoice?.subscription === 'string'
+        ? invoice.subscription
+        : invoice?.subscription?.id;
+    if (!subscriptionId) return { success: false, reason: 'missing_subscription' };
+
+    const subscription = await getSubscriptionById(subscriptionId);
+    if (!subscription) return { success: false, reason: 'subscription_not_found' };
+    return syncEntitlementFromSubscription(subscription);
 }

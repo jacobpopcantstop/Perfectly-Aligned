@@ -26,7 +26,9 @@ import {
     createCheckoutSession,
     createPortalSession,
     getBillingPublicConfig,
+    getSubscriptionById,
     parseStripeEvent,
+    syncEntitlementFromInvoice,
     syncEntitlementFromCheckoutSession
 } from './services/billing.js';
 import {
@@ -200,8 +202,29 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), asyn
         return res.status(503).send('Stripe webhook is not configured');
     }
 
-    if (event.type === 'checkout.session.completed') {
-        await syncEntitlementFromCheckoutSession(event.data.object);
+    try {
+        if (event.type === 'checkout.session.completed') {
+            await syncEntitlementFromCheckoutSession(event.data.object);
+        } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+            await syncEntitlementFromCheckoutSession({
+                subscription: event.data.object
+            });
+        } else if (event.type === 'invoice.payment_failed') {
+            await syncEntitlementFromInvoice(event.data.object);
+        } else if (event.type === 'invoice.payment_succeeded') {
+            const subscriptionId = event.data?.object?.subscription;
+            if (subscriptionId) {
+                const subscription = await getSubscriptionById(subscriptionId);
+                if (subscription) {
+                    await syncEntitlementFromCheckoutSession({
+                        subscription
+                    });
+                }
+            }
+        }
+    } catch (err) {
+        console.error(`[Billing webhook] Failed to process ${event.type}:`, err.message);
+        return res.status(500).json({ received: false });
     }
 
     return res.json({ received: true });

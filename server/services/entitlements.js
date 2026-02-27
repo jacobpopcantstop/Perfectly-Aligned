@@ -85,6 +85,25 @@ export async function upsertPremiumEntitlement(profileId, payload = {}) {
     return { success: true };
 }
 
+export async function upsertFreeEntitlement(profileId, payload = {}) {
+    const admin = getSupabaseAdminClient();
+    if (!admin || !profileId) return { success: false };
+
+    const now = new Date().toISOString();
+    const row = {
+        profile_id: profileId,
+        is_premium: false,
+        source: payload.source || 'subscription_inactive',
+        effective_from: payload.effectiveFrom || now,
+        effective_to: payload.effectiveTo || now,
+        updated_at: now
+    };
+
+    const { error } = await admin.from('entitlements').upsert(row, { onConflict: 'profile_id' });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+}
+
 export function isPremiumFeatureAllowed(entitlements, featureKey) {
     if (!entitlements?.isPremium) return false;
     return Boolean(entitlements.features?.[featureKey]);
