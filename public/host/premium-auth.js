@@ -31,6 +31,49 @@
         dom.status.style.color = isError ? '#ff7777' : '#FFD700';
     }
 
+    function updateUI() {
+        const signedIn = !!state.accessToken && !!state.user;
+        const isPremium = signedIn && !!state.entitlements?.isPremium;
+
+        function show(el) { if (el) el.style.display = ''; }
+        function hide(el) { if (el) el.style.display = 'none'; }
+
+        if (!signedIn) {
+            // Signed out: show email/password/sign-up/sign-in
+            show(dom.email);
+            show(dom.password);
+            show(dom.signupBtn);
+            show(dom.loginBtn);
+            hide(dom.promoCode);
+            hide(dom.upgradeMonthlyBtn);
+            hide(dom.upgradeYearlyBtn);
+            hide(dom.manageBillingBtn);
+            hide(dom.logoutBtn);
+        } else if (!isPremium) {
+            // Signed in, free tier: show promo + upgrade options + sign-out
+            hide(dom.email);
+            hide(dom.password);
+            hide(dom.signupBtn);
+            hide(dom.loginBtn);
+            show(dom.promoCode);
+            show(dom.upgradeMonthlyBtn);
+            show(dom.upgradeYearlyBtn);
+            hide(dom.manageBillingBtn);
+            show(dom.logoutBtn);
+        } else {
+            // Signed in, premium: show manage billing + sign-out
+            hide(dom.email);
+            hide(dom.password);
+            hide(dom.signupBtn);
+            hide(dom.loginBtn);
+            hide(dom.promoCode);
+            hide(dom.upgradeMonthlyBtn);
+            hide(dom.upgradeYearlyBtn);
+            show(dom.manageBillingBtn);
+            show(dom.logoutBtn);
+        }
+    }
+
     function saveToken(token) {
         state.accessToken = token || '';
         if (state.accessToken) {
@@ -57,6 +100,7 @@
             state.user = null;
             state.entitlements = null;
             setStatus('Sign in to unlock premium host features.');
+            updateUI();
             return;
         }
 
@@ -67,6 +111,7 @@
             state.user = null;
             state.entitlements = null;
             setStatus('Session expired. Please sign in again.', true);
+            updateUI();
             return;
         }
 
@@ -81,6 +126,8 @@
         } else {
             setStatus(`Signed in as ${state.user.email}. Free tier active.`);
         }
+
+        updateUI();
 
         window.dispatchEvent(new CustomEvent('pa-auth-updated', {
             detail: {
@@ -120,6 +167,7 @@
             return;
         }
         setStatus('Account created. Check your email if confirmation is enabled.');
+        updateUI();
     }
 
     async function signIn() {
@@ -149,6 +197,7 @@
         state.entitlements = null;
         saveToken('');
         setStatus('Signed out.');
+        updateUI();
     }
 
     async function startCheckout(priceCode) {
@@ -213,6 +262,16 @@
     }
 
     async function bootstrap() {
+        const params = new URLSearchParams(window.location.search);
+        const billingParam = params.get('billing');
+        if (billingParam === 'success') {
+            setStatus('Payment successful! Premium is now active.');
+        } else if (billingParam === 'founders_applied') {
+            setStatus('Founders pass applied! Premium is now active.');
+        } else if (billingParam === 'cancel') {
+            setStatus('Checkout cancelled.');
+        }
+
         const rememberedEmail = localStorage.getItem(EMAIL_KEY) || '';
         if (dom.email && rememberedEmail) dom.email.value = rememberedEmail;
 
@@ -230,6 +289,15 @@
             const token = data?.session?.access_token || state.accessToken;
             saveToken(token || '');
             await fetchMe();
+
+            // Override status with billing redirect message after state is loaded
+            if (billingParam === 'success') {
+                setStatus('Payment successful! Premium is now active.');
+            } else if (billingParam === 'founders_applied') {
+                setStatus('Founders pass applied! Premium is now active.');
+            } else if (billingParam === 'cancel') {
+                setStatus('Checkout cancelled.');
+            }
 
             state.client.auth.onAuthStateChange(async (_event, session) => {
                 saveToken(session?.access_token || '');
