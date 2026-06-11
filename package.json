@@ -6,7 +6,9 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "test": "node --test",
+    "check": "node --check server/index.js && node --check server/game/Room.js && node --check server/game/GameManager.js && node --check public/host/host.js && node --check public/player/player.js"
   },
   "keywords": [
     "party-game",
@@ -25,7 +27,6 @@
     "@supabase/supabase-js": "^2.49.4",
     "cookie-parser": "^1.4.7",
     "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "stripe": "^18.1.1"
+    "socket.io": "^4.7.2"
   }
 }

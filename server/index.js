@@ -13,24 +13,11 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import crypto from 'crypto';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import cookieParser from 'cookie-parser';
 import GameManager from './game/GameManager.js';
 import { getRequestAccessToken, getProfileFromAccessToken, requireAuth } from './services/auth.js';
-import {
-    getEntitlementsForProfile,
-    getFreeEntitlements,
-    isPremiumFeatureAllowed
-} from './services/entitlements.js';
-import {
-    createCheckoutSession,
-    createPortalSession,
-    getBillingPublicConfig,
-    getSubscriptionById,
-    parseStripeEvent,
-    syncEntitlementFromInvoice,
-    syncEntitlementFromCheckoutSession
-} from './services/billing.js';
+import { getEntitlementsForProfile, getFreeEntitlements } from './services/entitlements.js';
 import {
     finalizeSession,
     getHistoryItemForHost,
@@ -74,13 +61,32 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 10_000);
 const JOIN_RATE_LIMIT = Number(process.env.JOIN_RATE_LIMIT || 8);
 const RECONNECT_RATE_LIMIT = Number(process.env.RECONNECT_RATE_LIMIT || 12);
 const SUBMIT_RATE_LIMIT = Number(process.env.SUBMIT_RATE_LIMIT || 6);
-const CORE_DECK_KEY = 'core_white';
 const gameManager = new GameManager();
 
+app.disable('x-powered-by');
 app.use(cookieParser());
+app.use(express.json({ limit: '1mb' }));
 app.use((req, res, next) => {
-    if (req.path === '/api/billing/webhook') return next();
-    return express.json({ limit: '1mb' })(req, res, next);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+    res.setHeader(
+        'Content-Security-Policy',
+        [
+            "default-src 'self'",
+            "script-src 'self' https://cdn.jsdelivr.net",
+            "style-src 'self' 'unsafe-inline'",
+            "img-src 'self' data:",
+            "media-src 'self'",
+            "connect-src 'self' ws: wss:",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'"
+        ].join('; ')
+    );
+    next();
 });
 
 // ---------------------------------------------------------------------------
@@ -140,7 +146,7 @@ app.get('/api/public-config', (req, res) => {
     res.json({
         success: true,
         auth: getPublicSupabaseConfig(),
-        billing: getBillingPublicConfig()
+        features: { allFree: true }
     });
 });
 
@@ -161,100 +167,12 @@ app.get('/api/entitlements', requireAuth, async (req, res) => {
     res.json({ success: true, entitlements });
 });
 
-app.post('/api/billing/checkout-session', requireAuth, async (req, res) => {
-    const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
-    const result = await createCheckoutSession({
-        profile: req.auth,
-        priceCode: req.body?.priceCode || 'premium_monthly',
-        origin,
-        promoCode: req.body?.promoCode || ''
-    });
-
-    if (!result.success) {
-        return res.status(400).json(result);
-    }
-    return res.json(result);
-});
-
-app.post('/api/billing/portal-session', requireAuth, async (req, res) => {
-    const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
-    const result = await createPortalSession({
-        profile: req.auth,
-        origin
-    });
-    if (!result.success) {
-        return res.status(400).json(result);
-    }
-    return res.json(result);
-});
-
-app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    const signature = req.headers['stripe-signature'];
-    if (!signature) return res.status(400).send('Missing signature');
-
-    let event;
-    try {
-        event = parseStripeEvent(req.body, signature);
-    } catch (err) {
-        return res.status(400).send(`Webhook error: ${err.message}`);
-    }
-    if (!event) {
-        return res.status(503).send('Stripe webhook is not configured');
-    }
-
-    try {
-        if (event.type === 'checkout.session.completed') {
-            await syncEntitlementFromCheckoutSession(event.data.object);
-        } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-            await syncEntitlementFromCheckoutSession({
-                subscription: event.data.object
-            });
-        } else if (event.type === 'invoice.payment_failed') {
-            await syncEntitlementFromInvoice(event.data.object);
-        } else if (event.type === 'invoice.payment_succeeded') {
-            const subscriptionId = event.data?.object?.subscription;
-            if (subscriptionId) {
-                const subscription = await getSubscriptionById(subscriptionId);
-                if (subscription) {
-                    await syncEntitlementFromCheckoutSession({
-                        subscription
-                    });
-                }
-            }
-        }
-    } catch (err) {
-        console.error(`[Billing webhook] Failed to process ${event.type}:`, err.message);
-        return res.status(500).json({ received: false });
-    }
-
-    return res.json({ received: true });
-});
-
 app.get('/api/history', requireAuth, async (req, res) => {
-    const entitlements = await getEntitlementsForProfile(req.auth.id);
-    if (!isPremiumFeatureAllowed(entitlements, 'history')) {
-        return res.status(403).json({
-            success: false,
-            code: 'PREMIUM_REQUIRED',
-            feature: 'history',
-            error: 'Premium subscription required for game history.'
-        });
-    }
-
     const sessions = await listHistoryForHost(req.auth.id);
     return res.json({ success: true, sessions });
 });
 
 app.get('/api/history/:sessionId', requireAuth, async (req, res) => {
-    const entitlements = await getEntitlementsForProfile(req.auth.id);
-    if (!isPremiumFeatureAllowed(entitlements, 'history')) {
-        return res.status(403).json({
-            success: false,
-            code: 'PREMIUM_REQUIRED',
-            feature: 'history',
-            error: 'Premium subscription required for game history.'
-        });
-    }
     const session = await getHistoryItemForHost(req.auth.id, req.params.sessionId);
     if (!session) {
         return res.status(404).json({ success: false, error: 'History session not found' });
@@ -329,20 +247,6 @@ function checkSocketRateLimit(socket, eventKey, maxRequests, callback) {
     return true;
 }
 
-function getUpgradeUrl() {
-    return '/host?upgrade=true';
-}
-
-function getPremiumRequiredError(featureKey, message) {
-    return {
-        success: false,
-        code: 'PREMIUM_REQUIRED',
-        feature: featureKey,
-        error: message || 'Premium subscription required.',
-        upgradeUrl: getUpgradeUrl()
-    };
-}
-
 async function resolveProfileAndEntitlementsFromAccessToken(accessToken) {
     const profile = await getProfileFromAccessToken(accessToken);
     if (!profile) {
@@ -353,26 +257,6 @@ async function resolveProfileAndEntitlementsFromAccessToken(accessToken) {
     }
     const entitlements = await getEntitlementsForProfile(profile.id);
     return { profile, entitlements };
-}
-
-function requiresPremiumBySettings(room, settings = {}) {
-    const selectedDecks = Array.isArray(settings.selectedDecks) ? settings.selectedDecks : [];
-    const hasExpansionDeck = selectedDecks.some((deck) => deck && deck !== CORE_DECK_KEY);
-    const modifiersEnabled = settings.modifiersEnabled !== undefined
-        ? Boolean(settings.modifiersEnabled)
-        : Boolean(room?.modifiersEnabled);
-    const onlineMode = room ? !room.offlineMode : false;
-
-    if (onlineMode) {
-        return { required: true, feature: 'online_mode', message: 'Online mode is a premium feature.' };
-    }
-    if (hasExpansionDeck) {
-        return { required: true, feature: 'expansion_decks', message: 'Expansion decks require premium.' };
-    }
-    if (modifiersEnabled) {
-        return { required: true, feature: 'curse_cards', message: 'Curse cards require premium.' };
-    }
-    return { required: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -400,10 +284,6 @@ io.on('connection', (socket) => {
             const accessToken = data?.accessToken || null;
             const { profile, entitlements } = await resolveProfileAndEntitlementsFromAccessToken(accessToken);
             const offlineMode = Boolean(data && data.offlineMode);
-
-            if (!offlineMode && !isPremiumFeatureAllowed(entitlements, 'onlineMode')) {
-                return callback(getPremiumRequiredError('online_mode', 'Online mode is a premium feature.'));
-            }
 
             const room = gameManager.createRoom(socket.id);
             if (offlineMode) {
@@ -485,20 +365,6 @@ io.on('connection', (socket) => {
     socket.on('host:startGame', (settings, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
-
-        const entitlements = socket.hostEntitlements || room._hostEntitlements || getFreeEntitlements();
-        const premiumRequirement = requiresPremiumBySettings(room, settings || {});
-        if (premiumRequirement.required) {
-            const featureMap = {
-                online_mode: 'onlineMode',
-                expansion_decks: 'expansionDecks',
-                curse_cards: 'curseCards'
-            };
-            const entitlementFeature = featureMap[premiumRequirement.feature];
-            if (!isPremiumFeatureAllowed(entitlements, entitlementFeature)) {
-                return callback(getPremiumRequiredError(premiumRequirement.feature, premiumRequirement.message));
-            }
-        }
 
         const result = room.startGame(settings);
         if (result.success) {
@@ -1430,42 +1296,79 @@ io.on('connection', (socket) => {
 });
 
 // ---------------------------------------------------------------------------
-// Start Server
+// Server Lifecycle
 // ---------------------------------------------------------------------------
-// Start periodic cleanup of inactive rooms
-gameManager.startCleanupInterval();
-
-httpServer.listen(PORT, () => {
+function printStartupBanner(port) {
     console.log(`
   ┌─────────────────────────────────────────────────────────────┐
   │                                                             │
   │   ____           __          _   _                          │
-  │  |  _ \\ ___ _ __|  _| ___  |_|_| |_ _  _                  │
-  │  | |_) / _ \\ '__| |_ / _ \\/ __| __| | | |                 │
+  │  |  _ \ ___ _ __|  _| ___  |_|_| |_ _  _                  │
+  │  | |_) / _ \ '__| |_ / _ \/ __| __| | | |                 │
   │  |  __/  __/ |  |  _|  __/ (__| |_| |_| |                  │
-  │  |_|   \\___|_|  |_|  \\___|\\___|\\___|\\__, |                 │
+  │  |_|   \___|_|  |_|  \___|\___|\___|\__, |                 │
   │     _    _ _                      _ |___/                   │
-  │    / \\  | (_) __ _ _ __   ___  __| |                        │
-  │   / _ \\ | | |/ _\` | '_ \\ / _ \\/ _\` |                      │
-  │  / ___ \\| | | (_| | | | |  __/ (_| |                        │
-  │ /_/   \\_\\_|_|\\__, |_| |_|\\___|\\__,_|                       │
+  │    / \  | (_) __ _ _ __   ___  __| |                        │
+  │   / _ \ | | |/ _\` | '_ \ / _ \/ _\` |                      │
+  │  / ___ \| | | (_| | | | |  __/ (_| |                        │
+  │ /_/   \_\_|_|\__, |_| |_|\___|\__,_|                       │
   │              |___/                                          │
   │                                                             │
   │  The creative party game for the morally dubious!           │
   │                                                             │
-  │  Host a game:   http://localhost:${String(PORT).padEnd(5)}/host                 │
-  │  Join a game:   http://localhost:${String(PORT).padEnd(5)}/play                 │
+  │  Host a game:   http://localhost:${String(port).padEnd(5)}/host                 │
+  │  Join a game:   http://localhost:${String(port).padEnd(5)}/play                 │
   │                                                             │
   └─────────────────────────────────────────────────────────────┘
     `);
-});
-
-function shutdown() {
-    gameManager.shutdown();
-    httpServer.close(() => process.exit(0));
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+function startServer({ port = PORT, log = true } = {}) {
+    gameManager.startCleanupInterval();
+    return new Promise((resolve, reject) => {
+        const onError = (error) => {
+            httpServer.off('listening', onListening);
+            reject(error);
+        };
+        const onListening = () => {
+            httpServer.off('error', onError);
+            if (log) printStartupBanner(port);
+            resolve(httpServer);
+        };
+        httpServer.once('error', onError);
+        httpServer.once('listening', onListening);
+        httpServer.listen(port);
+    });
+}
 
-export { app, io };
+function stopServer() {
+    gameManager.shutdown();
+    io.close();
+    return new Promise((resolve, reject) => {
+        if (!httpServer.listening) {
+            resolve();
+            return;
+        }
+        httpServer.close((error) => {
+            if (error) reject(error);
+            else resolve();
+        });
+    });
+}
+
+async function shutdown() {
+    await stopServer();
+    process.exit(0);
+}
+
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+    startServer().catch((error) => {
+        console.error('[Server] Failed to start:', error);
+        process.exit(1);
+    });
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+}
+
+export { app, gameManager, httpServer, io, startServer, stopServer };

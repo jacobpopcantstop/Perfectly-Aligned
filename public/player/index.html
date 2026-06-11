@@ -1666,7 +1666,7 @@
     <!-- ================================================================
          NOTIFICATION CONTAINER
          ================================================================ -->
-    <div id="notification-container"></div>
+    <div id="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <!-- ================================================================
          1. JOIN SCREEN
@@ -1677,7 +1677,7 @@
             <div class="subtitle">Join the Game!</div>
 
             <div class="input-group">
-                <label>Room Code</label>
+                <label for="room-code-input">Room Code</label>
                 <input type="text"
                        id="room-code-input"
                        class="room-code-input"
@@ -1689,7 +1689,7 @@
             </div>
 
             <div class="input-group">
-                <label>Your Name</label>
+                <label for="player-name-input">Your Name</label>
                 <input type="text"
                        id="player-name-input"
                        placeholder="Enter your name"
@@ -1716,9 +1716,9 @@
 
             <div class="section-label text-center">Your Avatar</div>
             <div class="avatar-selector">
-                <div class="avatar-arrow" id="avatar-prev">&larr;</div>
+                <button class="avatar-arrow" id="avatar-prev" type="button" aria-label="Previous avatar">&larr;</button>
                 <div class="avatar-display" id="avatar-display"></div>
-                <div class="avatar-arrow" id="avatar-next">&rarr;</div>
+                <button class="avatar-arrow" id="avatar-next" type="button" aria-label="Next avatar">&rarr;</button>
             </div>
 
             <div class="info-box">
@@ -1851,7 +1851,7 @@
 
             <!-- Canvas -->
             <div class="canvas-container">
-                <canvas id="drawing-canvas"></canvas>
+                <canvas id="drawing-canvas" role="img" aria-label="Drawing canvas. Draw your response to the current prompt using touch or mouse."></canvas>
             </div>
 
             <!-- Drawing tools -->
@@ -2023,7 +2023,7 @@
          FULLSCREEN CANVAS OVERLAY
          ================================================================ -->
     <div id="fullscreen-canvas-overlay" class="fullscreen-canvas-overlay">
-        <canvas id="fullscreen-canvas"></canvas>
+        <canvas id="fullscreen-canvas" role="img" aria-label="Fullscreen drawing canvas. Draw your response to the current prompt using touch or mouse."></canvas>
     </div>
 
     <div id="floating-toolbar" class="floating-toolbar" style="display:none; bottom:20px; left:50%; transform:translateX(-50%);">
@@ -2044,34 +2044,8 @@
          SCRIPTS
          ================================================================ -->
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-    if (typeof io === 'undefined') {
-        document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
-    }
-    </script>
     <script src="/assets/config/links.js"></script>
-    <script>
-    (function applyPromoLinks() {
-        const links = window.PA_LINKS || {};
-        const map = {
-            interestFormUrl: links.interestFormUrl,
-            donateUrl: links.donateUrl
-        };
-        document.querySelectorAll('[data-pa-link]').forEach((el) => {
-            const key = el.getAttribute('data-pa-link');
-            const href = map[key];
-            if (href && !href.includes('REPLACE_WITH_YOUR')) {
-                el.href = href;
-                el.target = '_blank';
-                el.rel = 'noopener noreferrer';
-            } else {
-                el.href = '#';
-                el.title = 'Set this URL in public/assets/config/links.js';
-                el.addEventListener('click', (e) => e.preventDefault());
-            }
-        });
-    })();
-    </script>
+    <script src="/assets/config/apply-links.js"></script>
     <script src="/player/player.js"></script>
 </body>
 </html>
