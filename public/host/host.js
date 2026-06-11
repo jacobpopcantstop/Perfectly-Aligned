@@ -110,91 +110,57 @@ let isScoreboardOpen = false;
 let hostInitiatedRoll = false;
 let currentOfflineAvatarIndex = 0;
 
-let authState = {
-    accessToken: localStorage.getItem('pa_host_access_token') || '',
-    entitlements: null
-};
-
-function canUsePremiumFeature(feature) {
-    return Boolean(authState.entitlements?.isPremium && authState.entitlements?.features?.[feature]);
-}
-
-function showPremiumRequired(message, upgradeUrl) {
-    showNotification(message || 'Premium subscription required.', 'error');
-    if (openAccountModal()) {
-        return;
-    }
-    if (upgradeUrl) {
-        setTimeout(() => {
-            window.location.href = upgradeUrl;
-        }, 500);
-    }
-}
-
-function updateAccountQuickStatus() {
-    if (!dom.accountQuickStatus) return;
-    if (!authState.accessToken) {
-        dom.accountQuickStatus.textContent = 'Guest';
-    } else if (authState.entitlements?.isPremium) {
-        dom.accountQuickStatus.textContent = 'Premium';
-    } else {
-        dom.accountQuickStatus.textContent = 'Free';
-    }
-}
-
-function openAccountModal() {
-    if (!dom.accountModal) return false;
-    dom.accountModal.classList.add('visible');
-    return true;
-}
-
-function closeAccountModal() {
-    if (!dom.accountModal) return;
-    dom.accountModal.classList.remove('visible');
-}
-
-function applyPremiumLocks() {
+function syncDeckCardAccessibility() {
     if (!dom.deckOptions) return;
-
-    const canUseExpansionDecks = canUsePremiumFeature('expansionDecks');
-    const canUseCurseCards = canUsePremiumFeature('curseCards');
-    const canUseOnlineMode = canUsePremiumFeature('onlineMode');
-
     const allDecks = dom.deckOptions.querySelectorAll('.deck-card');
     allDecks.forEach((card) => {
-        const isCore = card.dataset.deck === 'core_white';
-        const shouldLock = !isCore && !canUseExpansionDecks;
-        card.classList.toggle('locked', shouldLock);
-        card.setAttribute('aria-disabled', shouldLock ? 'true' : 'false');
-        card.style.opacity = shouldLock ? '0.45' : '1';
-        card.title = shouldLock ? 'Premium required for expansion decks' : '';
-        if (shouldLock && card.classList.contains('selected')) {
-            card.classList.remove('selected');
-            const core = document.getElementById('deck-core_white');
-            core?.classList.add('selected');
-        }
+        card.setAttribute('role', 'checkbox');
+        card.setAttribute('tabindex', '0');
+        card.setAttribute('aria-checked', card.classList.contains('selected') ? 'true' : 'false');
     });
+}
+
+function toggleDeckCard(option) {
+    if (!option) return;
+    if (option.classList.contains('selected')) {
+        const selectedCount = dom.deckOptions.querySelectorAll('.deck-card.selected').length;
+        if (selectedCount <= 1) {
+            showNotification('Select at least one deck.', 'warning');
+            return;
+        }
+    }
+    option.classList.toggle('selected');
+    syncDeckCardAccessibility();
+    updateStartButtonState();
+}
+
+function applyFreeFeatureAvailability() {
+    if (dom.deckOptions) {
+        const allDecks = dom.deckOptions.querySelectorAll('.deck-card');
+        allDecks.forEach((card) => {
+            card.classList.remove('locked');
+            card.setAttribute('aria-disabled', 'false');
+            card.style.opacity = '1';
+            card.title = '';
+        });
+        syncDeckCardAccessibility();
+    }
 
     if (dom.modifiersToggle) {
-        dom.modifiersToggle.disabled = !canUseCurseCards;
-        dom.modifiersToggle.title = canUseCurseCards ? '' : 'Premium required for curse cards';
-        if (!canUseCurseCards) {
-            dom.modifiersToggle.checked = false;
-        }
+        dom.modifiersToggle.disabled = false;
+        dom.modifiersToggle.title = '';
     }
 
     if (dom.modeOnlineBtn) {
-        dom.modeOnlineBtn.disabled = !canUseOnlineMode;
-        dom.modeOnlineBtn.title = canUseOnlineMode ? '' : 'Premium required for online mode';
-    }
-
-    if (!canUseOnlineMode && !gameState.offlineMode) {
-        setGameMode('offline');
+        dom.modeOnlineBtn.disabled = false;
+        dom.modeOnlineBtn.title = '';
     }
 
     updateStartButtonState();
 }
 
+// =============================================================================
+// SOCKET CONNECTION
 // =============================================================================
 // SOCKET CONNECTION
 // =============================================================================
@@ -321,10 +287,6 @@ function cacheDomElements() {
 
     // Notification container
     dom.notificationContainer = document.getElementById('notification-container');
-    dom.accountModal = document.getElementById('account-modal');
-    dom.accountOpenBtn = document.getElementById('account-open-btn');
-    dom.accountCloseBtn = document.getElementById('account-close-btn');
-    dom.accountQuickStatus = document.getElementById('account-quick-status');
 
     // Game mode toggle
     dom.gameModeSelection = document.getElementById('game-mode-selection');
@@ -402,49 +364,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupSocketListeners();
     applyGlobalTooltips();
-    setupAuthStateListeners();
-    refreshEntitlementsFromApi();
+    applyFreeFeatureAvailability();
 });
-
-function setupAuthStateListeners() {
-    window.addEventListener('pa-auth-updated', (event) => {
-        const detail = event?.detail || {};
-        authState.accessToken = detail.accessToken || localStorage.getItem('pa_host_access_token') || '';
-        authState.entitlements = detail.entitlements || authState.entitlements;
-        updateAccountQuickStatus();
-        applyPremiumLocks();
-        updateStartButtonState();
-    });
-}
-
-async function refreshEntitlementsFromApi() {
-    const token = localStorage.getItem('pa_host_access_token') || '';
-    authState.accessToken = token;
-    if (!token) {
-        authState.entitlements = null;
-        updateAccountQuickStatus();
-        applyPremiumLocks();
-        return;
-    }
-    try {
-        const res = await fetch('/api/entitlements', {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-            authState.entitlements = data.entitlements;
-        } else {
-            authState.entitlements = null;
-        }
-    } catch {
-        authState.entitlements = null;
-    }
-    updateAccountQuickStatus();
-    applyPremiumLocks();
-    updateStartButtonState();
-}
 
 function setupJudgeChoiceGrid() {
     if (!dom.judgeChoiceGrid) return;
@@ -464,47 +385,24 @@ function setupJudgeChoiceGrid() {
 // =============================================================================
 
 function setupEventListeners() {
-    if (dom.accountOpenBtn) {
-        dom.accountOpenBtn.addEventListener('click', () => openAccountModal());
-    }
-    if (dom.accountCloseBtn) {
-        dom.accountCloseBtn.addEventListener('click', () => closeAccountModal());
-    }
-    if (dom.accountModal) {
-        dom.accountModal.addEventListener('click', (e) => {
-            if (e.target === dom.accountModal) {
-                closeAccountModal();
-            }
-        });
-    }
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && dom.accountModal?.classList.contains('visible')) {
-            closeAccountModal();
-        }
-    });
-
     // Create room
     if (dom.createRoomBtn) {
         dom.createRoomBtn.addEventListener('click', createRoom);
     }
 
-    // Deck option clicks (deck-card class, not deck-option)
+    // Deck option clicks / keyboard toggles (deck-card class, not deck-option)
     if (dom.deckOptions) {
         dom.deckOptions.addEventListener('click', (e) => {
             const option = e.target.closest('.deck-card');
             if (!option) return;
-            if (option.classList.contains('locked')) {
-                showPremiumRequired('Expansion decks require Premium.', '/host?upgrade=true');
-                return;
-            }
-            if (option.classList.contains('selected')) {
-                const selectedCount = dom.deckOptions.querySelectorAll('.deck-card.selected').length;
-                if (selectedCount <= 1) {
-                    return;
-                }
-            }
-            option.classList.toggle('selected');
-            updateStartButtonState();
+            toggleDeckCard(option);
+        });
+        dom.deckOptions.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const option = e.target.closest('.deck-card');
+            if (!option) return;
+            e.preventDefault();
+            toggleDeckCard(option);
         });
     }
 
@@ -594,26 +492,10 @@ function setupEventListeners() {
 
     // Game mode toggle
     if (dom.modeOnlineBtn) {
-        dom.modeOnlineBtn.addEventListener('click', () => {
-            if (!canUsePremiumFeature('onlineMode')) {
-                showPremiumRequired('Online mode requires Premium.', '/host?upgrade=true');
-                return;
-            }
-            setGameMode('online');
-        });
+        dom.modeOnlineBtn.addEventListener('click', () => setGameMode('online'));
     }
     if (dom.modeOfflineBtn) {
         dom.modeOfflineBtn.addEventListener('click', () => setGameMode('offline'));
-    }
-
-    if (dom.modifiersToggle) {
-        dom.modifiersToggle.addEventListener('click', (e) => {
-            if (!canUsePremiumFeature('curseCards')) {
-                e.preventDefault();
-                dom.modifiersToggle.checked = false;
-                showPremiumRequired('Curse cards require Premium.', '/host?upgrade=true');
-            }
-        });
     }
 
     // Offline player entry
@@ -821,8 +703,7 @@ function setupSocketListeners() {
         // If we had a room, try to reclaim host status
         if (gameState.roomCode) {
             socket.emit('host:reconnect', {
-                roomCode: gameState.roomCode,
-                accessToken: authState.accessToken || ''
+                roomCode: gameState.roomCode
             }, (response) => {
                 if (response.success) {
                     showNotification('Reconnected to room!', 'success');
@@ -879,7 +760,7 @@ function resetToCreateRoom() {
     // Reset mode buttons to default (online)
     if (dom.modeOnlineBtn) dom.modeOnlineBtn.classList.add('active');
     if (dom.modeOfflineBtn) dom.modeOfflineBtn.classList.remove('active');
-    applyPremiumLocks();
+    applyFreeFeatureAvailability();
 
     showScreen('lobby');
 }
@@ -916,11 +797,6 @@ function syncFromServerState(state) {
 // =============================================================================
 
 function setGameMode(mode) {
-    if (mode === 'online' && !canUsePremiumFeature('onlineMode')) {
-        gameState.offlineMode = true;
-        showPremiumRequired('Online mode requires Premium.', '/host?upgrade=true');
-        return;
-    }
     gameState.offlineMode = (mode === 'offline');
 
     // Toggle active class on mode buttons
@@ -962,8 +838,7 @@ function createRoom() {
     if (dom.createRoomBtn) dom.createRoomBtn.disabled = true;
 
     socket.emit('host:createRoom', {
-        offlineMode: gameState.offlineMode,
-        accessToken: authState.accessToken || ''
+        offlineMode: gameState.offlineMode
     }, (response) => {
         if (response.success) {
             gameState.roomCode = response.roomCode;
@@ -1004,11 +879,7 @@ function createRoom() {
             const modeLabel = gameState.offlineMode ? 'Offline room' : `Room ${response.roomCode}`;
             showNotification(`${modeLabel} created!`, 'success');
         } else {
-            if (response.code === 'PREMIUM_REQUIRED') {
-                showPremiumRequired(response.error, response.upgradeUrl);
-            } else {
-                showNotification(`Failed to create room: ${response.error}`, 'error');
-            }
+            showNotification(`Failed to create room: ${response.error}`, 'error');
             if (dom.createRoomBtn) dom.createRoomBtn.disabled = false;
         }
     });
@@ -1126,30 +997,13 @@ function startGame() {
         modifiersEnabled: dom.modifiersToggle ? dom.modifiersToggle.checked : true
     };
 
-    if (!canUsePremiumFeature('expansionDecks') && settings.selectedDecks.some((deck) => deck !== 'core_white')) {
-        showPremiumRequired('Expansion decks require Premium.', '/host?upgrade=true');
-        return;
-    }
-    if (!canUsePremiumFeature('curseCards') && settings.modifiersEnabled) {
-        showPremiumRequired('Curse cards require Premium.', '/host?upgrade=true');
-        return;
-    }
-    if (!gameState.offlineMode && !canUsePremiumFeature('onlineMode')) {
-        showPremiumRequired('Online mode requires Premium.', '/host?upgrade=true');
-        return;
-    }
-
     gameState.settings = { ...gameState.settings, ...settings };
 
     if (dom.startGameBtn) dom.startGameBtn.disabled = true;
 
     socket.emit('host:startGame', settings, (response) => {
         if (!response.success) {
-            if (response.code === 'PREMIUM_REQUIRED') {
-                showPremiumRequired(response.error, response.upgradeUrl);
-            } else {
-                showNotification(`Failed to start: ${response.error}`, 'error');
-            }
+            showNotification(`Failed to start: ${response.error}`, 'error');
             if (dom.startGameBtn) dom.startGameBtn.disabled = false;
         }
     });
@@ -2554,6 +2408,9 @@ function showNotification(message, type, duration) {
             container.id = 'notification-container';
             document.body.appendChild(container);
         }
+        container.setAttribute('role', 'status');
+        container.setAttribute('aria-live', 'polite');
+        container.setAttribute('aria-atomic', 'true');
         dom.notificationContainer = container;
     }
 

@@ -142,112 +142,6 @@
             margin-bottom: 10px;
         }
 
-        .account-launch-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
-            font-size: 0.78em;
-        }
-
-        .account-pill {
-            display: inline-block;
-            border: 1px solid rgba(255, 182, 193, 0.6);
-            border-radius: 999px;
-            padding: 2px 8px;
-            font-size: 0.92em;
-            color: #FFD700;
-            background: rgba(0, 0, 0, 0.35);
-        }
-
-        .account-modal {
-            position: fixed;
-            inset: 0;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0, 0, 0, 0.75);
-            z-index: 1200;
-            padding: 20px;
-        }
-
-        .account-modal.visible {
-            display: flex;
-        }
-
-        .account-modal-content {
-            width: min(860px, 96vw);
-            border: 2px solid rgba(255, 182, 193, 0.65);
-            border-radius: 14px;
-            padding: 16px;
-            background: linear-gradient(135deg, rgba(28, 2, 26, 0.96), rgba(40, 0, 35, 0.92));
-            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-        }
-
-        .account-modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-
-        .account-modal-title {
-            font-size: 1.1em;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-
-        .account-close-btn {
-            border: 0;
-            background: transparent;
-            color: #FFB6C1;
-            font-size: 1.8em;
-            line-height: 1;
-            cursor: pointer;
-            padding: 0 6px;
-        }
-
-        .account-panel {
-            margin: 0;
-            max-width: none;
-            border: 2px solid rgba(255, 182, 193, 0.45);
-            border-radius: 12px;
-            padding: 14px;
-            background: rgba(20, 0, 20, 0.55);
-        }
-
-        .account-grid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 8px;
-            align-items: center;
-        }
-
-        .account-grid input {
-            width: 100%;
-            min-width: 0;
-        }
-
-        .account-status {
-            margin-top: 8px;
-            font-size: 0.9em;
-            color: #FFD700;
-            min-height: 20px;
-        }
-
-        .account-tip {
-            margin-top: 6px;
-            font-size: 0.8em;
-            color: #FFB6C1;
-            opacity: 0.85;
-        }
-
-        @media (max-width: 860px) {
-            .account-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-
         .btn-gold {
             background: linear-gradient(135deg, #FFD700, #FFA500);
             border-color: #FFD700;
@@ -2530,7 +2424,7 @@
     <!-- ================================================================
          NOTIFICATION CONTAINER
          ================================================================ -->
-    <div id="notification-container"></div>
+    <div id="notification-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <!-- ================================================================
          STEAL MODAL
@@ -2547,30 +2441,6 @@
         </div>
     </div>
 
-    <div id="account-modal" class="account-modal">
-        <div class="account-modal-content">
-            <div class="account-modal-header">
-                <div class="account-modal-title">Account &amp; Premium</div>
-                <button id="account-close-btn" class="account-close-btn" aria-label="Close account panel">&times;</button>
-            </div>
-            <div class="account-panel">
-                <div class="account-grid">
-                    <input id="auth-email" type="email" placeholder="Email">
-                    <input id="auth-password" type="password" placeholder="Password">
-                    <button class="btn btn-small" id="auth-signup-btn">Create Account</button>
-                    <button class="btn btn-small" id="auth-login-btn">Sign In</button>
-                    <input id="promo-code-input" type="text" placeholder="Promo code (FOUNDERS)">
-                    <button class="btn btn-gold btn-small" id="upgrade-monthly-btn">Go Premium Monthly</button>
-                    <button class="btn btn-gold btn-small" id="upgrade-yearly-btn">Go Premium Yearly</button>
-                    <button class="btn btn-small" id="manage-billing-btn">Manage Billing</button>
-                    <button class="btn btn-small" id="auth-logout-btn">Sign Out</button>
-                </div>
-                <div class="account-status" id="account-status">Sign in to unlock premium host features.</div>
-                <div class="account-tip">Use promo code <strong>FOUNDERS</strong> for a founders premium pass.</div>
-            </div>
-        </div>
-    </div>
-
     <div class="container">
 
         <!-- ================================================================
@@ -2581,12 +2451,6 @@
             <h1 class="game-title">PERFECTLY ALIGNED</h1>
             <p class="game-subtitle">~ The creative party game for the morally dubious ~</p>
 
-            <div class="lobby-toolbar">
-                <button class="btn btn-small account-launch-btn" id="account-open-btn" type="button">
-                    Account / Premium
-                    <span class="account-pill" id="account-quick-status">Guest</span>
-                </button>
-            </div>
 
             <!-- Game Mode Selection -->
             <div id="game-mode-selection" class="game-mode-selection">
@@ -2595,12 +2459,12 @@
                     <button class="mode-btn active" id="mode-online-btn" data-mode="online">
                         <span class="mode-icon">&#x1F310;</span>
                         <span class="mode-label">Online</span>
-                        <span class="mode-desc">Players join on their phones</span>
+                        <span class="mode-desc">Free - players join on their phones</span>
                     </button>
                     <button class="mode-btn" id="mode-offline-btn" data-mode="offline">
                         <span class="mode-icon">&#x270F;&#xFE0F;</span>
                         <span class="mode-label">Offline</span>
-                        <span class="mode-desc">Draw on paper, same room</span>
+                        <span class="mode-desc">Free - draw on paper, same room</span>
                     </button>
                 </div>
             </div>
@@ -2633,7 +2497,7 @@
                     <button class="offline-avatar-arrow" id="offline-avatar-next" type="button" aria-label="Next avatar">&rarr;</button>
                 </div>
                 <div class="offline-player-form">
-                    <input type="text" id="offline-player-name" placeholder="Player name" maxlength="20">
+                    <input type="text" id="offline-player-name" placeholder="Player name" maxlength="20" aria-label="Offline player name">
                     <button class="btn btn-small" id="add-offline-player-btn">Add Player</button>
                 </div>
             </div>
@@ -2648,19 +2512,19 @@
             <div class="deck-selection">
                 <h3>Choose Your Decks</h3>
                 <div class="deck-options">
-                    <div class="deck-card selected" data-deck="core_white" id="deck-core_white">
+                    <div class="deck-card selected" data-deck="core_white" id="deck-core_white" role="checkbox" tabindex="0" aria-checked="true">
                         <div class="deck-card-icon">&#x1F4CB;</div>
                         <div class="deck-card-name">Core Mix</div>
                         <div class="deck-card-desc">Family-friendly scenarios and everyday dilemmas. Perfect for all ages!</div>
                         <div class="deck-card-badge recommended">Recommended</div>
                     </div>
-                    <div class="deck-card" data-deck="creative_cyan" id="deck-creative_cyan">
+                    <div class="deck-card" data-deck="creative_cyan" id="deck-creative_cyan" role="checkbox" tabindex="0" aria-checked="false">
                         <div class="deck-card-icon">&#x1F3AD;</div>
                         <div class="deck-card-name">Creative &amp; Pop Culture</div>
                         <div class="deck-card-desc">Lists, pop culture references, and imaginative prompts.</div>
                         <div class="deck-card-badge">All Ages</div>
                     </div>
-                    <div class="deck-card" data-deck="hypothetical_magenta" id="deck-hypothetical_magenta">
+                    <div class="deck-card" data-deck="hypothetical_magenta" id="deck-hypothetical_magenta" role="checkbox" tabindex="0" aria-checked="false">
                         <div class="deck-card-icon">&#x1F52E;</div>
                         <div class="deck-card-name">Wild &amp; Spicy</div>
                         <div class="deck-card-desc">"What if" scenarios and edgy content. Not for kids!</div>
@@ -3015,37 +2879,9 @@
          SCRIPTS
          ================================================================ -->
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-    if (typeof io === 'undefined') {
-        document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
-    }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/assets/config/links.js"></script>
-    <script>
-    (function applyPromoLinks() {
-        const links = window.PA_LINKS || {};
-        const map = {
-            interestFormUrl: links.interestFormUrl,
-            donateUrl: links.donateUrl
-        };
-        document.querySelectorAll('[data-pa-link]').forEach((el) => {
-            const key = el.getAttribute('data-pa-link');
-            const href = map[key];
-            if (href && !href.includes('REPLACE_WITH_YOUR')) {
-                el.href = href;
-                el.target = '_blank';
-                el.rel = 'noopener noreferrer';
-            } else {
-                el.href = '#';
-                el.title = 'Set this URL in public/assets/config/links.js';
-                el.addEventListener('click', (e) => e.preventDefault());
-            }
-        });
-    })();
-    </script>
+    <script src="/assets/config/apply-links.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-    <script src="/host/premium-auth.js"></script>
     <script src="/host/host.js"></script>
 
 </body>
