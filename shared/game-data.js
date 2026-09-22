@@ -610,6 +610,7 @@ export function getTotalTokenCount(tokens) {
  * @returns {string} Sanitized name
  */
 export function sanitizePlayerName(name, maxLength = GAME_DEFAULTS.maxNameLength) {
+    if (typeof name !== 'string') return null;
     let sanitized = name.trim().replace(/[<>]/g, '');
     if (sanitized.length > maxLength) {
         sanitized = sanitized.substring(0, maxLength);

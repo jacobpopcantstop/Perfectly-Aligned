@@ -43,7 +43,11 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);
+const MAX_DRAWING_DATA_URL_LENGTH = Number(process.env.MAX_DRAWING_DATA_URL_LENGTH || 1_500_000);
 const io = new Server(httpServer, {
+    // Socket.IO drops any client whose message exceeds this (default 1 MB), so it
+    // must be large enough for the biggest drawing the server is willing to accept.
+    maxHttpBufferSize: MAX_DRAWING_DATA_URL_LENGTH + 64 * 1024,
     cors: {
         origin: (origin, callback) => {
             if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
@@ -56,11 +60,11 @@ const io = new Server(httpServer, {
 });
 
 const PORT = process.env.PORT || 3000;
-const MAX_DRAWING_DATA_URL_LENGTH = Number(process.env.MAX_DRAWING_DATA_URL_LENGTH || 1_500_000);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 10_000);
 const JOIN_RATE_LIMIT = Number(process.env.JOIN_RATE_LIMIT || 8);
 const RECONNECT_RATE_LIMIT = Number(process.env.RECONNECT_RATE_LIMIT || 12);
 const SUBMIT_RATE_LIMIT = Number(process.env.SUBMIT_RATE_LIMIT || 6);
+const CREATE_ROOM_RATE_LIMIT = Number(process.env.CREATE_ROOM_RATE_LIMIT || 5);
 const gameManager = new GameManager();
 
 app.disable('x-powered-by');
@@ -259,11 +263,132 @@ async function resolveProfileAndEntitlementsFromAccessToken(accessToken) {
     return { profile, entitlements };
 }
 
+function isNonEmptyString(value) {
+    return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * End the game: broadcast the result and persist the session history.
+ */
+function endGame(room, winner) {
+    room.gamePhase = 'gameOver';
+    room.clearTimer();
+    const finalScores = room.getScores();
+    io.to(room.code).emit('game:over', {
+        winner: room.toPublicPlayer(winner),
+        finalScores,
+        winningDrawings: room.winningDrawings
+    });
+    finalizeSession(room.code, {
+        winnerId: winner?.id || null,
+        winnerName: winner?.name || null,
+        players: room.getPlayersPublicData()
+    }).catch((err) => {
+        console.error(`[History] Failed to finalize session for room ${room.code}:`, err.message);
+    });
+}
+
+/**
+ * Shared by the host screen and the judge's phone so both paths score,
+ * record history, and detect game over identically.
+ */
+function selectWinnerAndBroadcast(room, playerId) {
+    const result = room.selectWinner(playerId);
+    if (!result.success) return result;
+
+    recordRoundResult(room.code, {
+        round: room.currentRound,
+        prompt: room.selectedPrompt,
+        alignment: room.currentAlignment,
+        winnerId: playerId,
+        winnerName: result.winnerName
+    });
+
+    const scores = room.getScores();
+    const winner = room.players.find((p) => p.score >= room.settings.targetScore);
+    io.to(room.code).emit('game:winnerSelected', {
+        winnerId: playerId,
+        winnerName: result.winnerName,
+        scores,
+        gameOver: !!winner
+    });
+    if (winner) endGame(room, winner);
+    return result;
+}
+
+function advanceRoundAndBroadcast(room) {
+    const result = room.advanceRound();
+    if (result.success) {
+        if (result.gameOver) {
+            endGame(room, result.winner);
+        } else {
+            io.to(room.code).emit('game:newRound', {
+                round: room.currentRound,
+                judge: room.toPublicPlayer(room.getCurrentJudge()),
+                gameState: room.getState()
+            });
+        }
+    }
+    return { success: result.success, gameOver: !!result.gameOver, error: result.error };
+}
+
+function stealAndBroadcast(room, stealerId, targetId) {
+    const result = room.executeSteal(stealerId, targetId);
+    if (!result.success) return result;
+    io.to(room.code).emit('game:stealExecuted', {
+        stealerId,
+        stealerName: result.stealerName,
+        targetId,
+        targetName: result.targetName,
+        scores: room.getScores()
+    });
+    if (result.gameOver) endGame(room, result.winner);
+    return { success: true, stealerName: result.stealerName, targetName: result.targetName, gameOver: result.gameOver };
+}
+
+function collectAndBroadcast(room) {
+    const result = room.collectSubmissions();
+    if (!result.success) return result;
+    room.clearTimer();
+    const submissions = room.getSubmissionsForJudging();
+    io.to(room.code).emit('game:submissionsCollected', { submissions });
+    return { success: true, submissions };
+}
+
+/**
+ * End the drawing phase automatically once every connected non-judge player
+ * has submitted.
+ */
+function maybeAutoCollect(room) {
+    if (room.gamePhase !== 'drawing') return;
+    const expected = room.players.filter(p => !p.isJudge && p.connected);
+    if (expected.length > 0 && expected.every(p => room.submissions.has(p.id))) {
+        collectAndBroadcast(room);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Socket.IO Connection Handling
 // ---------------------------------------------------------------------------
 io.on('connection', (socket) => {
     console.log(`[Socket] Connected: ${socket.id}`);
+
+    /**
+     * Register an event handler that can never take the process down: a
+     * malformed payload that makes a handler throw is logged and acked with an
+     * error instead of becoming an uncaught exception.
+     */
+    const on = (event, handler) => {
+        socket.on(event, async (...args) => {
+            try {
+                await handler(...args);
+            } catch (err) {
+                console.error(`[Socket] ${event} handler failed:`, err);
+                const ack = args[args.length - 1];
+                if (typeof ack === 'function') ack({ success: false, error: 'Server error' });
+            }
+        });
+    };
 
     // ======================================================================
     // HOST EVENTS
@@ -273,15 +398,16 @@ io.on('connection', (socket) => {
      * host:createRoom
      * Creates a new game room and makes this socket the host.
      */
-    socket.on('host:createRoom', async (data, callback) => {
+    on('host:createRoom', async (data, callback) => {
         // Support both old callback-only and new data+callback signatures
         if (typeof data === 'function') {
             callback = data;
             data = {};
         }
         if (typeof callback !== 'function') return;
+        if (!checkSocketRateLimit(socket, 'host:createRoom', CREATE_ROOM_RATE_LIMIT, callback)) return;
         try {
-            const accessToken = data?.accessToken || null;
+            const accessToken = isNonEmptyString(data?.accessToken) ? data.accessToken : null;
             const { profile, entitlements } = await resolveProfileAndEntitlementsFromAccessToken(accessToken);
             const offlineMode = Boolean(data && data.offlineMode);
 
@@ -291,6 +417,9 @@ io.on('connection', (socket) => {
             }
             room._hostProfileId = profile?.id || null;
             room._hostEntitlements = entitlements;
+            // Secret proving host ownership. The room code is shown to every
+            // player, so it cannot be what authorizes host:reconnect.
+            room.hostToken = generateReconnectToken();
 
             socket.join(room.code);
             socket.roomCode = room.code;
@@ -303,6 +432,7 @@ io.on('connection', (socket) => {
             callback({
                 success: true,
                 roomCode: room.code,
+                hostToken: room.hostToken,
                 gameState: room.getState()
             });
         } catch (err) {
@@ -315,10 +445,11 @@ io.on('connection', (socket) => {
      * host:reconnect
      * Allows a host to reclaim their room after a disconnect/reconnect.
      */
-    socket.on('host:reconnect', async (payload, callback) => {
+    on('host:reconnect', async (payload, callback) => {
         if (typeof callback !== 'function') return;
-        const reconnectRoomCode = typeof payload === 'string' ? payload : payload?.roomCode;
-        if (!reconnectRoomCode) {
+        if (!checkSocketRateLimit(socket, 'host:reconnect', RECONNECT_RATE_LIMIT, callback)) return;
+        const reconnectRoomCode = payload?.roomCode;
+        if (!isNonEmptyString(reconnectRoomCode)) {
             return callback({ success: false, error: 'Room code is required' });
         }
 
@@ -327,8 +458,11 @@ io.on('connection', (socket) => {
             console.log(`[Room] Reconnect failed — room ${reconnectRoomCode} not found`);
             return callback({ success: false, error: 'Room no longer exists' });
         }
+        if (!isNonEmptyString(payload.hostToken) || payload.hostToken !== room.hostToken) {
+            return callback({ success: false, error: 'Not authorized to host this room' });
+        }
 
-        const accessToken = typeof payload === 'object' ? payload?.accessToken : null;
+        const accessToken = isNonEmptyString(payload.accessToken) ? payload.accessToken : null;
         const resolved = await resolveProfileAndEntitlementsFromAccessToken(accessToken);
         const hostEntitlements = room._hostEntitlements || resolved.entitlements;
         room._hostProfileId = room._hostProfileId || resolved.profile?.id || null;
@@ -362,7 +496,7 @@ io.on('connection', (socket) => {
      * host:startGame
      * Starts the game with the provided settings.
      */
-    socket.on('host:startGame', (settings, callback) => {
+    on('host:startGame', (settings, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -387,7 +521,7 @@ io.on('connection', (socket) => {
      * Rolls a random alignment for the current round.
      * Includes an isJudgeChoice flag when the special "U" alignment is rolled.
      */
-    socket.on('host:rollAlignment', (callback) => {
+    on('host:rollAlignment', (callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -407,7 +541,7 @@ io.on('connection', (socket) => {
      * host:selectJudgeAlignment
      * When "Judge's Choice" is rolled, the judge manually selects an alignment.
      */
-    socket.on('host:selectJudgeAlignment', (alignment, callback) => {
+    on('host:selectJudgeAlignment', (alignment, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -425,7 +559,7 @@ io.on('connection', (socket) => {
      * host:drawPrompts
      * Draws a hand of prompt cards for the judge to choose from.
      */
-    socket.on('host:drawPrompts', (callback) => {
+    on('host:drawPrompts', (callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -442,7 +576,7 @@ io.on('connection', (socket) => {
      * host:selectPrompt
      * Judge selects one of the drawn prompts. Triggers the drawing phase.
      */
-    socket.on('host:selectPrompt', (index, callback) => {
+    on('host:selectPrompt', (index, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -469,11 +603,14 @@ io.on('connection', (socket) => {
      * Starts the drawing countdown timer. Emits ticks every second and
      * a completion event when the timer runs out.
      */
-    socket.on('host:startTimer', (duration, callback) => {
+    on('host:startTimer', (duration, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
-        room.startTimer(
+        if (room.gamePhase !== 'drawing') {
+            return callback({ success: false, error: 'Not in drawing phase' });
+        }
+        const timerResult = room.startTimer(
             duration,
             (timeLeft) => {
                 io.to(room.code).emit('game:timerTick', { timeLeft });
@@ -482,6 +619,7 @@ io.on('connection', (socket) => {
                 io.to(room.code).emit('game:timerEnd');
             }
         );
+        if (!timerResult.success) return callback(timerResult);
 
         io.to(room.code).emit('game:timerStarted', { duration });
         callback({ success: true });
@@ -491,73 +629,31 @@ io.on('connection', (socket) => {
      * host:endDrawing
      * Manually ends the drawing phase, collects all submissions.
      */
-    socket.on('host:endDrawing', (callback) => {
+    on('host:endDrawing', (callback) => {
         if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
-        room.clearTimer();
-        room.collectSubmissions();
-        const submissions = room.getSubmissionsForJudging();
-
-        io.to(room.code).emit('game:submissionsCollected', { submissions });
-        callback({ success: true, submissions });
+        callback(collectAndBroadcast(room));
     });
 
     /**
      * host:selectWinner
      * Judge picks the winning drawing. Awards a point and checks for game over.
      */
-    socket.on('host:selectWinner', (playerId, callback) => {
+    on('host:selectWinner', (playerId, callback) => {
+        if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
-        const result = room.selectWinner(playerId);
-        if (result.success) {
-            recordRoundResult(room.code, {
-                round: room.currentRound,
-                prompt: room.selectedPrompt,
-                alignment: room.currentAlignment,
-                winnerId: playerId,
-                winnerName: result.winnerName
-            });
-
-            const scores = room.getScores();
-            const winner = room.players.find(
-                (p) => p.score >= room.settings.targetScore
-            );
-            const gameOver = !!winner;
-
-            io.to(room.code).emit('game:winnerSelected', {
-                winnerId: playerId,
-                winnerName: result.winnerName,
-                scores,
-                gameOver
-            });
-
-            if (gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner,
-                    finalScores: scores,
-                    winningDrawings: room.winningDrawings
-                });
-                finalizeSession(room.code, {
-                    winnerId: winner?.id || null,
-                    winnerName: winner?.name || result.winnerName,
-                    players: room.getPlayersPublicData()
-                }).catch((err) => {
-                    console.error(`[History] Failed to finalize session for room ${room.code}:`, err.message);
-                });
-            }
-        }
-        callback(result);
+        callback(selectWinnerAndBroadcast(room, playerId));
     });
 
     /**
      * host:awardToken
      * Awards a single bonus token to a player.
      */
-    socket.on('host:awardToken', (data, callback) => {
+    on('host:awardToken', (data, callback) => {
         if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
@@ -581,55 +677,39 @@ io.on('connection', (socket) => {
      * host:nextRound
      * Advances the game to the next round, or ends it if someone has won.
      */
-    socket.on('host:nextRound', (callback) => {
+    on('host:nextRound', (callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
-        const result = room.advanceRound();
-        if (result.success) {
-            if (result.gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner: result.winner,
-                    finalScores: room.getScores(),
-                    winningDrawings: room.winningDrawings
-                });
-            } else {
-                io.to(room.code).emit('game:newRound', {
-                    round: room.currentRound,
-                    judge: room.getCurrentJudge(),
-                    gameState: room.getState()
-                });
-            }
-        }
-        callback(result);
+        callback(advanceRoundAndBroadcast(room));
     });
 
     /**
      * host:checkModifiers
      * Checks whether a modifier (curse) phase should occur this round.
      */
-    socket.on('host:checkModifiers', (callback) => {
+    on('host:checkModifiers', (callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
         const result = room.checkForModifierPhase();
         if (result.hasModifierPhase) {
             io.to(room.code).emit('game:modifierPhase', {
-                curser: result.curser,
+                curser: room.toPublicPlayer(result.curser),
                 curserIndex: result.curserIndex,
                 hasHeldCurse: result.hasHeldCurse,
                 heldCurse: result.heldCurse,
                 gameState: room.getState()
             });
         }
-        callback(result);
+        callback({ ...result, curser: room.toPublicPlayer(result.curser) });
     });
 
     /**
      * host:drawCurseCard
      * Draws a random curse card for the modifier phase.
      */
-    socket.on('host:drawCurseCard', (callback) => {
+    on('host:drawCurseCard', (callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -646,7 +726,7 @@ io.on('connection', (socket) => {
      * host:applyCurse
      * Applies a drawn curse card to a target player.
      */
-    socket.on('host:applyCurse', (data, callback) => {
+    on('host:applyCurse', (data, callback) => {
         if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
@@ -670,7 +750,7 @@ io.on('connection', (socket) => {
      * host:holdCurse
      * Holds a curse card to use in a future round instead of applying it now.
      */
-    socket.on('host:holdCurse', (modifier, callback) => {
+    on('host:holdCurse', (modifier, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -687,7 +767,7 @@ io.on('connection', (socket) => {
      * host:kickPlayer
      * Removes a player from the room and notifies them.
      */
-    socket.on('host:kickPlayer', (playerId, callback) => {
+    on('host:kickPlayer', (playerId, callback) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
@@ -716,7 +796,7 @@ io.on('connection', (socket) => {
      * host:addOfflinePlayer
      * Adds a virtual player in offline mode (no phone connection needed).
      */
-    socket.on('host:addOfflinePlayer', (data, callback) => {
+    on('host:addOfflinePlayer', (data, callback) => {
         if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
@@ -742,7 +822,7 @@ io.on('connection', (socket) => {
      * host:removeOfflinePlayer
      * Removes a virtual player in offline mode.
      */
-    socket.on('host:removeOfflinePlayer', (playerId, callback) => {
+    on('host:removeOfflinePlayer', (playerId, callback) => {
         if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
@@ -765,7 +845,7 @@ io.on('connection', (socket) => {
      * host:stealForPlayer
      * Host triggers a steal on behalf of a player (from the scoreboard UI).
      */
-    socket.on('host:stealForPlayer', (data, callback) => {
+    on('host:stealForPlayer', (data, callback) => {
         if (typeof callback !== 'function') return;
         const room = getHostRoom(socket, callback);
         if (!room) return;
@@ -775,25 +855,7 @@ io.on('connection', (socket) => {
         }
         const { stealerId, targetId } = data;
 
-        const result = room.executeSteal(stealerId, targetId);
-        if (result.success) {
-            io.to(room.code).emit('game:stealExecuted', {
-                stealerId,
-                stealerName: result.stealerName,
-                targetId,
-                targetName: result.targetName,
-                scores: room.getScores()
-            });
-
-            if (result.gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner: result.winner,
-                    finalScores: room.getScores(),
-                    winningDrawings: room.winningDrawings
-                });
-            }
-        }
-        callback(result);
+        callback(stealAndBroadcast(room, stealerId, targetId));
     });
 
     // ======================================================================
@@ -804,7 +866,7 @@ io.on('connection', (socket) => {
      * player:joinRoom
      * A player joins an existing room by code and name.
      */
-    socket.on('player:joinRoom', (data, callback) => {
+    on('player:joinRoom', (data, callback) => {
         if (typeof callback !== 'function') return;
         if (!checkSocketRateLimit(socket, 'player:joinRoom', JOIN_RATE_LIMIT, callback)) return;
         if (!data || typeof data !== 'object') {
@@ -812,7 +874,7 @@ io.on('connection', (socket) => {
         }
         const { roomCode, playerName, avatar } = data;
 
-        if (!roomCode || !playerName) {
+        if (!isNonEmptyString(roomCode) || !isNonEmptyString(playerName)) {
             return callback({ success: false, error: 'Room code and player name are required' });
         }
 
@@ -861,7 +923,7 @@ io.on('connection', (socket) => {
      * player:selectAvatar
      * A player in the lobby changes their avatar.
      */
-    socket.on('player:selectAvatar', (data, callback) => {
+    on('player:selectAvatar', (data, callback) => {
         if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
@@ -886,7 +948,7 @@ io.on('connection', (socket) => {
      * player:submitDrawing
      * A player submits their drawing for the current round.
      */
-    socket.on('player:submitDrawing', (data, callback) => {
+    on('player:submitDrawing', (data, callback) => {
         if (typeof callback !== 'function') return;
         if (!checkSocketRateLimit(socket, 'player:submitDrawing', SUBMIT_RATE_LIMIT, callback)) return;
         const room = getRoom(socket, callback);
@@ -913,12 +975,7 @@ io.on('connection', (socket) => {
             });
 
             // Auto-end drawing phase when all connected non-judge players have submitted
-            if (submissionCount >= totalExpected && totalExpected > 0 && room.gamePhase === 'drawing') {
-                room.clearTimer();
-                room.collectSubmissions();
-                const submissions = room.getSubmissionsForJudging();
-                io.to(room.code).emit('game:submissionsCollected', { submissions });
-            }
+            maybeAutoCollect(room);
         }
         callback(result);
     });
@@ -927,7 +984,7 @@ io.on('connection', (socket) => {
      * judge:selectWinner
      * The judge selects a winner from their player device.
      */
-    socket.on('judge:selectWinner', (playerId, callback) => {
+    on('judge:selectWinner', (playerId, callback) => {
         if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
@@ -938,66 +995,26 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Only the judge can select a winner' });
         }
 
-        const result = room.selectWinner(playerId);
-        if (result.success) {
-            const scores = room.getScores();
-            const winner = room.players.find(
-                (p) => p.score >= room.settings.targetScore
-            );
-            const gameOver = !!winner;
-
-            io.to(room.code).emit('game:winnerSelected', {
-                winnerId: playerId,
-                winnerName: result.winnerName,
-                scores,
-                gameOver
-            });
-
-            if (gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner,
-                    finalScores: scores,
-                    winningDrawings: room.winningDrawings
-                });
-            }
-        }
-        callback(result);
+        callback(selectWinnerAndBroadcast(room, playerId));
     });
 
     /**
      * player:steal
      * A player spends tokens to steal a point from another player.
      */
-    socket.on('player:steal', (targetPlayerId, callback) => {
+    on('player:steal', (targetPlayerId, callback) => {
+        if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
 
-        const result = room.executeSteal(socket.id, targetPlayerId);
-        if (result.success) {
-            io.to(room.code).emit('game:stealExecuted', {
-                stealerId: socket.id,
-                stealerName: result.stealerName,
-                targetId: targetPlayerId,
-                targetName: result.targetName,
-                scores: room.getScores()
-            });
-
-            if (result.gameOver) {
-                io.to(room.code).emit('game:over', {
-                    winner: result.winner,
-                    finalScores: room.getScores(),
-                    winningDrawings: room.winningDrawings
-                });
-            }
-        }
-        callback(result);
+        callback(stealAndBroadcast(room, socket.id, targetPlayerId));
     });
 
     /**
      * player:drawCurseCard
      * The curser draws a curse card from their device.
      */
-    socket.on('player:drawCurseCard', (callback) => {
+    on('player:drawCurseCard', (callback) => {
         if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
@@ -1020,7 +1037,7 @@ io.on('connection', (socket) => {
      * player:applyCurse
      * The curser applies a drawn curse card to a target from their device.
      */
-    socket.on('player:applyCurse', (data, callback) => {
+    on('player:applyCurse', (data, callback) => {
         if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
@@ -1048,7 +1065,7 @@ io.on('connection', (socket) => {
      * player:holdCurse
      * The curser holds a curse card for a future round.
      */
-    socket.on('player:holdCurse', (modifier, callback) => {
+    on('player:holdCurse', (modifier, callback) => {
         if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
@@ -1070,7 +1087,7 @@ io.on('connection', (socket) => {
      * player:skipCurse
      * The curser skips the curse phase from their device.
      */
-    socket.on('player:skipCurse', (callback) => {
+    on('player:skipCurse', (callback) => {
         if (typeof callback !== 'function') return;
         const room = getRoom(socket, callback);
         if (!room) return;
@@ -1079,27 +1096,18 @@ io.on('connection', (socket) => {
             return callback({ success: false, error: 'Only the curser can skip' });
         }
 
-        // Advance past modifiers
-        room.gamePhase = 'scoring';
-        room.currentCurser = null;
-        callback({ success: true });
-
-        // Trigger next round
-        const roundResult = room.advanceRound();
-        if (roundResult.success) {
-            io.to(room.code).emit('game:newRound', {
-                round: room.currentRound,
-                judge: roundResult.judge,
-                gameState: room.getState()
-            });
+        if (room.gamePhase !== 'modifiers') {
+            return callback({ success: false, error: 'Wrong phase' });
         }
+
+        callback(advanceRoundAndBroadcast(room));
     });
 
     /**
      * player:reconnect
      * A disconnected player reconnects to their existing room.
      */
-    socket.on('player:reconnect', (data, callback) => {
+    on('player:reconnect', (data, callback) => {
         if (typeof callback !== 'function') return;
         if (!checkSocketRateLimit(socket, 'player:reconnect', RECONNECT_RATE_LIMIT, callback)) return;
         if (!data || typeof data !== 'object') {
@@ -1107,7 +1115,7 @@ io.on('connection', (socket) => {
         }
         const { roomCode, playerName, reconnectToken } = data;
 
-        if (!roomCode || !playerName || !reconnectToken) {
+        if (!isNonEmptyString(roomCode) || !isNonEmptyString(playerName) || !isNonEmptyString(reconnectToken)) {
             return callback({ success: false, error: 'Room code, player name, and reconnect token are required' });
         }
 
@@ -1162,7 +1170,7 @@ io.on('connection', (socket) => {
         return room;
     }
 
-    socket.on('judge:rollAlignment', (callback) => {
+    on('judge:rollAlignment', (callback) => {
         const room = getJudgeRoom(socket, callback);
         if (!room) return;
 
@@ -1178,7 +1186,7 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    socket.on('judge:selectJudgeAlignment', (alignment, callback) => {
+    on('judge:selectJudgeAlignment', (alignment, callback) => {
         const room = getJudgeRoom(socket, callback);
         if (!room) return;
 
@@ -1192,7 +1200,7 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    socket.on('judge:drawPrompts', (callback) => {
+    on('judge:drawPrompts', (callback) => {
         const room = getJudgeRoom(socket, callback);
         if (!room) return;
 
@@ -1205,7 +1213,7 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    socket.on('judge:selectPrompt', (index, callback) => {
+    on('judge:selectPrompt', (index, callback) => {
         const room = getJudgeRoom(socket, callback);
         if (!room) return;
 
@@ -1227,17 +1235,12 @@ io.on('connection', (socket) => {
         callback(result);
     });
 
-    socket.on('judge:endDrawing', (callback) => {
+    on('judge:endDrawing', (callback) => {
         if (typeof callback !== 'function') return;
         const room = getJudgeRoom(socket, callback);
         if (!room) return;
 
-        room.clearTimer();
-        room.collectSubmissions();
-        const submissions = room.getSubmissionsForJudging();
-
-        io.to(room.code).emit('game:submissionsCollected', { submissions });
-        callback({ success: true, submissions });
+        callback(collectAndBroadcast(room));
     });
 
     // ======================================================================
@@ -1248,7 +1251,7 @@ io.on('connection', (socket) => {
      * game:getState
      * Returns the current game state for the socket's room.
      */
-    socket.on('game:getState', (callback) => {
+    on('game:getState', (callback) => {
         const room = getRoom(socket, callback);
         if (!room) return;
 
@@ -1261,7 +1264,7 @@ io.on('connection', (socket) => {
      * If the host disconnects, the room is given a grace period before closing.
      * If a player disconnects, they are marked as disconnected.
      */
-    socket.on('disconnect', () => {
+    on('disconnect', () => {
         console.log(`[Socket] Disconnected: ${socket.id}`);
 
         if (!socket.roomCode) return;
@@ -1291,6 +1294,8 @@ io.on('connection', (socket) => {
                 playerId: socket.id,
                 players: room.getPlayersPublicData()
             });
+            // Don't leave everyone waiting on a drawing that will never arrive.
+            maybeAutoCollect(room);
         }
     });
 });

@@ -173,4 +173,25 @@ test('running server exposes free config, security headers, CSP-friendly pages, 
     assert.equal(startedState.gamePhase, 'alignment');
     assert.equal(startedState.players.length, 3);
     assert.deepEqual(startedState.settings.selectedDecks, ['core_white', 'creative_cyan', 'hypothetical_magenta']);
+    assert.doesNotMatch(JSON.stringify(startedState), /reconnectToken/);
+
+    // Knowing the (public) room code must not be enough to take over as host.
+    const intruder = new SocketIoProbe(baseUrl);
+    sockets.push(intruder);
+    await intruder.connect();
+    const hijack = await intruder.emitAck('host:reconnect', { roomCode: createRoom.roomCode });
+    assert.equal(hijack.success, false);
+    const hostReclaim = await intruder.emitAck('host:reconnect', {
+        roomCode: createRoom.roomCode,
+        hostToken: createRoom.hostToken
+    });
+    assert.equal(hostReclaim.success, true);
+
+    // Malformed payloads are rejected instead of crashing the process.
+    const badJoin = await intruder.emitAck('player:joinRoom', { roomCode: 123, playerName: {} });
+    assert.equal(badJoin.success, false);
+    const badReconnect = await intruder.emitAck('player:reconnect', { roomCode: [], playerName: 1, reconnectToken: 2 });
+    assert.equal(badReconnect.success, false);
+    const stillAlive = await fetch(`${baseUrl}/healthz`);
+    assert.equal(stillAlive.status, 200);
 });

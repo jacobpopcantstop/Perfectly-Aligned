@@ -22,6 +22,8 @@ export default class Room {
         this.modifiersEnabled = true;
         this.pendingModifiers = [];
         this.currentCurser = null;
+        this.drawnCurse = null;
+        this.curseResolved = false;
 
         this.currentAlignment = null;
         this.currentAlignmentFullName = null;
@@ -32,6 +34,9 @@ export default class Room {
         this.winningDrawings = [];
 
         this.availableCards = [];
+        // Reconnect tokens live outside the player objects so they can never
+        // leak into anything broadcast to the room.
+        this.reconnectTokens = new Map();
         this.lastAlignment = null;
         this.recentAlignments = [];
 
@@ -111,7 +116,7 @@ export default class Room {
         }
 
         const usedAvatars = this.players.map(p => p.avatar);
-        if (!avatar || usedAvatars.includes(avatar)) {
+        if (!AVATARS.includes(avatar) || usedAvatars.includes(avatar)) {
             avatar = AVATARS.find(a => !usedAvatars.includes(a)) || AVATARS[0];
         }
 
@@ -119,7 +124,6 @@ export default class Room {
             id: socketId,
             name: sanitized,
             avatar,
-            reconnectToken,
             score: 0,
             tokens: createInitialTokenState(),
             connected: true,
@@ -129,6 +133,7 @@ export default class Room {
         };
 
         this.players.push(player);
+        this.reconnectTokens.set(socketId, reconnectToken);
         this.lastActivity = Date.now();
 
         return { success: true, player };
@@ -141,6 +146,7 @@ export default class Room {
         }
 
         this.players.splice(index, 1);
+        this.reconnectTokens.delete(playerId);
         this.lastActivity = Date.now();
 
         // Fix judge index when a player is removed
@@ -166,6 +172,9 @@ export default class Room {
         if (!player) {
             return { success: false, error: 'Player not found' };
         }
+        if (!AVATARS.includes(avatar)) {
+            return { success: false, error: 'Invalid avatar' };
+        }
         // Check if avatar is already taken by another player
         const taken = this.players.some(p => p.id !== playerId && p.avatar === avatar);
         if (taken) {
@@ -185,28 +194,64 @@ export default class Room {
     }
 
     reconnectPlayer(newId, name, reconnectToken, nextReconnectToken) {
-        const player = this.players.find(
-            p => p.name.toLowerCase() === name.toLowerCase() && p.reconnectToken === reconnectToken
-        );
-        if (player) {
-            player.id = newId;
-            player.connected = true;
-            player.reconnectToken = nextReconnectToken;
-            this.lastActivity = Date.now();
-            return { success: true, player };
+        if (typeof name !== 'string' || typeof reconnectToken !== 'string' || !reconnectToken) {
+            return { success: false, error: 'Player not found or reconnect token invalid' };
         }
-        return { success: false, error: 'Player not found or reconnect token invalid' };
+        const player = this.players.find(
+            p => p.name.toLowerCase() === name.toLowerCase() && this.reconnectTokens.get(p.id) === reconnectToken
+        );
+        if (!player) {
+            return { success: false, error: 'Player not found or reconnect token invalid' };
+        }
+
+        const oldId = player.id;
+        player.id = newId;
+        player.connected = true;
+        this.reconnectTokens.delete(oldId);
+        this.reconnectTokens.set(newId, nextReconnectToken);
+
+        // Re-key everything that references the player's previous socket id so a
+        // reconnect mid-round does not orphan their drawing, win, or pending curse.
+        if (this.submissions.has(oldId)) {
+            const submission = this.submissions.get(oldId);
+            this.submissions.delete(oldId);
+            this.submissions.set(newId, { ...submission, playerId: newId });
+        }
+        if (this.selectedWinner === oldId) this.selectedWinner = newId;
+        this.pendingModifiers.forEach(pending => {
+            if (pending.targetId === oldId) pending.targetId = newId;
+            if (pending.curserId === oldId) pending.curserId = newId;
+        });
+
+        this.lastActivity = Date.now();
+        return { success: true, player };
     }
 
     startGame(settings = {}) {
+        if (this.gameStarted) {
+            return { success: false, error: 'Game already started' };
+        }
         if (this.players.length < this.minPlayers) {
             return { success: false, error: `Need at least ${this.minPlayers} players` };
         }
+        settings = settings && typeof settings === 'object' ? settings : {};
 
-        if (settings.selectedDecks) this.settings.selectedDecks = settings.selectedDecks;
-        if (settings.timerDuration !== undefined) this.settings.timerDuration = settings.timerDuration;
-        if (settings.targetScore !== undefined && settings.targetScore > 0) this.settings.targetScore = settings.targetScore;
-        if (settings.modifiersEnabled !== undefined) this.modifiersEnabled = settings.modifiersEnabled;
+        if (Array.isArray(settings.selectedDecks)) {
+            const decks = [...new Set(settings.selectedDecks)].filter(key => Object.hasOwn(THEMED_DECKS, key));
+            if (decks.length === 0) {
+                return { success: false, error: 'Select at least one prompt deck' };
+            }
+            this.settings.selectedDecks = decks;
+        }
+        const timerDuration = Number(settings.timerDuration);
+        if (Number.isInteger(timerDuration) && timerDuration >= 0 && timerDuration <= 600) {
+            this.settings.timerDuration = timerDuration;
+        }
+        const targetScore = Number(settings.targetScore);
+        if (Number.isInteger(targetScore) && targetScore > 0 && targetScore <= 50) {
+            this.settings.targetScore = targetScore;
+        }
+        if (typeof settings.modifiersEnabled === 'boolean') this.modifiersEnabled = settings.modifiersEnabled;
 
         this.availableCards = buildPromptPool(this.settings.selectedDecks);
 
@@ -285,7 +330,11 @@ export default class Room {
         }
 
         if (this.availableCards.length < 3) {
-            return { success: false, error: 'Not enough cards left' };
+            // Deck exhausted: reshuffle the full pool rather than stalling the game.
+            this.availableCards = buildPromptPool(this.settings.selectedDecks);
+            if (this.availableCards.length < 3) {
+                return { success: false, error: 'Not enough cards left' };
+            }
         }
 
         this.currentPrompts = [];
@@ -307,7 +356,7 @@ export default class Room {
             return { success: false, error: 'Wrong phase' };
         }
 
-        if (promptIndex < 0 || promptIndex >= this.currentPrompts.length) {
+        if (!Number.isInteger(promptIndex) || promptIndex < 0 || promptIndex >= this.currentPrompts.length) {
             return { success: false, error: 'Invalid prompt index' };
         }
 
@@ -327,6 +376,9 @@ export default class Room {
 
     startTimer(duration, onTick, onComplete) {
         this.clearTimer();
+        if (!Number.isInteger(duration) || duration <= 0 || duration > 600) {
+            return { success: false, error: 'Invalid timer duration' };
+        }
         this.timerDuration = duration;
 
         let remaining = duration;
@@ -339,6 +391,7 @@ export default class Room {
                 if (onComplete) onComplete();
             }
         }, 1000);
+        return { success: true };
     }
 
     clearTimer() {
@@ -371,7 +424,7 @@ export default class Room {
             playerName: player.name,
             playerAvatar: player.avatar,
             drawing: drawingData,
-            caption: caption || '',
+            caption: typeof caption === 'string' ? caption.slice(0, 140) : '',
             timestamp: Date.now()
         });
 
@@ -385,6 +438,11 @@ export default class Room {
     }
 
     collectSubmissions() {
+        // Only valid once, from the drawing phase. Re-entering judging from
+        // 'scoring' would let a second winner be picked for the same round.
+        if (this.gamePhase !== 'drawing') {
+            return { success: false, error: 'Not in drawing phase' };
+        }
         // In offline mode, create placeholder submissions for all non-judge players
         if (this.offlineMode) {
             this.players.forEach(p => {
@@ -402,6 +460,7 @@ export default class Room {
         }
         this.gamePhase = 'judging';
         this.lastActivity = Date.now();
+        return { success: true };
     }
 
     getSubmissionsForJudging() {
@@ -418,9 +477,15 @@ export default class Room {
             return { success: false, error: 'Player not found' };
         }
 
-        // Save the winning drawing for the gallery
+        // Only a player who actually submitted this round can win it (this also
+        // stops a judge from awarding themselves the point).
         const submission = this.submissions.get(playerId);
-        if (submission) {
+        if (!submission || player.isJudge) {
+            return { success: false, error: 'That player has no submission this round' };
+        }
+
+        // Save the winning drawing for the gallery
+        {
             this.winningDrawings.push({
                 round: this.currentRound,
                 playerId: player.id,
@@ -443,7 +508,7 @@ export default class Room {
     }
 
     awardToken(playerId, tokenType) {
-        if (!TOKEN_TYPES[tokenType]) {
+        if (!Object.hasOwn(TOKEN_TYPES, tokenType)) {
             return { success: false, error: 'Invalid token type' };
         }
 
@@ -478,8 +543,16 @@ export default class Room {
         const stealer = this.players.find(p => p.id === stealerId);
         const target = this.players.find(p => p.id === targetId);
 
+        if (!this.gameStarted || this.gamePhase === 'gameOver') {
+            return { success: false, error: 'Steals are only allowed during a game' };
+        }
+
         if (!stealer || !target) {
             return { success: false, error: 'Player not found' };
+        }
+
+        if (stealer === target) {
+            return { success: false, error: 'Cannot steal from yourself' };
         }
 
         const totalTokens = this.getPlayerTokenTotal(stealer);
@@ -517,7 +590,7 @@ export default class Room {
     }
 
     checkForModifierPhase() {
-        if (!this.modifiersEnabled) {
+        if (this.gamePhase !== 'scoring' || !this.modifiersEnabled) {
             return { hasModifierPhase: false };
         }
 
@@ -538,6 +611,8 @@ export default class Room {
 
         const curserData = lastPlacePlayers[Math.floor(Math.random() * lastPlacePlayers.length)];
         this.currentCurser = curserData;
+        this.drawnCurse = null;
+        this.curseResolved = false;
 
         this.gamePhase = 'modifiers';
         this.lastActivity = Date.now();
@@ -555,16 +630,41 @@ export default class Room {
         if (this.gamePhase !== 'modifiers') {
             return { success: false, error: 'Wrong phase' };
         }
+        if (this.curseResolved) {
+            return { success: false, error: 'Curse already resolved this round' };
+        }
+        // One draw per curse phase: no re-drawing until a favourite card shows up.
+        if (this.drawnCurse) {
+            return { success: false, error: 'A curse card has already been drawn' };
+        }
 
         const modifier = getRandomModifier();
+        this.drawnCurse = modifier;
         this.lastActivity = Date.now();
 
         return { success: true, modifier };
     }
 
+    /**
+     * Resolve a client-supplied modifier to the server's copy, accepting only
+     * the card drawn this phase or the curser's held card.
+     */
+    resolveCurseCard(modifier) {
+        const id = modifier && typeof modifier === 'object' ? modifier.id : modifier;
+        const candidates = [this.drawnCurse, this.currentCurser?.player.heldCurse].filter(Boolean);
+        return candidates.find(card => card.id === id) || null;
+    }
+
     applyCurse(targetIndex, modifier) {
         if (this.gamePhase !== 'modifiers') {
             return { success: false, error: 'Wrong phase' };
+        }
+        if (this.curseResolved) {
+            return { success: false, error: 'Curse already resolved this round' };
+        }
+        const card = this.resolveCurseCard(modifier);
+        if (!card) {
+            return { success: false, error: 'Invalid curse card' };
         }
 
         const target = this.players[targetIndex];
@@ -584,19 +684,20 @@ export default class Room {
         this.pendingModifiers.push({
             curserId: this.currentCurser ? this.currentCurser.player.id : null,
             targetId: target.id,
-            modifier
+            modifier: card
         });
 
-        if (this.currentCurser) {
+        if (this.currentCurser && this.currentCurser.player.heldCurse === card) {
             this.currentCurser.player.heldCurse = null;
         }
+        this.curseResolved = true;
 
         this.lastActivity = Date.now();
 
         return {
             success: true,
             targetName: target.name,
-            modifier
+            modifier: card
         };
     }
 
@@ -608,14 +709,26 @@ export default class Room {
         if (!this.currentCurser) {
             return { success: false, error: 'No curser set' };
         }
+        if (this.curseResolved) {
+            return { success: false, error: 'Curse already resolved this round' };
+        }
+        if (!this.drawnCurse || this.resolveCurseCard(modifier) !== this.drawnCurse) {
+            return { success: false, error: 'Invalid curse card' };
+        }
 
-        this.currentCurser.player.heldCurse = modifier;
+        this.currentCurser.player.heldCurse = this.drawnCurse;
+        this.curseResolved = true;
         this.lastActivity = Date.now();
 
         return { success: true };
     }
 
     advanceRound() {
+        // Guard against double-advancing (e.g. two clients both pressing
+        // "next"), which would silently skip a judge's turn.
+        if (this.gamePhase !== 'scoring' && this.gamePhase !== 'modifiers') {
+            return { success: false, error: 'Wrong phase' };
+        }
         const winner = this.players.find(p => p.score >= this.settings.targetScore);
         if (winner) {
             this.gamePhase = 'gameOver';
@@ -638,6 +751,8 @@ export default class Room {
         });
         this.pendingModifiers = [];
         this.currentCurser = null;
+        this.drawnCurse = null;
+        this.curseResolved = false;
 
         this.currentAlignment = null;
         this.currentAlignmentFullName = null;
@@ -660,6 +775,17 @@ export default class Room {
             score: p.score,
             tokens: { ...p.tokens }
         }));
+    }
+
+    toPublicPlayer(player) {
+        if (!player) return null;
+        return {
+            id: player.id,
+            name: player.name,
+            avatar: player.avatar,
+            score: player.score,
+            isJudge: player.isJudge
+        };
     }
 
     getPlayersPublicData() {
@@ -685,7 +811,7 @@ export default class Room {
             currentRound: this.currentRound,
             targetScore: this.settings.targetScore,
             players: this.getPlayersPublicData(),
-            judge: this.getCurrentJudge(),
+            judge: this.toPublicPlayer(this.getCurrentJudge()),
             usedAvatars: this.getUsedAvatars(),
             currentAlignment: this.currentAlignment,
             currentAlignmentFullName: this.currentAlignmentFullName,

@@ -2895,7 +2895,7 @@ function openImageLightbox(imageSrc, playerName) {
     if (!lightbox || !img) return;
 
     img.src = imageSrc;
-    if (nameEl) nameEl.textContent = playerName ? `Drawing by ${escapeHtml(playerName)}` : '';
+    if (nameEl) nameEl.textContent = playerName ? `Drawing by ${playerName}` : '';
     lightbox.style.display = 'flex';
 
     const closeLightbox = () => {

@@ -680,6 +680,8 @@ function setupSocketListeners() {
         handleCurseCardDrawn(data);
     });
 
+    // The curse can be resolved from the host screen or the curser's phone;
+    // either way the host screen is what moves the game on to the next round.
     socket.on('game:curseApplied', (data) => {
         showNotification(
             `${data.modifier.icon} ${data.modifier.name} applied to ${data.targetName}! — ${data.modifier.description}`,
@@ -687,11 +689,13 @@ function setupSocketListeners() {
             5000
         );
         syncFromServerState(data.gameState);
+        setTimeout(advanceAfterModifiers, 4500);
     });
 
     socket.on('game:curseHeld', (data) => {
         showNotification('Curse card held for later!', 'info');
         syncFromServerState(data.gameState);
+        setTimeout(advanceAfterModifiers, 3500);
     });
 
     // Handle disconnect
@@ -703,7 +707,8 @@ function setupSocketListeners() {
         // If we had a room, try to reclaim host status
         if (gameState.roomCode) {
             socket.emit('host:reconnect', {
-                roomCode: gameState.roomCode
+                roomCode: gameState.roomCode,
+                hostToken: gameState.hostToken
             }, (response) => {
                 if (response.success) {
                     showNotification('Reconnected to room!', 'success');
@@ -729,6 +734,7 @@ function setupSocketListeners() {
  */
 function resetToCreateRoom() {
     gameState.roomCode = null;
+    gameState.hostToken = null;
     gameState.players = [];
     gameState.gameStarted = false;
     gameState.offlineMode = false;
@@ -842,6 +848,7 @@ function createRoom() {
     }, (response) => {
         if (response.success) {
             gameState.roomCode = response.roomCode;
+            gameState.hostToken = response.hostToken;
             syncFromServerState(response.gameState);
 
             // In offline mode, hide room code/QR and show player entry form
@@ -1082,7 +1089,7 @@ function updateGameUI() {
             dom.judgeAvatarDisplay.innerHTML = renderAvatarHtml(judge.avatar || DEFAULT_AVATAR, `${judge.name} avatar`);
         }
         if (dom.judgeNameDisplay) {
-            dom.judgeNameDisplay.textContent = escapeHtml(judge.name);
+            dom.judgeNameDisplay.textContent = judge.name;
         }
     }
 
@@ -1667,7 +1674,7 @@ function showResultsPhase(data) {
             : DEFAULT_AVATAR_FALLBACK;
     }
     if (dom.winnerName) {
-        dom.winnerName.textContent = escapeHtml(data.winnerName);
+        dom.winnerName.textContent = data.winnerName;
     }
 
     // Generate token award UI for each non-judge player
@@ -1881,13 +1888,13 @@ function showModifierPhase(data) {
         dom.curserAvatar.innerHTML = renderAvatarHtml(curser.avatar || DEFAULT_AVATAR, `${curser.name} avatar`);
     }
     if (dom.curserName) {
-        dom.curserName.textContent = escapeHtml(curser.name);
+        dom.curserName.textContent = curser.name;
     }
 
     // Update the explanation text to make the mechanic clear
     const curseExplain = document.getElementById('curse-explanation');
     if (curseExplain) {
-        curseExplain.textContent = `${escapeHtml(curser.name)} lost this round and gets to draw a Curse Card! Curses can be played on any other player to give them a handicap next round.`;
+        curseExplain.textContent = `${curser.name} lost this round and gets to draw a Curse Card! Curses can be played on any other player to give them a handicap next round.`;
     }
 
     // Show/hide buttons
@@ -1929,8 +1936,8 @@ function handleCurseCardDrawn(data) {
     // Show curse card details
     if (dom.curseCardDisplay) dom.curseCardDisplay.style.display = '';
     if (dom.curseCardIcon) dom.curseCardIcon.textContent = modifier.icon || '\u26A0\uFE0F';
-    if (dom.curseCardName) dom.curseCardName.textContent = escapeHtml(modifier.name);
-    if (dom.curseCardDesc) dom.curseCardDesc.textContent = escapeHtml(modifier.description);
+    if (dom.curseCardName) dom.curseCardName.textContent = modifier.name;
+    if (dom.curseCardDesc) dom.curseCardDesc.textContent = modifier.description;
     const curseExplain = document.getElementById('curse-explanation');
     if (curseExplain) {
         curseExplain.textContent = `${modifier.icon || '\u26A0\uFE0F'} ${modifier.name}: ${modifier.description}`;
@@ -1999,12 +2006,8 @@ function applyCurse(targetIndex, modifier) {
     if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = true;
 
     socket.emit('host:applyCurse', { targetIndex, modifier }, (response) => {
-        if (response.success) {
-            // After applying, advance to next round
-            setTimeout(() => {
-                advanceAfterModifiers();
-            }, 4500);
-        } else {
+        // On success the game:curseApplied listener advances the round.
+        if (!response.success) {
             showNotification(`Failed to apply curse: ${response.error}`, 'error');
             if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = false;
             if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = false;
@@ -2019,13 +2022,8 @@ function holdCurse() {
     if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = true;
 
     socket.emit('host:holdCurse', modifier, (response) => {
-        if (response.success) {
-            showNotification('Curse held for a future round!', 'info');
-            // Advance to next round
-            setTimeout(() => {
-                advanceAfterModifiers();
-            }, 3500);
-        } else {
+        // On success the game:curseHeld listener notifies and advances the round.
+        if (!response.success) {
             showNotification(`Failed to hold curse: ${response.error}`, 'error');
             if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = false;
         }
@@ -2483,7 +2481,7 @@ function openImageLightbox(imageSrc, playerName) {
     if (!lightbox || !img) return;
 
     img.src = imageSrc;
-    if (nameEl) nameEl.textContent = playerName ? `Drawing by ${escapeHtml(playerName)}` : '';
+    if (nameEl) nameEl.textContent = playerName ? `Drawing by ${playerName}` : '';
     lightbox.style.display = 'flex';
 
     const closeLightbox = () => {
