@@ -65,6 +65,7 @@ const JOIN_RATE_LIMIT = Number(process.env.JOIN_RATE_LIMIT || 8);
 const RECONNECT_RATE_LIMIT = Number(process.env.RECONNECT_RATE_LIMIT || 12);
 const SUBMIT_RATE_LIMIT = Number(process.env.SUBMIT_RATE_LIMIT || 6);
 const CREATE_ROOM_RATE_LIMIT = Number(process.env.CREATE_ROOM_RATE_LIMIT || 5);
+const LOBBY_DISCONNECT_GRACE_MS = Number(process.env.LOBBY_DISCONNECT_GRACE_MS || 60_000);
 const gameManager = new GameManager();
 
 app.disable('x-powered-by');
@@ -346,6 +347,41 @@ function stealAndBroadcast(room, stealerId, targetId) {
     return { success: true, stealerName: result.stealerName, targetName: result.targetName, gameOver: result.gameOver };
 }
 
+function drawPromptsAndBroadcast(room) {
+    const result = room.drawPrompts();
+    if (result.success) {
+        io.to(room.code).emit('game:promptsDrawn', {
+            prompts: result.prompts,
+            isReroll: result.isReroll,
+            judgeName: room.getCurrentJudge()?.name || null,
+            // A re-roll spends a token, so clients need fresh token counts.
+            players: room.getPlayersPublicData()
+        });
+    }
+    return result;
+}
+
+/**
+ * What a host screen needs, beyond getState(), to redraw the current phase
+ * after a page refresh.
+ */
+function getHostResumeData(room) {
+    const resume = {};
+    if (room.gamePhase === 'judging') {
+        resume.submissions = room.getSubmissionsForJudging();
+    }
+    if (room.gamePhase === 'gameOver') {
+        const winner = room.players.find(p => p.score >= room.settings.targetScore)
+            || [...room.players].sort((a, b) => b.score - a.score)[0];
+        resume.gameOver = {
+            winner: room.toPublicPlayer(winner),
+            finalScores: room.getScores(),
+            winningDrawings: room.winningDrawings
+        };
+    }
+    return resume;
+}
+
 function collectAndBroadcast(room) {
     const result = room.collectSubmissions();
     if (!result.success) return result;
@@ -488,7 +524,8 @@ io.on('connection', (socket) => {
         callback({
             success: true,
             roomCode: room.code,
-            gameState: room.getState()
+            gameState: room.getState(),
+            resume: getHostResumeData(room)
         });
     });
 
@@ -563,13 +600,7 @@ io.on('connection', (socket) => {
         const room = getHostRoom(socket, callback);
         if (!room) return;
 
-        const result = room.drawPrompts();
-        if (result.success) {
-            io.to(room.code).emit('game:promptsDrawn', {
-                prompts: result.prompts
-            });
-        }
-        callback(result);
+        callback(drawPromptsAndBroadcast(room));
     });
 
     /**
@@ -734,8 +765,8 @@ io.on('connection', (socket) => {
         if (!data || typeof data !== 'object') {
             return callback({ success: false, error: 'Invalid request data' });
         }
-        const { targetIndex, modifier } = data;
-        const result = room.applyCurse(targetIndex, modifier);
+        const { targetId, modifier } = data;
+        const result = room.applyCurse(targetId, modifier);
         if (result.success) {
             io.to(room.code).emit('game:curseApplied', {
                 targetName: result.targetName,
@@ -1049,8 +1080,8 @@ io.on('connection', (socket) => {
         if (!data || typeof data !== 'object') {
             return callback({ success: false, error: 'Invalid request data' });
         }
-        const { targetIndex, modifier } = data;
-        const result = room.applyCurse(targetIndex, modifier);
+        const { targetId, modifier } = data;
+        const result = room.applyCurse(targetId, modifier);
         if (result.success) {
             io.to(room.code).emit('game:curseApplied', {
                 targetName: result.targetName,
@@ -1204,13 +1235,7 @@ io.on('connection', (socket) => {
         const room = getJudgeRoom(socket, callback);
         if (!room) return;
 
-        const result = room.drawPrompts();
-        if (result.success) {
-            io.to(room.code).emit('game:promptsDrawn', {
-                prompts: result.prompts
-            });
-        }
-        callback(result);
+        callback(drawPromptsAndBroadcast(room));
     });
 
     on('judge:selectPrompt', (index, callback) => {
@@ -1296,6 +1321,23 @@ io.on('connection', (socket) => {
             });
             // Don't leave everyone waiting on a drawing that will never arrive.
             maybeAutoCollect(room);
+
+            // In the lobby, free the seat (and name/avatar) of anyone who
+            // doesn't come back. Reconnecting gives the player a new id, so
+            // this only fires if they are still gone.
+            if (!room.gameStarted) {
+                const departedId = socket.id;
+                setTimeout(() => {
+                    const lobby = gameManager.getRoom(room.code);
+                    const player = lobby?.players.find(p => p.id === departedId);
+                    if (!lobby || lobby.gameStarted || !player || player.connected) return;
+                    lobby.removePlayer(departedId);
+                    io.to(lobby.code).emit('room:playerLeft', {
+                        playerId: departedId,
+                        players: lobby.getPlayersPublicData()
+                    });
+                }, LOBBY_DISCONNECT_GRACE_MS).unref();
+            }
         }
     });
 });

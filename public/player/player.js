@@ -209,6 +209,7 @@ function cacheElements() {
         playerCurseActions: document.getElementById('player-curse-actions'),
         playerApplyCurseBtn: document.getElementById('player-apply-curse-btn'),
         playerHoldCurseBtn: document.getElementById('player-hold-curse-btn'),
+        playerUseHeldCurseBtn: document.getElementById('player-use-held-curse-btn'),
         playerSkipCurseBtn: document.getElementById('player-skip-curse-btn'),
 
         // Disconnected
@@ -477,9 +478,9 @@ function setupEventListeners() {
     }
     if (elements.playerApplyCurseBtn) {
         elements.playerApplyCurseBtn.addEventListener('click', () => {
-            if (curserSelectedTargetIndex === null || !curserDrawnModifier) return;
+            if (curserSelectedTargetId === null || !curserDrawnModifier) return;
             elements.playerApplyCurseBtn.disabled = true;
-            socket.emit('player:applyCurse', { targetIndex: curserSelectedTargetIndex, modifier: curserDrawnModifier }, (response) => {
+            socket.emit('player:applyCurse', { targetId: curserSelectedTargetId, modifier: curserDrawnModifier }, (response) => {
                 if (!response.success) {
                     showNotification(response.error || 'Failed to apply curse');
                     elements.playerApplyCurseBtn.disabled = false;
@@ -687,6 +688,12 @@ socket.on('game:alignmentRolled', (data) => {
     });
 
     socket.on('game:promptsDrawn', (data) => {
+        // A re-roll spends one of the judge's tokens
+        const me = data.players && data.players.find(p => p.id === playerState.playerId);
+        if (me) playerState.tokens = { ...me.tokens };
+        if (data.isReroll && !playerState.isJudge) {
+            showNotification(`${data.judgeName || 'The judge'} spent a token to re-roll the prompts!`);
+        }
         if (playerState.isJudge) {
             showJudgePromptCards(data.prompts);
         } else {
@@ -1102,9 +1109,22 @@ function isAvatarImagePath(avatar) {
     return typeof avatar === 'string' && avatar.startsWith('/assets/images/avatars/');
 }
 
+// The CSP (script-src 'self') blocks inline onerror handlers, so broken
+// avatar images are swapped for their fallback badge by one delegated
+// listener. Image error events don't bubble, hence the capture phase.
+document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('avatar-img')) return;
+    img.style.display = 'none';
+    const fallback = img.nextElementSibling;
+    if (fallback && fallback.classList.contains('avatar-fallback-badge')) {
+        fallback.style.display = 'inline-flex';
+    }
+}, true);
+
 function renderAvatarHtml(avatar, altText) {
     if (isAvatarImagePath(avatar)) {
-        return `<span class="avatar-wrap"><img class="avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(altText || 'Avatar')}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" /><span class="avatar-fallback-badge" style="display:none;">${DEFAULT_AVATAR_FALLBACK}</span></span>`;
+        return `<span class="avatar-wrap"><img class="avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(altText || 'Avatar')}" /><span class="avatar-fallback-badge" style="display:none;">${DEFAULT_AVATAR_FALLBACK}</span></span>`;
     }
     return escapeHtml(avatar || DEFAULT_AVATAR_FALLBACK);
 }
@@ -2204,13 +2224,13 @@ function hideStealModal() {
 
 let curserModifierData = null;
 let curserDrawnModifier = null;
-let curserSelectedTargetIndex = null;
+let curserSelectedTargetId = null;
 
 function showCurserControls(data) {
     playerState.isCurser = true;
     curserModifierData = data;
     curserDrawnModifier = null;
-    curserSelectedTargetIndex = null;
+    curserSelectedTargetId = null;
 
     if (elements.curserControls) {
         elements.curserControls.style.display = '';
@@ -2222,13 +2242,28 @@ function showCurserControls(data) {
     if (elements.playerCurseCardDisplay) elements.playerCurseCardDisplay.style.display = 'none';
     if (elements.playerCurseTargets) elements.playerCurseTargets.style.display = 'none';
     if (elements.playerCurseActions) elements.playerCurseActions.style.display = 'none';
+    if (elements.playerHoldCurseBtn) elements.playerHoldCurseBtn.style.display = '';
+
+    // A curse held from an earlier round can be played instead of drawing.
+    if (elements.playerUseHeldCurseBtn) {
+        const held = data.hasHeldCurse ? data.heldCurse : null;
+        elements.playerUseHeldCurseBtn.style.display = held ? '' : 'none';
+        if (held) {
+            elements.playerUseHeldCurseBtn.textContent = `Play Held Curse: ${held.icon || ''} ${held.name}`;
+            elements.playerUseHeldCurseBtn.onclick = () => {
+                showPlayerCurseCard(held);
+                // Playing a held card: it can't be held again.
+                if (elements.playerHoldCurseBtn) elements.playerHoldCurseBtn.style.display = 'none';
+            };
+        }
+    }
 }
 
 function hideCurserControls() {
     playerState.isCurser = false;
     curserModifierData = null;
     curserDrawnModifier = null;
-    curserSelectedTargetIndex = null;
+    curserSelectedTargetId = null;
 
     if (elements.curserControls) {
         elements.curserControls.style.display = 'none';
@@ -2239,6 +2274,7 @@ function showPlayerCurseCard(modifier) {
     curserDrawnModifier = modifier;
 
     if (elements.playerDrawCurseBtn) elements.playerDrawCurseBtn.style.display = 'none';
+    if (elements.playerUseHeldCurseBtn) elements.playerUseHeldCurseBtn.style.display = 'none';
     if (elements.playerCurseCardDisplay) {
         elements.playerCurseCardDisplay.style.display = '';
         if (elements.playerCurseIcon) elements.playerCurseIcon.textContent = modifier.icon || '\u26A0\uFE0F';
@@ -2257,13 +2293,12 @@ function showPlayerCurseTargets() {
 
     elements.playerCurseTargets.style.display = '';
     elements.playerCurseTargetList.innerHTML = '';
-    curserSelectedTargetIndex = null;
+    curserSelectedTargetId = null;
 
-    const curserIndex = curserModifierData.curserIndex;
     const players = curserModifierData.gameState.players;
 
-    players.forEach((player, index) => {
-        if (player.isJudge || index === curserIndex) return;
+    players.forEach((player) => {
+        if (player.isJudge || player.id === playerState.playerId) return;
 
         const btn = document.createElement('button');
         btn.className = 'btn btn-secondary';
@@ -2276,7 +2311,7 @@ function showPlayerCurseTargets() {
             });
             btn.style.borderColor = '#FF1493';
             btn.style.boxShadow = '0 0 10px rgba(255,20,147,0.5)';
-            curserSelectedTargetIndex = index;
+            curserSelectedTargetId = player.id;
             if (elements.playerApplyCurseBtn) elements.playerApplyCurseBtn.disabled = false;
         });
 
@@ -2683,12 +2718,17 @@ function showJudgeChoiceGrid() {
     }
 }
 
-function showJudgeDrawPrompts() {
+/**
+ * The judge's draw button. The first hand each round is free; after that it
+ * becomes a re-roll that costs 1 token.
+ */
+function showJudgeDrawPrompts(isReroll = false) {
     if (elements.judgeControls) elements.judgeControls.style.display = '';
     if (elements.judgeDrawPromptsBtn) {
+        const label = isReroll ? 'Re-roll Prompts (1 token)' : 'Draw Prompts';
         elements.judgeDrawPromptsBtn.style.display = '';
-        elements.judgeDrawPromptsBtn.disabled = false;
-        elements.judgeDrawPromptsBtn.textContent = 'Draw Prompts';
+        elements.judgeDrawPromptsBtn.disabled = isReroll && getTotalTokens() < 1;
+        elements.judgeDrawPromptsBtn.textContent = label;
         elements.judgeDrawPromptsBtn.onclick = () => {
             elements.judgeDrawPromptsBtn.disabled = true;
             elements.judgeDrawPromptsBtn.textContent = 'Drawing...';
@@ -2696,7 +2736,7 @@ function showJudgeDrawPrompts() {
                 if (!response.success) {
                     showNotification(response.error || 'Draw failed');
                     elements.judgeDrawPromptsBtn.disabled = false;
-                    elements.judgeDrawPromptsBtn.textContent = 'Draw Prompts';
+                    elements.judgeDrawPromptsBtn.textContent = label;
                 }
             });
         };
@@ -2705,7 +2745,7 @@ function showJudgeDrawPrompts() {
 
 function showJudgePromptCards(prompts) {
     if (elements.judgeControls) elements.judgeControls.style.display = '';
-    if (elements.judgeDrawPromptsBtn) elements.judgeDrawPromptsBtn.style.display = 'none';
+    showJudgeDrawPrompts(true);
     if (elements.judgePromptCards) {
         elements.judgePromptCards.style.display = 'flex';
         elements.judgePromptCards.innerHTML = '';

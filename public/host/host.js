@@ -261,6 +261,7 @@ function cacheDomElements() {
     dom.curseActions = document.getElementById('curse-actions');
     dom.applyCurseBtn = document.getElementById('apply-curse-btn');
     dom.holdCurseBtn = document.getElementById('hold-curse-btn');
+    dom.useHeldCurseBtn = document.getElementById('use-held-curse-btn');
 
     // Scoreboard elements
     dom.scoreboard = document.getElementById('scoreboard-content');
@@ -355,7 +356,34 @@ function preloadAvatars() {
 // INITIALIZATION
 // =============================================================================
 
+const HOST_SESSION_KEY = 'pa_hostSession';
+
+function saveHostSession() {
+    try {
+        sessionStorage.setItem(HOST_SESSION_KEY, JSON.stringify({
+            roomCode: gameState.roomCode,
+            hostToken: gameState.hostToken
+        }));
+    } catch (e) { /* storage unavailable: refresh just won't resume */ }
+}
+
+function clearHostSession() {
+    try { sessionStorage.removeItem(HOST_SESSION_KEY); } catch (e) { /* ignore */ }
+}
+
+function loadHostSession() {
+    try {
+        const saved = JSON.parse(sessionStorage.getItem(HOST_SESSION_KEY) || 'null');
+        if (saved && saved.roomCode && saved.hostToken) {
+            gameState.roomCode = saved.roomCode;
+            gameState.hostToken = saved.hostToken;
+        }
+    } catch (e) { /* ignore */ }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Before sockets connect: the connect handler reclaims a saved room.
+    loadHostSession();
     cacheDomElements();
     preloadAvatars();
     loadSounds();
@@ -461,6 +489,8 @@ function setupEventListeners() {
     // Play again
     if (dom.playAgainBtn) {
         dom.playAgainBtn.addEventListener('click', () => {
+            // Forget the finished room so the reload starts fresh
+            clearHostSession();
             window.location.reload();
         });
     }
@@ -712,7 +742,7 @@ function setupSocketListeners() {
             }, (response) => {
                 if (response.success) {
                     showNotification('Reconnected to room!', 'success');
-                    syncFromServerState(response.gameState);
+                    restoreHostView(response);
                 } else {
                     // Room is gone — reset to create a new one
                     showNotification('Room expired. Please create a new room.', 'error', 5000);
@@ -735,6 +765,7 @@ function setupSocketListeners() {
 function resetToCreateRoom() {
     gameState.roomCode = null;
     gameState.hostToken = null;
+    clearHostSession();
     gameState.players = [];
     gameState.gameStarted = false;
     gameState.offlineMode = false;
@@ -851,37 +882,8 @@ function createRoom() {
             gameState.hostToken = response.hostToken;
             syncFromServerState(response.gameState);
 
-            // In offline mode, hide room code/QR and show player entry form
-            if (gameState.offlineMode) {
-                if (dom.roomCodeDisplay) dom.roomCodeDisplay.classList.remove('visible');
-                if (dom.offlinePlayerEntry) dom.offlinePlayerEntry.style.display = '';
-            } else {
-                // Show room code
-                if (dom.roomCodeDisplay) {
-                    dom.roomCodeDisplay.classList.add('visible');
-                }
-                if (dom.roomCode) {
-                    dom.roomCode.textContent = response.roomCode;
-                }
-                if (dom.roomCodeRepeat) {
-                    dom.roomCodeRepeat.textContent = response.roomCode;
-                }
-                if (dom.joinUrl) {
-                    const url = `${window.location.origin}/play/${response.roomCode}`;
-                    dom.joinUrl.textContent = `Join at: ${url}`;
-                }
-
-                // Generate QR code for joining
-                generateRoomQR(response.roomCode);
-            }
-
-            // Hide create button and mode selection
-            if (dom.createRoomBtn) {
-                dom.createRoomBtn.style.display = 'none';
-            }
-            if (dom.gameModeSelection) {
-                dom.gameModeSelection.style.display = 'none';
-            }
+            saveHostSession();
+            showCreatedRoom(response.roomCode);
 
             const modeLabel = gameState.offlineMode ? 'Offline room' : `Room ${response.roomCode}`;
             showNotification(`${modeLabel} created!`, 'success');
@@ -890,6 +892,117 @@ function createRoom() {
             if (dom.createRoomBtn) dom.createRoomBtn.disabled = false;
         }
     });
+}
+
+/**
+ * Show the lobby for a room that exists: room code and QR (online) or the
+ * player entry form (offline).
+ */
+function showCreatedRoom(roomCode) {
+    // In offline mode, hide room code/QR and show player entry form
+    if (gameState.offlineMode) {
+        if (dom.roomCodeDisplay) dom.roomCodeDisplay.classList.remove('visible');
+        if (dom.offlinePlayerEntry) dom.offlinePlayerEntry.style.display = '';
+    } else {
+        // Show room code
+        if (dom.roomCodeDisplay) {
+            dom.roomCodeDisplay.classList.add('visible');
+        }
+        if (dom.roomCode) {
+            dom.roomCode.textContent = roomCode;
+        }
+        if (dom.roomCodeRepeat) {
+            dom.roomCodeRepeat.textContent = roomCode;
+        }
+        if (dom.joinUrl) {
+            const url = `${window.location.origin}/play/${roomCode}`;
+            dom.joinUrl.textContent = `Join at: ${url}`;
+        }
+
+        // Generate QR code for joining
+        generateRoomQR(roomCode);
+    }
+
+    // Hide create button and mode selection
+    if (dom.createRoomBtn) {
+        dom.createRoomBtn.style.display = 'none';
+    }
+    if (dom.gameModeSelection) {
+        dom.gameModeSelection.style.display = 'none';
+    }
+}
+
+/**
+ * Redraw the host screen for whatever phase the room is in. Used when the host
+ * page reconnects, including after a full refresh.
+ */
+function restoreHostView(response) {
+    const state = response.gameState;
+    const resume = response.resume || {};
+    syncFromServerState(state);
+
+    if (!state.gameStarted) {
+        showScreen('lobby');
+        showCreatedRoom(state.code);
+        updateLobbyPlayers();
+        updateStartButtonState();
+        return;
+    }
+
+    showScreen('game');
+    const alignmentLabel = getPersistentAlignmentLabel(state.currentAlignment, state.currentAlignmentFullName);
+    switch (state.gamePhase) {
+        case 'alignment':
+            showPhase('alignment');
+            if (dom.rollBtn) dom.rollBtn.disabled = false;
+            break;
+        case 'judge_choice':
+            showPhase('judge-choice');
+            break;
+        case 'prompts':
+            showPhase('prompt');
+            if (dom.promptsAlignmentDisplay) dom.promptsAlignmentDisplay.textContent = alignmentLabel;
+            if (state.currentPrompts && state.currentPrompts.length) {
+                handlePromptsDrawn({ prompts: state.currentPrompts, players: state.players });
+            } else {
+                resetDrawPromptsButton(false);
+            }
+            break;
+        case 'drawing':
+            startDrawingPhase({
+                prompt: state.selectedPrompt,
+                alignment: state.currentAlignment,
+                alignmentFullName: state.currentAlignmentFullName,
+                timeLimit: state.settings && state.settings.timerDuration,
+                resume: true
+            });
+            if (!gameState.offlineMode) updateSubmissionCounter(state.submissionCount || 0);
+            break;
+        case 'judging':
+            handleSubmissionsCollected({ submissions: resume.submissions || [] });
+            break;
+        case 'scoring':
+            showPhase('results');
+            if (dom.nextRoundBtn) dom.nextRoundBtn.disabled = false;
+            break;
+        case 'modifiers':
+            if (state.currentCurser) {
+                showModifierPhase({
+                    curser: {
+                        id: state.currentCurser.playerId,
+                        name: state.currentCurser.playerName,
+                        avatar: state.currentCurser.playerAvatar
+                    },
+                    curserIndex: state.currentCurser.index,
+                    hasHeldCurse: state.currentCurser.hasHeldCurse,
+                    heldCurse: state.currentCurser.heldCurse
+                });
+            }
+            break;
+        case 'gameOver':
+            if (resume.gameOver) showGameOver(resume.gameOver);
+            break;
+    }
 }
 
 function addOfflinePlayer() {
@@ -1291,8 +1404,34 @@ function drawPrompts() {
     });
 }
 
+function resetDrawPromptsButton(disabled) {
+    if (!dom.drawPromptsBtn) return;
+    dom.drawPromptsBtn.textContent = 'Draw Prompts';
+    dom.drawPromptsBtn.title = '';
+    dom.drawPromptsBtn.disabled = disabled;
+}
+
 function handlePromptsDrawn(data) {
     gameState.prompts = data.prompts;
+
+    // A re-roll spends a judge token, so refresh counts before deciding
+    // whether another re-roll is affordable.
+    if (data.players) {
+        gameState.players = data.players;
+        updateScoreboard();
+    }
+    if (data.isReroll) {
+        showNotification(`${data.judgeName || 'The judge'} spent a token to re-roll the prompts!`, 'info');
+    }
+    if (dom.drawPromptsBtn) {
+        const judge = gameState.players.find(p => p.isJudge);
+        const judgeTokens = judge ? (judge.totalTokens || 0) : 0;
+        dom.drawPromptsBtn.textContent = 'Re-roll Prompts (1 token)';
+        dom.drawPromptsBtn.title = judgeTokens > 0
+            ? 'Spend one of the judge\'s tokens for a new hand of prompts.'
+            : 'The judge needs a token to re-roll.';
+        dom.drawPromptsBtn.disabled = judgeTokens < 1;
+    }
 
     if (!dom.promptCards) return;
     dom.promptCards.innerHTML = '';
@@ -1393,7 +1532,7 @@ function startDrawingPhase(data) {
 
     // Setup timer display
     const duration = data.timeLimit || gameState.settings.timerDuration;
-    if (duration && duration > 0) {
+    if (duration && duration > 0 && !data.resume) {
         updateTimerDisplay(duration, duration);
         // Hide end-drawing button until timer expires
         if (dom.endDrawingBtn) {
@@ -1411,8 +1550,8 @@ function startDrawingPhase(data) {
         }
     }
 
-    // Auto-start timer
-    startTimer();
+    // Auto-start timer (a resumed round's timer is already running server-side)
+    if (!data.resume) startTimer();
 
     gameState.selectedPrompt = data.prompt;
 }
@@ -1847,7 +1986,7 @@ function resetRoundUI() {
     if (dom.promptCards) {
         dom.promptCards.innerHTML = '';
     }
-    if (dom.drawPromptsBtn) dom.drawPromptsBtn.disabled = true;
+    resetDrawPromptsButton(true);
     if (dom.confirmPromptBtn) dom.confirmPromptBtn.disabled = true;
 
     // Reset timer
@@ -1902,6 +2041,18 @@ function showModifierPhase(data) {
         dom.drawCurseBtn.disabled = false;
         dom.drawCurseBtn.style.display = '';
     }
+    if (dom.holdCurseBtn) dom.holdCurseBtn.style.display = '';
+
+    // A curse held from an earlier round can be played instead of drawing.
+    if (dom.useHeldCurseBtn) {
+        const held = data.hasHeldCurse ? data.heldCurse : null;
+        dom.useHeldCurseBtn.style.display = held ? '' : 'none';
+        dom.useHeldCurseBtn.disabled = false;
+        if (held) {
+            dom.useHeldCurseBtn.textContent = `Play Held Curse: ${held.icon || ''} ${held.name}`;
+            dom.useHeldCurseBtn.onclick = () => useHeldCurse(held);
+        }
+    }
 
     if (dom.skipModifiersBtn) {
         dom.skipModifiersBtn.disabled = false;
@@ -1915,6 +2066,12 @@ function showModifierPhase(data) {
         dom.curseTargetSelection.innerHTML = '';
     }
     if (dom.curseActions) dom.curseActions.style.display = 'none';
+}
+
+function useHeldCurse(modifier) {
+    handleCurseCardDrawn({ modifier });
+    // Playing a held card: it can't be held again.
+    if (dom.holdCurseBtn) dom.holdCurseBtn.style.display = 'none';
 }
 
 function drawCurseCard() {
@@ -1945,6 +2102,7 @@ function handleCurseCardDrawn(data) {
 
     // Hide draw button
     if (dom.drawCurseBtn) dom.drawCurseBtn.style.display = 'none';
+    if (dom.useHeldCurseBtn) dom.useHeldCurseBtn.style.display = 'none';
 
     // Show actions (apply, hold, skip)
     if (dom.curseActions) dom.curseActions.style.display = '';
@@ -1960,13 +2118,13 @@ function showCurseTargetSelection(modifier) {
     dom.curseTargetSelection.style.display = '';
     if (dom.curseTargetHeading) dom.curseTargetHeading.style.display = '';
 
-    const curserIndex = pendingModifierData ? pendingModifierData.curserIndex : -1;
-    let selectedTargetIndex = null;
+    const curserId = pendingModifierData && pendingModifierData.curser ? pendingModifierData.curser.id : null;
+    let selectedTargetId = null;
 
-    gameState.players.forEach((player, index) => {
+    gameState.players.forEach((player) => {
         // Cannot target judge or self (curser)
         const isJudge = player.isJudge;
-        const isCurser = index === curserIndex;
+        const isCurser = player.id === curserId;
 
         if (isJudge || isCurser) return;
 
@@ -1981,7 +2139,7 @@ function showCurseTargetSelection(modifier) {
             // Highlight selected target
             dom.curseTargetSelection.querySelectorAll('.curse-target-card').forEach(c => c.classList.remove('selected'));
             targetBtn.classList.add('selected');
-            selectedTargetIndex = index;
+            selectedTargetId = player.id;
             if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = false;
         });
 
@@ -1993,19 +2151,19 @@ function showCurseTargetSelection(modifier) {
     // Setup apply curse button
     if (dom.applyCurseBtn) {
         dom.applyCurseBtn.onclick = () => {
-            if (selectedTargetIndex !== null) {
-                applyCurse(selectedTargetIndex, modifier);
+            if (selectedTargetId !== null) {
+                applyCurse(selectedTargetId, modifier);
             }
         };
     }
 }
 
-function applyCurse(targetIndex, modifier) {
+function applyCurse(targetId, modifier) {
     // Disable buttons
     if (dom.applyCurseBtn) dom.applyCurseBtn.disabled = true;
     if (dom.holdCurseBtn) dom.holdCurseBtn.disabled = true;
 
-    socket.emit('host:applyCurse', { targetIndex, modifier }, (response) => {
+    socket.emit('host:applyCurse', { targetId, modifier }, (response) => {
         // On success the game:curseApplied listener advances the round.
         if (!response.success) {
             showNotification(`Failed to apply curse: ${response.error}`, 'error');
@@ -2498,9 +2656,22 @@ function isAvatarImagePath(avatar) {
     return typeof avatar === 'string' && avatar.startsWith('/assets/images/avatars/');
 }
 
+// The CSP (script-src 'self') blocks inline onerror handlers, so broken
+// avatar images are swapped for their fallback badge by one delegated
+// listener. Image error events don't bubble, hence the capture phase.
+document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('avatar-img')) return;
+    img.style.display = 'none';
+    const fallback = img.nextElementSibling;
+    if (fallback && fallback.classList.contains('avatar-fallback-badge')) {
+        fallback.style.display = 'inline-flex';
+    }
+}, true);
+
 function renderAvatarHtml(avatar, altText) {
     if (isAvatarImagePath(avatar)) {
-        return `<span class="avatar-wrap"><img class="avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(altText || 'Avatar')}" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" /><span class="avatar-fallback-badge" style="display:none;">${DEFAULT_AVATAR_FALLBACK}</span></span>`;
+        return `<span class="avatar-wrap"><img class="avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(altText || 'Avatar')}" /><span class="avatar-fallback-badge" style="display:none;">${DEFAULT_AVATAR_FALLBACK}</span></span>`;
     }
     return escapeHtml(avatar || DEFAULT_AVATAR_FALLBACK);
 }

@@ -136,9 +136,12 @@ test('curse cards must be the drawn card and resolve once per phase', () => {
     assert.equal(drawn.success, true);
     assert.equal(room.drawCurseCard().success, false);
 
-    const target = room.players.findIndex((p, i) => i !== room.judgeIndex && i !== phase.curserIndex);
-    assert.equal(room.applyCurse(target, drawn.modifier).success, true);
-    assert.equal(room.applyCurse(target, drawn.modifier).success, false);
+    const judge = room.getCurrentJudge();
+    assert.equal(room.applyCurse(judge.id, drawn.modifier).success, false);
+    assert.equal(room.applyCurse(phase.curser.id, drawn.modifier).success, false);
+    const target = room.players.find((p) => !p.isJudge && p !== phase.curser);
+    assert.equal(room.applyCurse(target.id, drawn.modifier).success, true);
+    assert.equal(room.applyCurse(target.id, drawn.modifier).success, false);
     assert.equal(room.pendingModifiers.length, 1);
 });
 
@@ -163,4 +166,69 @@ test('prompt deck reshuffles instead of running dry', () => {
     room.availableCards = room.availableCards.slice(0, 2);
     room.gamePhase = 'prompts';
     assert.equal(room.drawPrompts().success, true);
+});
+
+function finishRound(room, winnerId) {
+    startRoundInDrawing(room);
+    room.submitDrawing(winnerId, 'data:image/png;base64,abc', '');
+    room.collectSubmissions();
+    return room.selectWinner(winnerId);
+}
+
+test('held curse can be played in a later curse phase', () => {
+    const room = new Room('HELD', 'host-1');
+    addPlayers(room, 4);
+    room.startGame({ selectedDecks: ['core_white'] });
+    finishRound(room, 'socket-1');
+
+    const first = room.checkForModifierPhase();
+    const curser = first.curser;
+    const card = room.drawCurseCard().modifier;
+    assert.equal(room.holdCurse(card).success, true);
+    assert.equal(curser.heldCurse, card);
+
+    // Next curse phase with the same curser: the held card applies without a draw.
+    room.advanceRound();
+    finishRound(room, room.players.find((p) => !p.isJudge && p !== curser).id);
+    // Make the original curser the only player in last place.
+    room.players.forEach((p) => { if (p !== curser) p.score = 2; });
+    curser.score = 0;
+    const second = room.checkForModifierPhase();
+    assert.equal(second.curser, curser);
+    assert.equal(second.hasHeldCurse, true);
+    const target = room.players.find((p) => !p.isJudge && p !== curser);
+    assert.equal(room.applyCurse(target.id, { id: card.id }).success, true);
+    assert.equal(curser.heldCurse, null);
+});
+
+test('re-rolling prompts costs the judge a token', () => {
+    const room = new Room('ROLL', 'host-1');
+    addPlayers(room);
+    room.startGame({ selectedDecks: ['core_white'] });
+    const alignment = room.rollAlignment();
+    if (alignment.isJudgeChoice) room.selectJudgeAlignment('LG');
+
+    const first = room.drawPrompts();
+    assert.equal(first.success, true);
+    assert.equal(first.isReroll, false);
+
+    assert.equal(room.drawPrompts().success, false); // judge has no tokens
+
+    const judge = room.getCurrentJudge();
+    judge.tokens.plotTwist = 1;
+    const reroll = room.drawPrompts();
+    assert.equal(reroll.success, true);
+    assert.equal(reroll.isReroll, true);
+    assert.equal(judge.tokens.plotTwist, 0);
+});
+
+test('disconnected players are skipped when the judge rotates', () => {
+    const room = new Room('SKIP', 'host-1');
+    addPlayers(room, 4);
+    room.startGame({ selectedDecks: ['core_white'] });
+    finishRound(room, 'socket-2');
+    room.setPlayerDisconnected('socket-1');
+
+    assert.equal(room.advanceRound().success, true);
+    assert.equal(room.getCurrentJudge().id, 'socket-2');
 });

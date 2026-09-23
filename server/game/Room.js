@@ -329,6 +329,14 @@ export default class Room {
             return { success: false, error: 'Wrong phase' };
         }
 
+        // The first hand each round is free; drawing again is a re-roll that
+        // costs the judge 1 token.
+        const isReroll = this.currentPrompts.length > 0;
+        const judge = this.getCurrentJudge();
+        if (isReroll && (!judge || this.getPlayerTokenTotal(judge) < 1)) {
+            return { success: false, error: 'Re-rolling prompts costs 1 token' };
+        }
+
         if (this.availableCards.length < 3) {
             // Deck exhausted: reshuffle the full pool rather than stalling the game.
             this.availableCards = buildPromptPool(this.settings.selectedDecks);
@@ -336,6 +344,8 @@ export default class Room {
                 return { success: false, error: 'Not enough cards left' };
             }
         }
+
+        if (isReroll) this.deductTokens(judge, 1);
 
         this.currentPrompts = [];
         const indices = new Set();
@@ -348,7 +358,7 @@ export default class Room {
 
         this.lastActivity = Date.now();
 
-        return { success: true, prompts: this.currentPrompts };
+        return { success: true, prompts: this.currentPrompts, isReroll };
     }
 
     selectPrompt(promptIndex) {
@@ -603,7 +613,7 @@ export default class Room {
 
         const lastPlacePlayers = this.players
             .map((player, index) => ({ player, index }))
-            .filter(({ player, index }) => player.score === lowestScore && index !== this.judgeIndex);
+            .filter(({ player, index }) => player.score === lowestScore && index !== this.judgeIndex && player.connected);
 
         if (lastPlacePlayers.length === 0) {
             return { hasModifierPhase: false };
@@ -655,7 +665,7 @@ export default class Room {
         return candidates.find(card => card.id === id) || null;
     }
 
-    applyCurse(targetIndex, modifier) {
+    applyCurse(targetId, modifier) {
         if (this.gamePhase !== 'modifiers') {
             return { success: false, error: 'Wrong phase' };
         }
@@ -667,16 +677,18 @@ export default class Room {
             return { success: false, error: 'Invalid curse card' };
         }
 
-        const target = this.players[targetIndex];
+        // Targets are identified by player id, not list position: positions
+        // shift if someone is kicked while the curser is choosing.
+        const target = this.players.find(p => p.id === targetId);
         if (!target) {
             return { success: false, error: 'Target not found' };
         }
 
-        if (targetIndex === this.judgeIndex) {
+        if (target.isJudge) {
             return { success: false, error: 'Cannot curse the judge' };
         }
 
-        if (this.currentCurser && targetIndex === this.currentCurser.index) {
+        if (this.currentCurser && target === this.currentCurser.player) {
             return { success: false, error: 'Cannot curse yourself' };
         }
 
@@ -723,6 +735,20 @@ export default class Room {
         return { success: true };
     }
 
+    /**
+     * The next player in rotation who is still connected, so a player who has
+     * dropped out is never handed the judge's seat. Falls back to plain
+     * rotation if nobody is connected.
+     */
+    getNextJudgeIndex() {
+        const count = this.players.length;
+        for (let step = 1; step <= count; step++) {
+            const index = (this.judgeIndex + step) % count;
+            if (this.players[index].connected) return index;
+        }
+        return (this.judgeIndex + 1) % count;
+    }
+
     advanceRound() {
         // Guard against double-advancing (e.g. two clients both pressing
         // "next"), which would silently skip a judge's turn.
@@ -736,7 +762,7 @@ export default class Room {
         }
 
         this.currentRound++;
-        this.judgeIndex = (this.judgeIndex + 1) % this.players.length;
+        this.judgeIndex = this.getNextJudgeIndex();
         this.updateJudge();
 
         this.players.forEach(player => {
