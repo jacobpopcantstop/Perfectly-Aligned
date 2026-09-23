@@ -27,10 +27,20 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      # Pages can only serve the static landing page (the game itself needs
+      # the Node server), so publish just that page and what it loads rather
+      # than the whole repository.
+      - name: Assemble landing page
+        run: |
+          mkdir -p _site/assets/config
+          cp index.html _site/
+          cp public/favicon.svg _site/
+          cp public/assets/config/links.js _site/assets/config/
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment

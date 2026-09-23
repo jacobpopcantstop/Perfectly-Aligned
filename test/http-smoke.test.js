@@ -194,4 +194,29 @@ test('running server exposes free config, security headers, CSP-friendly pages, 
     assert.equal(badReconnect.success, false);
     const stillAlive = await fetch(`${baseUrl}/healthz`);
     assert.equal(stillAlive.status, 200);
+
+    // Play one round: drawings go to the host screen and the judge's phone
+    // only; other phones get a lightweight payload.
+    const roomHost = intruder; // holds the host token now
+    const [judge, drawerA, drawerB] = players; // first joiner judges round 1
+    const rolled = await roomHost.emitAck('host:rollAlignment');
+    assert.equal(rolled.success, true);
+    if (rolled.isJudgeChoice) {
+        assert.equal((await roomHost.emitAck('host:selectJudgeAlignment', 'LG')).success, true);
+    }
+    assert.equal((await roomHost.emitAck('host:drawPrompts')).success, true);
+    assert.equal((await roomHost.emitAck('host:selectPrompt', 0)).success, true);
+
+    const drawing = 'data:image/png;base64,' + 'A'.repeat(2000);
+    const hostCollected = roomHost.waitEvent('game:submissionsCollected');
+    const judgeCollected = judge.waitEvent('game:submissionsCollected');
+    const drawerCollected = drawerA.waitEvent('game:submissionsCollected');
+    assert.equal((await drawerA.emitAck('player:submitDrawing', { drawing })).success, true);
+    assert.equal((await drawerB.emitAck('player:submitDrawing', { drawing })).success, true);
+
+    assert.equal((await hostCollected).args[0].submissions.length, 2);
+    assert.equal((await judgeCollected).args[0].submissions.length, 2);
+    const drawerPayload = (await drawerCollected).args[0];
+    assert.equal(drawerPayload.submissions.length, 0);
+    assert.equal(drawerPayload.submissionCount, 2);
 });

@@ -234,12 +234,11 @@ document.addEventListener('DOMContentLoaded', () => {
     preloadAvatars();
 
     // Check URL for room code: /play/XXXX
-    const pathParts = window.location.pathname.split('/');
-    const lastPart = pathParts[pathParts.length - 1];
-    if (lastPart && lastPart.length === 4 && /^[A-Za-z]{4}$/.test(lastPart)) {
-        if (elements.roomCodeInput) {
-            elements.roomCodeInput.value = lastPart.toUpperCase();
-        }
+    // Only /play/ABCD carries a room code. (Matching any 4-letter last path
+    // segment used to pre-fill "PLAY" when opening the bare /play link.)
+    const codeMatch = window.location.pathname.match(/^\/play\/([A-Za-z]{4})\/?$/);
+    if (codeMatch && elements.roomCodeInput) {
+        elements.roomCodeInput.value = codeMatch[1].toUpperCase();
     }
 
     // Initialize UI elements first (no socket dependency)
@@ -2398,7 +2397,14 @@ function attemptRejoin() {
             saveToLocalStorage();
 
         if (response.gameState) {
+            playerState.hasSubmitted = Boolean(response.hasSubmitted);
             handleGameState(response.gameState);
+            // A judge who refreshed mid-judging can pick the winner again.
+            if (playerState.isJudge && response.submissions && response.submissions.length) {
+                if (elements.judgingTitle) elements.judgingTitle.textContent = 'Pick the Winner!';
+                if (elements.judgingWaitState) elements.judgingWaitState.style.display = 'none';
+                renderJudgeSubmissions(response.submissions);
+            }
         } else {
             showScreen('lobby');
         }

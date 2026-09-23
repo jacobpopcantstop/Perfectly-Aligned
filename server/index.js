@@ -65,6 +65,7 @@ const JOIN_RATE_LIMIT = Number(process.env.JOIN_RATE_LIMIT || 8);
 const RECONNECT_RATE_LIMIT = Number(process.env.RECONNECT_RATE_LIMIT || 12);
 const SUBMIT_RATE_LIMIT = Number(process.env.SUBMIT_RATE_LIMIT || 6);
 const CREATE_ROOM_RATE_LIMIT = Number(process.env.CREATE_ROOM_RATE_LIMIT || 5);
+const MAX_ROOMS = Number(process.env.MAX_ROOMS || 500);
 const LOBBY_DISCONNECT_GRACE_MS = Number(process.env.LOBBY_DISCONNECT_GRACE_MS || 60_000);
 const gameManager = new GameManager();
 
@@ -269,17 +270,27 @@ function isNonEmptyString(value) {
 }
 
 /**
+ * Drawings are large (up to ~1.5 MB each), so only the screens that display
+ * them get the full payload; every other socket in the room gets `light`.
+ */
+function emitWithDrawings(room, event, full, light, extraRecipientIds = []) {
+    const fullRecipients = [room.hostId, ...extraRecipientIds].filter(Boolean);
+    io.to(fullRecipients).emit(event, full);
+    io.to(room.code).except(fullRecipients).emit(event, light);
+}
+
+/**
  * End the game: broadcast the result and persist the session history.
  */
 function endGame(room, winner) {
     room.gamePhase = 'gameOver';
     room.clearTimer();
     const finalScores = room.getScores();
-    io.to(room.code).emit('game:over', {
-        winner: room.toPublicPlayer(winner),
-        finalScores,
-        winningDrawings: room.winningDrawings
-    });
+    const gameOver = { winner: room.toPublicPlayer(winner), finalScores };
+    // Only the host screen shows the winners' gallery.
+    emitWithDrawings(room, 'game:over',
+        { ...gameOver, winningDrawings: room.winningDrawings },
+        { ...gameOver, winningDrawings: [] });
     finalizeSession(room.code, {
         winnerId: winner?.id || null,
         winnerName: winner?.name || null,
@@ -387,8 +398,13 @@ function collectAndBroadcast(room) {
     if (!result.success) return result;
     room.clearTimer();
     const submissions = room.getSubmissionsForJudging();
-    io.to(room.code).emit('game:submissionsCollected', { submissions });
-    return { success: true, submissions };
+    // The host screen and the judge's phone show the drawings; other phones
+    // just switch to a waiting screen.
+    emitWithDrawings(room, 'game:submissionsCollected',
+        { submissions },
+        { submissions: [], submissionCount: submissions.length },
+        [room.getCurrentJudge()?.id]);
+    return { success: true, submissionCount: submissions.length };
 }
 
 /**
@@ -442,6 +458,9 @@ io.on('connection', (socket) => {
         }
         if (typeof callback !== 'function') return;
         if (!checkSocketRateLimit(socket, 'host:createRoom', CREATE_ROOM_RATE_LIMIT, callback)) return;
+        if (gameManager.rooms.size >= MAX_ROOMS) {
+            return callback({ success: false, error: 'The server is full right now. Please try again in a few minutes.' });
+        }
         try {
             const accessToken = isNonEmptyString(data?.accessToken) ? data.accessToken : null;
             const { profile, entitlements } = await resolveProfileAndEntitlementsFromAccessToken(accessToken);
@@ -1170,10 +1189,15 @@ io.on('connection', (socket) => {
                 playerName
             });
 
+            const isJudge = result.player.isJudge;
             callback({
                 success: true,
                 reconnectToken: nextReconnectToken,
-                gameState: room.getState()
+                gameState: room.getState(),
+                // Lets a refreshed phone show the right screen instead of
+                // asking for a drawing it already sent.
+                hasSubmitted: room.submissions.has(socket.id),
+                submissions: isJudge && room.gamePhase === 'judging' ? room.getSubmissionsForJudging() : undefined
             });
         } else {
             callback(result);

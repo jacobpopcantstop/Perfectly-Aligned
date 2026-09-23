@@ -60,15 +60,17 @@ A Jackbox-style online multiplayer party game where players compete to create th
 Perfectly-Aligned/
 ├── server/                 # Backend
 │   ├── index.js           # Express + Socket.IO server
-│   └── game/
-│       ├── GameManager.js # Manages all rooms
-│       ├── Room.js        # Individual game room logic
-│       └── constants.js   # Game data
+│   ├── game/
+│   │   ├── GameManager.js # Manages all rooms
+│   │   └── Room.js        # Individual game room logic
+│   └── services/          # Optional Supabase auth + game history
+├── shared/
+│   └── game-data.js       # Prompts, alignments, curses, avatars (server copy)
 ├── public/                 # Frontend
 │   ├── host/              # Host/main screen view
 │   ├── player/            # Player phone controller
-│   ├── shared/            # Shared styles/scripts
-│   └── assets/            # Images, audio
+│   └── assets/            # Images, audio, support-link config
+├── test/                   # node --test suites
 └── package.json
 ```
 
@@ -93,6 +95,9 @@ Copy `.env.example` and configure as needed:
 - `JOIN_RATE_LIMIT` - Max `player:joinRoom` calls per window per socket
 - `RECONNECT_RATE_LIMIT` - Max `player:reconnect` calls per window per socket
 - `SUBMIT_RATE_LIMIT` - Max `player:submitDrawing` calls per window per socket
+- `CREATE_ROOM_RATE_LIMIT` - Max `host:createRoom` calls per window per socket (default: `5`)
+- `MAX_ROOMS` - Rooms the server will hold at once before refusing new ones (default: `500`)
+- `LOBBY_DISCONNECT_GRACE_MS` - How long a player who drops out of the lobby keeps their seat (default: `60000`)
 - `SUPABASE_URL` - Optional Supabase project URL for authenticated history features
 - `SUPABASE_ANON_KEY` - Optional Supabase anon/public key
 - `SUPABASE_SERVICE_ROLE_KEY` - Optional Supabase service-role key (server-only)
@@ -136,7 +141,9 @@ Supabase is only needed if you want authenticated host history persistence.
 
 ## Contributing
 
-Feel free to add more prompts to `server/game/constants.js` or create new avatar images!
+Feel free to add more prompts to `shared/game-data.js` or create new avatar images!
+
+The host and player pages keep their own copies of the avatar list, alignment names and token types. If you change those in `shared/game-data.js`, update `public/host/host.js` and `public/player/player.js` too — `npm test` checks they stay in sync.
 
 ## License
 
